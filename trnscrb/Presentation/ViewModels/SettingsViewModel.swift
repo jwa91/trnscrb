@@ -12,6 +12,8 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var mistralAPIKey: String = ""
     /// S3 secret key (stored in Keychain, not in AppSettings).
     @Published public var s3SecretKey: String = ""
+    /// Error message from the last failed operation, if any.
+    @Published public var error: String?
 
     /// Settings gateway for persistence.
     private let gateway: any SettingsGateway
@@ -24,11 +26,36 @@ public final class SettingsViewModel: ObservableObject {
 
     /// Loads settings and secrets from persistent storage.
     public func load() async {
-        // Full implementation in Task 4
+        do {
+            settings = try await gateway.loadSettings()
+            mistralAPIKey = try await gateway.getSecret(for: .mistralAPIKey) ?? ""
+            s3SecretKey = try await gateway.getSecret(for: .s3SecretKey) ?? ""
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     /// Saves settings and secrets to persistent storage.
     public func save() async {
-        // Full implementation in Task 4
+        do {
+            try await gateway.saveSettings(settings)
+
+            if mistralAPIKey.isEmpty {
+                try await gateway.removeSecret(for: .mistralAPIKey)
+            } else {
+                try await gateway.setSecret(mistralAPIKey, for: .mistralAPIKey)
+            }
+
+            if s3SecretKey.isEmpty {
+                try await gateway.removeSecret(for: .s3SecretKey)
+            } else {
+                try await gateway.setSecret(s3SecretKey, for: .s3SecretKey)
+            }
+
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
