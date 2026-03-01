@@ -37,7 +37,10 @@ struct SettingsView: View {
                     .lineLimit(1)
             }
             Button("Save") {
-                Task { await viewModel.save() }
+                Task {
+                    await viewModel.save()
+                    onBack()
+                }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)

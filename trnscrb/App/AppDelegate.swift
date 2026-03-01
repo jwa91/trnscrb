@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover?
     /// Settings gateway for the lifetime of the app.
     private var settingsGateway: (any SettingsGateway)?
+    /// Monitors clicks outside the popover to dismiss it.
+    private var eventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -55,10 +57,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePopover() {
         guard let popover, let button = statusItem?.button else { return }
         if popover.isShown {
-            popover.performClose(nil)
+            closePopover()
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
+            startEventMonitor()
         }
+    }
+
+    /// Closes the popover and removes the event monitor.
+    private func closePopover() {
+        popover?.performClose(nil)
+        stopEventMonitor()
+    }
+
+    /// Installs a global event monitor that closes the popover on outside clicks.
+    private func startEventMonitor() {
+        stopEventMonitor()
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            self?.closePopover()
+        }
+    }
+
+    /// Removes the global event monitor.
+    private func stopEventMonitor() {
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+        }
+        eventMonitor = nil
     }
 }
