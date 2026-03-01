@@ -24,11 +24,10 @@ struct SettingsView: View {
     private var header: some View {
         HStack {
             Button(action: onBack) {
-                Image(systemName: "chevron.left")
+                Label("Settings", systemImage: "chevron.left")
+                    .font(.headline)
             }
             .buttonStyle(.borderless)
-            Text("Settings")
-                .font(.headline)
             Spacer()
             if let error = viewModel.error {
                 Text(error)

@@ -42,9 +42,11 @@ struct PopoverView: View {
                     showSettings = true
                 } label: {
                     Image(systemName: "gear")
+                        .font(.system(size: 14))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .padding(8)
             }
         }
         .frame(width: 320, height: 360)
