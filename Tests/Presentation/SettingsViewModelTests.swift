@@ -3,36 +3,6 @@ import Testing
 
 @testable import trnscrb
 
-/// In-memory mock for SettingsGateway used in ViewModel tests.
-final class MockSettingsGateway: SettingsGateway, @unchecked Sendable {
-    var settings: AppSettings = AppSettings()
-    var secrets: [SecretKey: String] = [:]
-    var loadCallCount: Int = 0
-    var saveCallCount: Int = 0
-
-    func loadSettings() async throws -> AppSettings {
-        loadCallCount += 1
-        return settings
-    }
-
-    func saveSettings(_ newSettings: AppSettings) async throws {
-        saveCallCount += 1
-        settings = newSettings
-    }
-
-    func getSecret(for key: SecretKey) async throws -> String? {
-        secrets[key]
-    }
-
-    func setSecret(_ value: String, for key: SecretKey) async throws {
-        secrets[key] = value
-    }
-
-    func removeSecret(for key: SecretKey) async throws {
-        secrets[key] = nil
-    }
-}
-
 @MainActor
 struct SettingsViewModelTests {
     private func makeViewModel(
