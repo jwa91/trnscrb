@@ -16,8 +16,8 @@ public protocol StorageGateway: Sendable {
     /// - Parameter key: Object key to delete.
     func delete(key: String) async throws
 
-    /// Lists object keys that have exceeded the retention period.
-    /// - Parameter retentionHours: Maximum age in hours before an object is expired.
+    /// Lists object keys created before the given cutoff date.
+    /// - Parameter cutoff: Objects created before this date are considered expired.
     /// - Returns: Keys of expired objects.
-    func listExpired(retentionHours: Int) async throws -> [String]
+    func listCreatedBefore(_ cutoff: Date) async throws -> [String]
 }

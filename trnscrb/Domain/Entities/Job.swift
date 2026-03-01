@@ -21,12 +21,12 @@ public enum JobStatus: Sendable, Equatable {
 public struct Job: Sendable, Identifiable, Equatable {
     /// Unique identifier for this job.
     public let id: UUID
-    /// Original file name (e.g., "meeting-recording.mp3").
-    public let fileName: String
     /// Detected file type (audio, pdf, image).
     public let fileType: FileType
     /// Local URL of the dropped file.
     public let fileURL: URL
+    /// Original file name, derived from `fileURL`.
+    public var fileName: String { fileURL.lastPathComponent }
     /// Current processing state.
     public private(set) var status: JobStatus
     /// Markdown output, set on completion.
@@ -39,13 +39,11 @@ public struct Job: Sendable, Identifiable, Equatable {
     /// Creates a new job in the `pending` state.
     public init(
         id: UUID = UUID(),
-        fileName: String,
         fileType: FileType,
         fileURL: URL,
         createdAt: Date = Date()
     ) {
         self.id = id
-        self.fileName = fileName
         self.fileType = fileType
         self.fileURL = fileURL
         self.status = .pending

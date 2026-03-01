@@ -3,28 +3,30 @@ import Testing
 
 @testable import trnscrb
 
+private func makeJob(
+    fileURL: URL = URL(filePath: "/tmp/recording.mp3")
+) -> Job {
+    Job(
+        fileType: .audio,
+        fileURL: fileURL
+    )
+}
+
 struct JobStatusTests {
     @Test func initialStatusIsPending() {
-        let job: Job = Job(
-            fileName: "test.mp3",
-            fileType: .audio,
-            fileURL: URL(filePath: "/tmp/test.mp3")
-        )
+        let job: Job = makeJob()
         #expect(job.status == .pending)
         #expect(job.markdown == nil)
         #expect(job.completedAt == nil)
     }
+
+    @Test func fileNameDerivedFromURL() {
+        let job: Job = makeJob(fileURL: URL(filePath: "/tmp/meeting-notes.mp3"))
+        #expect(job.fileName == "meeting-notes.mp3")
+    }
 }
 
 struct JobStateTransitionTests {
-    private func makeJob() -> Job {
-        Job(
-            fileName: "recording.mp3",
-            fileType: .audio,
-            fileURL: URL(filePath: "/tmp/recording.mp3")
-        )
-    }
-
     // MARK: - Happy path: pending -> uploading -> processing -> completed
 
     @Test func pendingToUploading() {
@@ -125,10 +127,8 @@ struct JobStateTransitionTests {
 
 struct JobIdentityTests {
     @Test func uniqueIds() {
-        let job1: Job = Job(
-            fileName: "a.mp3", fileType: .audio, fileURL: URL(filePath: "/tmp/a.mp3"))
-        let job2: Job = Job(
-            fileName: "a.mp3", fileType: .audio, fileURL: URL(filePath: "/tmp/a.mp3"))
+        let job1: Job = makeJob(fileURL: URL(filePath: "/tmp/a.mp3"))
+        let job2: Job = makeJob(fileURL: URL(filePath: "/tmp/a.mp3"))
         #expect(job1.id != job2.id)
     }
 }

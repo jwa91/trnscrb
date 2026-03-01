@@ -35,9 +35,11 @@ struct FileTypeTests {
     }
 
     @Test func allSupportedContainsEveryExtension() {
-        let all: Set<String> = FileType.audioExtensions
-            .union(FileType.pdfExtensions)
-            .union(FileType.imageExtensions)
-        #expect(FileType.allSupported == all)
+        let expected: Set<String> = [
+            "mp3", "wav", "m4a", "ogg", "flac", "webm", "mp4",
+            "pdf",
+            "png", "jpg", "jpeg", "heic", "tiff", "webp"
+        ]
+        #expect(FileType.allSupported == expected)
     }
 }
