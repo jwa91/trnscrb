@@ -116,7 +116,7 @@ struct SettingsViewModelTests {
     @Test func loadThenSaveRoundTrip() async {
         let original: AppSettings = AppSettings(
             s3EndpointURL: "https://rt.com",
-            outputMode: .both,
+            copyToClipboard: false,
             fileRetentionHours: 48
         )
         let (vm, gateway) = makeViewModel(

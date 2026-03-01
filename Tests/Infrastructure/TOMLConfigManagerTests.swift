@@ -48,8 +48,8 @@ struct TOMLConfigManagerTests {
             s3BucketName: "my-bucket",
             s3Region: "eu-central-1",
             s3PathPrefix: "uploads/",
-            outputMode: .saveToFolder,
             saveFolderPath: "~/Desktop/output/",
+            copyToClipboard: false,
             fileRetentionHours: 48,
             launchAtLogin: true
         )
@@ -75,7 +75,7 @@ struct TOMLConfigManagerTests {
         let settings: AppSettings = AppSettings(
             s3EndpointURL: "https://example.com",
             s3BucketName: "bucket",
-            outputMode: .both,
+            copyToClipboard: false,
             fileRetentionHours: 12,
             launchAtLogin: true
         )
@@ -85,7 +85,7 @@ struct TOMLConfigManagerTests {
         // Verify key TOML patterns exist
         #expect(content.contains("s3_endpoint_url = \"https://example.com\""))
         #expect(content.contains("s3_bucket_name = \"bucket\""))
-        #expect(content.contains("output_mode = \"both\""))
+        #expect(content.contains("copy_to_clipboard = false"))
         #expect(content.contains("file_retention_hours = 12"))
         #expect(content.contains("launch_at_login = true"))
     }
@@ -131,6 +131,6 @@ struct TOMLConfigManagerTests {
         #expect(loaded.fileRetentionHours == 72)
         // Fields not in file should be defaults
         #expect(loaded.s3Region == "auto")
-        #expect(loaded.outputMode == .clipboard)
+        #expect(loaded.copyToClipboard == true)
     }
 }

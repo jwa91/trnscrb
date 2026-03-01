@@ -85,18 +85,12 @@ struct SettingsView: View {
         }
     }
 
-    /// Output mode and save folder configuration.
+    /// Output folder and clipboard configuration.
     private var outputSection: some View {
         Section("Output") {
-            Picker("Mode", selection: $viewModel.settings.outputMode) {
-                Text("Clipboard").tag(OutputMode.clipboard)
-                Text("Save to Folder").tag(OutputMode.saveToFolder)
-                Text("Both").tag(OutputMode.both)
-            }
-            if viewModel.settings.outputMode != .clipboard {
-                TextField("Save Folder", text: $viewModel.settings.saveFolderPath)
-                    .textFieldStyle(.roundedBorder)
-            }
+            TextField("Save Folder", text: $viewModel.settings.saveFolderPath)
+                .textFieldStyle(.roundedBorder)
+            Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
         }
     }
 

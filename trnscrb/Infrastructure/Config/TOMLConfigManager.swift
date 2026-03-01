@@ -90,8 +90,8 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             "s3_bucket_name = \(quoted(settings.s3BucketName))",
             "s3_region = \(quoted(settings.s3Region))",
             "s3_path_prefix = \(quoted(settings.s3PathPrefix))",
-            "output_mode = \(quoted(settings.outputMode.rawValue))",
             "save_folder_path = \(quoted(settings.saveFolderPath))",
+            "copy_to_clipboard = \(settings.copyToClipboard)",
             "file_retention_hours = \(settings.fileRetentionHours)",
             "launch_at_login = \(settings.launchAtLogin)"
         ]
@@ -118,8 +118,8 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             s3BucketName: dict["s3_bucket_name"] ?? defaults.s3BucketName,
             s3Region: dict["s3_region"] ?? defaults.s3Region,
             s3PathPrefix: dict["s3_path_prefix"] ?? defaults.s3PathPrefix,
-            outputMode: OutputMode(rawValue: dict["output_mode"] ?? "") ?? defaults.outputMode,
             saveFolderPath: dict["save_folder_path"] ?? defaults.saveFolderPath,
+            copyToClipboard: dict["copy_to_clipboard"].map { $0 == "true" } ?? defaults.copyToClipboard,
             fileRetentionHours: Int(dict["file_retention_hours"] ?? "") ?? defaults.fileRetentionHours,
             launchAtLogin: dict["launch_at_login"].map { $0 == "true" } ?? defaults.launchAtLogin
         )
