@@ -1,0 +1,42 @@
+# SwiftLint configuration for trnscrb
+# Rules per HIGH-LEVEL-IMPLEMENTATION-STRATEGY.md
+
+# Opt-in rules
+opt_in_rules:
+  - force_unwrapping
+  - missing_docs
+
+# Hard errors — never allow these
+force_cast:
+  severity: error
+force_try:
+  severity: error
+force_unwrapping:
+  severity: error
+
+# Require doc comments on public API
+missing_docs:
+  excludes_extensions: true
+  excludes_inherited_types: true
+
+# Length limits
+file_length:
+  warning: 400
+  error: 500
+function_body_length:
+  warning: 40
+  error: 80
+
+# Naming
+identifier_name:
+  min_length: 2
+  max_length: 60
+  excluded:
+    - id
+    - s3
+
+# Excluded paths
+excluded:
+  - .build
+  - .swiftpm
+  - Tests

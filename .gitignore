@@ -1,0 +1,18 @@
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+build/
+*.xccheckout
+*.moved-aside
+
+# SPM
+.build/
+.swiftpm/
+Package.resolved
+
+# OS
+.DS_Store
+
+# SwiftLint
+.swiftlint/
