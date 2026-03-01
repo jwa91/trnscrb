@@ -12,7 +12,7 @@ struct PopoverView: View {
 
     var body: some View {
         if showSettings {
-            SettingsPanel(
+            SettingsView(
                 viewModel: settingsViewModel,
                 onBack: { showSettings = false }
             )
@@ -46,20 +46,6 @@ struct PopoverView: View {
                 .buttonStyle(.borderless)
                 .padding(8)
             }
-        }
-        .frame(width: 320, height: 360)
-    }
-}
-
-/// Temporary stub — replaced in Task 5 with the real settings view.
-private struct SettingsPanel: View {
-    @ObservedObject var viewModel: SettingsViewModel
-    var onBack: () -> Void
-
-    var body: some View {
-        VStack {
-            Button("Back", action: onBack)
-            Text("Settings (coming in Task 5)")
         }
         .frame(width: 320, height: 360)
     }
