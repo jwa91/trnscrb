@@ -1,15 +1,5 @@
 import Foundation
 
-/// How transcription results are delivered to the user.
-public enum OutputMode: String, Sendable, Codable, Equatable {
-    /// Copy markdown to clipboard and show notification.
-    case clipboard
-    /// Save markdown as .md file to output folder.
-    case saveToFolder
-    /// Both clipboard and file save.
-    case both
-}
-
 /// Keys for secrets stored in the system keychain.
 public enum SecretKey: String, Sendable {
     /// Mistral API key for transcription and OCR.
@@ -33,10 +23,10 @@ public struct AppSettings: Sendable, Equatable {
     public var s3Region: String
     /// Path prefix for uploaded objects (default: "trnscrb/").
     public var s3PathPrefix: String
-    /// How results are delivered.
-    public var outputMode: OutputMode
-    /// Folder path for file save delivery.
+    /// Folder path where markdown files are saved.
     public var saveFolderPath: String
+    /// Whether to also copy markdown output to the clipboard.
+    public var copyToClipboard: Bool
     /// Hours to retain files in S3 before cleanup.
     public var fileRetentionHours: Int
     /// Whether to launch at login.
@@ -49,8 +39,8 @@ public struct AppSettings: Sendable, Equatable {
         s3BucketName: String = "",
         s3Region: String = "auto",
         s3PathPrefix: String = "trnscrb/",
-        outputMode: OutputMode = .clipboard,
         saveFolderPath: String = "~/Documents/trnscrb/",
+        copyToClipboard: Bool = true,
         fileRetentionHours: Int = 24,
         launchAtLogin: Bool = false
     ) {
@@ -59,8 +49,8 @@ public struct AppSettings: Sendable, Equatable {
         self.s3BucketName = s3BucketName
         self.s3Region = s3Region
         self.s3PathPrefix = s3PathPrefix
-        self.outputMode = outputMode
         self.saveFolderPath = saveFolderPath
+        self.copyToClipboard = copyToClipboard
         self.fileRetentionHours = fileRetentionHours
         self.launchAtLogin = launchAtLogin
     }
