@@ -50,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             button.action = #selector(togglePopover)
             button.target = self
+            // Avoid known right-click highlight sticking bug (Jesse Squires).
+            button.sendAction(on: [.leftMouseDown, .rightMouseUp])
         }
         self.statusItem = statusItem
     }
@@ -61,7 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             closePopover()
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            button.highlight(true)
+            // Must be async — NSStatusBarButton resets highlight on mouse-up.
+            // Dispatching to the next run loop iteration runs after that reset.
+            DispatchQueue.main.async {
+                button.isHighlighted = true
+            }
             startEventMonitor()
         }
     }
@@ -96,9 +102,9 @@ extension AppDelegate: NSPopoverDelegate {
     /// Called when the popover closes for any reason (click outside, programmatic, etc.).
     /// Unhighlights the status bar button and cleans up the event monitor.
     nonisolated func popoverDidClose(_ notification: Notification) {
-        MainActor.assumeIsolated {
-            statusItem?.button?.highlight(false)
-            stopEventMonitor()
+        DispatchQueue.main.async { @MainActor in
+            self.statusItem?.button?.isHighlighted = false
+            self.stopEventMonitor()
         }
     }
 }
