@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let popover: NSPopover = NSPopover()
         popover.contentSize = NSSize(width: 320, height: 360)
         popover.behavior = .transient
+        popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(settingsViewModel: settingsVM)
         )
@@ -60,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             closePopover()
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            button.highlight(true)
             startEventMonitor()
         }
     }
@@ -68,7 +69,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Closes the popover and removes the event monitor.
     private func closePopover() {
         popover?.performClose(nil)
-        stopEventMonitor()
     }
 
     /// Installs a global event monitor that closes the popover on outside clicks.
@@ -87,5 +87,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(eventMonitor)
         }
         eventMonitor = nil
+    }
+}
+
+// MARK: - NSPopoverDelegate
+
+extension AppDelegate: NSPopoverDelegate {
+    /// Called when the popover closes for any reason (click outside, programmatic, etc.).
+    /// Unhighlights the status bar button and cleans up the event monitor.
+    nonisolated func popoverDidClose(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            statusItem?.button?.highlight(false)
+            stopEventMonitor()
+        }
     }
 }
