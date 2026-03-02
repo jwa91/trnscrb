@@ -4,6 +4,10 @@ import SwiftUI
 struct JobRowView: View {
     /// The job to display.
     let job: Job
+    /// Whether this row is currently selected for keyboard actions.
+    var isSelected: Bool = false
+    /// Called when the row becomes selected.
+    var onSelect: (() -> Void)?
     /// Called when the user clicks a completed job to copy its markdown.
     var onCopy: (() -> Void)?
     /// Called when the user deletes this job.
@@ -29,12 +33,15 @@ struct JobRowView: View {
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .padding(.leading, 24)
+                    .help(error)
             }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
+            onSelect?()
             if case .completed = job.status {
                 onCopy?()
             }

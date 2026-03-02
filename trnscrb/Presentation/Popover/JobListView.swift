@@ -4,6 +4,7 @@ import SwiftUI
 struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel
+    @State private var selectedJobID: UUID?
 
     var body: some View {
         ScrollView {
@@ -11,9 +12,12 @@ struct JobListView: View {
                 if !viewModel.activeJobs.isEmpty {
                     Section {
                         ForEach(viewModel.activeJobs) { job in
-                            JobRowView(job: job, onDelete: {
-                                viewModel.removeJob(id: job.id)
-                            })
+                            JobRowView(
+                                job: job,
+                                isSelected: selectedJobID == job.id,
+                                onSelect: { selectedJobID = job.id },
+                                onDelete: { viewModel.removeJob(id: job.id) }
+                            )
                             Divider()
                         }
                     } header: {
@@ -26,6 +30,8 @@ struct JobListView: View {
                         ForEach(viewModel.completedJobs) { job in
                             JobRowView(
                                 job: job,
+                                isSelected: selectedJobID == job.id,
+                                onSelect: { selectedJobID = job.id },
                                 onCopy: { viewModel.copyToClipboard(jobID: job.id) },
                                 onDelete: { viewModel.removeJob(id: job.id) }
                             )
@@ -52,6 +58,13 @@ struct JobListView: View {
                 }
             }
         }
+        .onDeleteCommand(perform: handleDeleteCommand)
+        .onChange(of: viewModel.jobs) { _, jobs in
+            if let selectedJobID,
+               !jobs.contains(where: { $0.id == selectedJobID }) {
+                self.selectedJobID = nil
+            }
+        }
     }
 
     /// Section header label.
@@ -66,5 +79,16 @@ struct JobListView: View {
         .padding(.horizontal, 8)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    private func handleDeleteCommand() {
+        if let selectedJobID {
+            viewModel.removeJob(id: selectedJobID)
+            self.selectedJobID = nil
+            return
+        }
+        if let fallbackID: UUID = viewModel.completedJobs.first?.id ?? viewModel.activeJobs.first?.id {
+            viewModel.removeJob(id: fallbackID)
+        }
     }
 }

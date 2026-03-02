@@ -49,10 +49,12 @@ public final class ProcessFileUseCase: Sendable {
     /// - Parameters:
     ///   - fileURL: Local path to the file.
     ///   - onStageChange: Optional callback reporting pipeline stage transitions.
+    ///   - onUploadProgress: Optional callback with upload progress in 0...1.
     /// - Returns: The transcription result with markdown content.
     public func execute(
         fileURL: URL,
-        onStageChange: (@Sendable (ProcessingStage) -> Void)? = nil
+        onStageChange: (@Sendable (ProcessingStage) -> Void)? = nil,
+        onUploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> TranscriptionResult {
         let ext: String = fileURL.pathExtension.lowercased()
 
@@ -70,10 +72,24 @@ public final class ProcessFileUseCase: Sendable {
         let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
 
         onStageChange?(.uploading)
-        let presignedURL: URL = try await storage.upload(fileURL: fileURL, key: key)
+        let presignedURL: URL = try await retry(
+            maxAttempts: 3,
+            initialBackoffNanoseconds: 250_000_000
+        ) {
+            try await storage.upload(
+                fileURL: fileURL,
+                key: key,
+                onProgress: onUploadProgress
+            )
+        }
 
         onStageChange?(.processing)
-        let markdown: String = try await transcriber.process(sourceURL: presignedURL)
+        let markdown: String = try await retry(
+            maxAttempts: 2,
+            initialBackoffNanoseconds: 500_000_000
+        ) {
+            try await transcriber.process(sourceURL: presignedURL)
+        }
 
         let result: TranscriptionResult = TranscriptionResult(
             markdown: markdown,
@@ -84,5 +100,29 @@ public final class ProcessFileUseCase: Sendable {
         try await delivery.deliver(result: result)
 
         return result
+    }
+
+    /// Retries an async operation with exponential backoff.
+    private func retry<T>(
+        maxAttempts: Int,
+        initialBackoffNanoseconds: UInt64,
+        operation: @Sendable () async throws -> T
+    ) async throws -> T {
+        precondition(maxAttempts > 0, "maxAttempts must be > 0")
+        var attempt: Int = 1
+        var backoff: UInt64 = initialBackoffNanoseconds
+
+        while true {
+            do {
+                return try await operation()
+            } catch {
+                guard attempt < maxAttempts else {
+                    throw error
+                }
+                try await Task.sleep(nanoseconds: backoff)
+                attempt += 1
+                backoff = min(backoff * 2, 5_000_000_000)
+            }
+        }
     }
 }

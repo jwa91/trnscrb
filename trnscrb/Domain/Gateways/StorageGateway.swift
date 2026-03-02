@@ -9,8 +9,13 @@ public protocol StorageGateway: Sendable {
     /// - Parameters:
     ///   - fileURL: Local file path to upload.
     ///   - key: Object key in the bucket (e.g., "trnscrb/abc123.mp3").
+    ///   - onProgress: Optional upload progress callback (0...1).
     /// - Returns: A presigned URL accessible by external services.
-    func upload(fileURL: URL, key: String) async throws -> URL
+    func upload(
+        fileURL: URL,
+        key: String,
+        onProgress: (@Sendable (Double) -> Void)?
+    ) async throws -> URL
 
     /// Deletes an object from storage.
     /// - Parameter key: Object key to delete.
@@ -20,4 +25,11 @@ public protocol StorageGateway: Sendable {
     /// - Parameter cutoff: Objects created before this date are considered expired.
     /// - Returns: Keys of expired objects.
     func listCreatedBefore(_ cutoff: Date) async throws -> [String]
+}
+
+public extension StorageGateway {
+    /// Convenience overload when upload progress is not needed.
+    func upload(fileURL: URL, key: String) async throws -> URL {
+        try await upload(fileURL: fileURL, key: key, onProgress: nil)
+    }
 }

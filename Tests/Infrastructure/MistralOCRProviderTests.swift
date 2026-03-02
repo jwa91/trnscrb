@@ -8,11 +8,14 @@ struct MistralOCRProviderTests {
     private func makeProvider(
         apiKey: String? = "test-api-key"
     ) -> (MistralOCRProvider, MockRequestHandler) {
-        let gateway: MockSettingsGateway = MockSettingsGateway()
+        let secrets: [SecretKey: String]
         if let apiKey {
-            gateway.secrets[.mistralAPIKey] = apiKey
+            secrets = [.mistralAPIKey: apiKey]
+        } else {
+            secrets = [:]
         }
-        let (session, mock) = makeMockURLSession()
+        let gateway: MockSettingsGateway = MockSettingsGateway(secrets: secrets)
+        let (_, session, mock) = makeMockURLSession()
         return (MistralOCRProvider(settingsGateway: gateway, urlSession: session), mock)
     }
 

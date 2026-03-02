@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 /// Application delegate and composition root.
 ///
@@ -17,8 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsGateway: (any SettingsGateway)?
     /// Job list view model — retained for status bar drop forwarding.
     private var jobListViewModel: JobListViewModel?
-    /// Monitors clicks outside the popover to dismiss it.
-    private var eventMonitor: Any?
+    /// Background retention cleanup use case.
+    private var cleanupUseCase: CleanupRetentionUseCase?
+    /// Timer driving periodic retention cleanup.
+    private var retentionTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -38,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             file: fileDelivery,
             settingsGateway: gateway
         )
+        let connectivityClient: ConnectivityClient = ConnectivityClient()
+        let connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
+            gateway: connectivityClient
+        )
 
         // Build use case
         let useCase: ProcessFileUseCase = ProcessFileUseCase(
@@ -46,20 +53,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             delivery: compositeDelivery,
             settings: gateway
         )
+        cleanupUseCase = CleanupRetentionUseCase(storage: s3Client, settings: gateway)
 
         // Build presentation
-        let settingsVM: SettingsViewModel = SettingsViewModel(gateway: gateway)
+        let settingsVM: SettingsViewModel = SettingsViewModel(
+            gateway: gateway,
+            connectivityUseCase: connectivityUseCase
+        )
         let jobListVM: JobListViewModel = JobListViewModel(
             useCase: useCase,
             settingsGateway: gateway
         )
         self.jobListViewModel = jobListVM
 
-        // Setup popover — use .applicationDefined so it doesn't dismiss
-        // when the user clicks Finder to start a drag operation.
+        // Setup popover with macOS-managed semitransient behavior:
+        // it stays open for cross-app interactions like Finder drags,
+        // but dismisses on appropriate local interactions.
         let popover: NSPopover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 360)
-        popover.behavior = .applicationDefined
+        popover.contentSize = NSSize(width: 320, height: 480)
+        popover.behavior = .semitransient
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
@@ -76,8 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button: NSStatusBarButton = statusItem.button {
             button.image = NSImage(
                 systemSymbolName: "doc.text",
-                accessibilityDescription: "trnscrb"
+                accessibilityDescription: "trnscrb menu bar item"
             )
+            button.setAccessibilityLabel("trnscrb menu bar item")
             button.action = #selector(togglePopover)
             button.target = self
             // Avoid known right-click highlight sticking bug (Jesse Squires).
@@ -93,23 +106,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dropView.onDragEntered = { [weak self] in
                 self?.statusItem?.button?.image = NSImage(
                     systemSymbolName: "arrow.down.doc.fill",
-                    accessibilityDescription: "trnscrb drop"
+                    accessibilityDescription: "Drop files to transcribe"
                 )
+                self?.statusItem?.button?.setAccessibilityLabel("Drop files to transcribe")
             }
             dropView.onDragExited = { [weak self] in
                 self?.statusItem?.button?.image = NSImage(
                     systemSymbolName: "doc.text",
-                    accessibilityDescription: "trnscrb"
+                    accessibilityDescription: "trnscrb menu bar item"
                 )
+                self?.statusItem?.button?.setAccessibilityLabel("trnscrb menu bar item")
             }
             button.addSubview(dropView)
         }
         self.statusItem = statusItem
+
+        Task { @MainActor [weak self] in
+            await self?.requestNotificationAuthorization()
+            await self?.applyLaunchAtLoginSetting()
+            await self?.runRetentionCleanup()
+        }
+        scheduleRetentionCleanup()
     }
 
     /// Toggles the popover visibility when the menu bar icon is clicked.
     @objc private func togglePopover() {
-        guard let popover, let button = statusItem?.button else { return }
+        guard let popover else { return }
         if popover.isShown {
             closePopover()
         } else {
@@ -121,13 +143,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPopover() {
         guard let popover, let button = statusItem?.button else { return }
         guard !popover.isShown else { return }
+        NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
         // Must be async — NSStatusBarButton resets highlight on mouse-up.
         // Dispatching to the next run loop iteration runs after that reset.
         DispatchQueue.main.async {
             button.isHighlighted = true
         }
-        startEventMonitor()
     }
 
     /// Closes the popover and removes the event monitor.
@@ -135,22 +158,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover?.performClose(nil)
     }
 
-    /// Installs a global event monitor that closes the popover on outside clicks.
-    private func startEventMonitor() {
-        stopEventMonitor()
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] _ in
-            self?.closePopover()
+    private func requestNotificationAuthorization() async {
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .sound]
+        )
+    }
+
+    private func applyLaunchAtLoginSetting() async {
+        guard let settingsGateway else { return }
+        do {
+            let settings: AppSettings = try await settingsGateway.loadSettings()
+            try LaunchAtLoginManager.apply(enabled: settings.launchAtLogin)
+        } catch {
+            // Keep launch behavior best-effort; invalid permissions/config should not crash the app.
         }
     }
 
-    /// Removes the global event monitor.
-    private func stopEventMonitor() {
-        if let eventMonitor {
-            NSEvent.removeMonitor(eventMonitor)
+    private func scheduleRetentionCleanup() {
+        retentionTimer?.invalidate()
+        retentionTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.runRetentionCleanup()
+            }
         }
-        eventMonitor = nil
+    }
+
+    private func runRetentionCleanup() async {
+        guard let cleanupUseCase else { return }
+        do {
+            try await cleanupUseCase.execute()
+        } catch {
+            // Cleanup errors are non-fatal and retried on the next timer tick.
+        }
     }
 }
 
@@ -158,11 +197,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSPopoverDelegate {
     /// Called when the popover closes for any reason (click outside, programmatic, etc.).
-    /// Unhighlights the status bar button and cleans up the event monitor.
+    /// Unhighlights the status bar button.
     nonisolated func popoverDidClose(_ notification: Notification) {
         DispatchQueue.main.async { @MainActor in
             self.statusItem?.button?.isHighlighted = false
-            self.stopEventMonitor()
         }
     }
 }

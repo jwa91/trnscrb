@@ -88,4 +88,15 @@ public struct Job: Sendable, Identifiable, Equatable {
             break
         }
     }
+
+    /// Requeues a job by returning it to the pending state.
+    public mutating func requeue() {
+        switch status {
+        case .pending, .uploading, .processing, .failed:
+            status = .pending
+            completedAt = nil
+        case .completed:
+            break
+        }
+    }
 }

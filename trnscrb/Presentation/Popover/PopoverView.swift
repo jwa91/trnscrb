@@ -28,7 +28,11 @@ struct PopoverView: View {
     private var mainContent: some View {
         VStack(spacing: 0) {
             if let error: String = jobListViewModel.configurationError {
-                configurationBanner(error)
+                banner(error, icon: "exclamationmark.triangle", color: .orange)
+            }
+
+            if let dropError: String = jobListViewModel.dropError {
+                banner(dropError, icon: "xmark.circle", color: .red)
             }
 
             if jobListViewModel.activeJobs.isEmpty && jobListViewModel.completedJobs.isEmpty {
@@ -45,17 +49,17 @@ struct PopoverView: View {
             Divider()
             footer
         }
-        .frame(width: 320, height: 360)
+        .frame(width: 320, height: 480)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
     }
 
     /// Banner shown when S3 or API key is not configured.
-    private func configurationBanner(_ message: String) -> some View {
+    private func banner(_ message: String, icon: String, color: Color) -> some View {
         HStack {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
+            Image(systemName: icon)
+                .foregroundStyle(color)
             Text(message)
                 .font(.caption)
                 .lineLimit(2)
@@ -67,7 +71,7 @@ struct PopoverView: View {
             .font(.caption)
         }
         .padding(8)
-        .background(.orange.opacity(0.1))
+        .background(color.opacity(0.1))
     }
 
     /// Footer with gear icon.
@@ -88,9 +92,7 @@ struct PopoverView: View {
 
     /// Handles drops on the entire popover surface.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        // nonisolated(unsafe): access is serialized by the DispatchGroup —
-        // all writes happen before group.notify fires on main.
-        nonisolated(unsafe) var urls: [URL] = []
+        let collectedURLs: LockedURLStore = LockedURLStore()
         let group: DispatchGroup = DispatchGroup()
 
         for provider in providers {
@@ -102,19 +104,35 @@ struct PopoverView: View {
                 defer { group.leave() }
                 if let data = item as? Data,
                    let url: URL = URL(dataRepresentation: data, relativeTo: nil) {
-                    urls.append(url)
+                    collectedURLs.append(url)
                 }
             }
         }
 
         group.notify(queue: .main) {
-            let supported: [URL] = urls.filter {
-                FileType.allSupported.contains($0.pathExtension.lowercased())
-            }
-            if !supported.isEmpty {
-                jobListViewModel.processFiles(supported)
+            let urls: [URL] = collectedURLs.snapshot()
+            if !urls.isEmpty {
+                jobListViewModel.processFiles(urls)
             }
         }
         return true
+    }
+}
+
+/// Thread-safe URL collector for async item-provider callbacks.
+private final class LockedURLStore: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var values: [URL] = []
+
+    func append(_ url: URL) {
+        lock.lock()
+        defer { lock.unlock() }
+        values.append(url)
+    }
+
+    func snapshot() -> [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
     }
 }

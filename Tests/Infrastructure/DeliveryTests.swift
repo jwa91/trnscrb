@@ -14,6 +14,7 @@ private func makeResult(
 // MARK: - ClipboardDelivery
 
 @Suite(.serialized)
+@MainActor
 struct ClipboardDeliveryTests {
     @Test func deliverCopiesMarkdownToClipboard() async throws {
         let delivery: ClipboardDelivery = ClipboardDelivery()
@@ -43,8 +44,9 @@ struct FileDeliveryTests {
     }
 
     private func makeDelivery(saveFolderPath: String) -> (FileDelivery, MockSettingsGateway) {
-        let gateway: MockSettingsGateway = MockSettingsGateway()
-        gateway.settings.saveFolderPath = saveFolderPath
+        let gateway: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(saveFolderPath: saveFolderPath)
+        )
         let delivery: FileDelivery = FileDelivery(settingsGateway: gateway)
         return (delivery, gateway)
     }
@@ -85,6 +87,22 @@ struct FileDeliveryTests {
         #expect(files.count == 2)
         #expect(files.contains("recording.md"))
         #expect(files.contains(where: { $0.hasPrefix("recording-") && $0.hasSuffix(".md") }))
+    }
+
+    @Test func deliverGeneratesUniqueNamesForRepeatedCollisions() async throws {
+        let tempDir: URL = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
+
+        try await delivery.deliver(result: makeResult(markdown: "first", fileName: "recording.mp3"))
+        try await delivery.deliver(result: makeResult(markdown: "second", fileName: "recording.mp3"))
+        try await delivery.deliver(result: makeResult(markdown: "third", fileName: "recording.mp3"))
+
+        let files: [String] = try FileManager.default.contentsOfDirectory(atPath: tempDir.path())
+        let recordingFiles: [String] = files.filter { $0.hasPrefix("recording") && $0.hasSuffix(".md") }
+
+        #expect(recordingFiles.count == 3)
+        #expect(Set(recordingFiles).count == 3)
     }
 
     @Test func deliverStripsOriginalExtension() async throws {

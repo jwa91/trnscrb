@@ -3,9 +3,33 @@ import Foundation
 @testable import trnscrb
 
 /// In-memory mock for SettingsGateway used across all infrastructure tests.
-final class MockSettingsGateway: SettingsGateway, @unchecked Sendable {
-    var settings: AppSettings = AppSettings()
-    var secrets: [SecretKey: String] = [:]
+actor MockSettingsGateway: SettingsGateway {
+    private var settings: AppSettings
+    private var secrets: [SecretKey: String]
+
+    init(
+        settings: AppSettings = AppSettings(),
+        secrets: [SecretKey: String] = [:]
+    ) {
+        self.settings = settings
+        self.secrets = secrets
+    }
+
+    func setSettings(_ settings: AppSettings) {
+        self.settings = settings
+    }
+
+    func snapshotSettings() -> AppSettings {
+        settings
+    }
+
+    func setSecrets(_ secrets: [SecretKey: String]) {
+        self.secrets = secrets
+    }
+
+    func snapshotSecrets() -> [SecretKey: String] {
+        secrets
+    }
 
     func loadSettings() async throws -> AppSettings { settings }
     func saveSettings(_ newSettings: AppSettings) async throws { settings = newSettings }

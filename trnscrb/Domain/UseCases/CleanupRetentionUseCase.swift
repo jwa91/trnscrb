@@ -21,6 +21,27 @@ public final class CleanupRetentionUseCase: Sendable {
 
     /// Finds and deletes all expired S3 objects.
     public func execute() async throws {
-        fatalError("Implementation in Phase 4")
+        let appSettings: AppSettings = try await settings.loadSettings()
+        guard appSettings.fileRetentionHours > 0 else {
+            return
+        }
+
+        let cutoff: Date = Date().addingTimeInterval(-Double(appSettings.fileRetentionHours) * 3600)
+        let keys: [String] = try await storage.listCreatedBefore(cutoff)
+
+        var firstError: (any Error)?
+        for key in keys {
+            do {
+                try await storage.delete(key: key)
+            } catch {
+                if firstError == nil {
+                    firstError = error
+                }
+            }
+        }
+
+        if let firstError {
+            throw firstError
+        }
     }
 }

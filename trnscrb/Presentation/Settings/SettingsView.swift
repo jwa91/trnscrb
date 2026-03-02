@@ -37,8 +37,10 @@ struct SettingsView: View {
             }
             Button("Save") {
                 Task {
-                    await viewModel.save()
-                    onBack()
+                    let didSave: Bool = await viewModel.save()
+                    if didSave {
+                        onBack()
+                    }
                 }
             }
             .buttonStyle(.borderedProminent)
