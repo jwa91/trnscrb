@@ -1,0 +1,92 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// A drop zone that accepts files via drag-and-drop or a file picker fallback.
+///
+/// Shows a visual target area with hover feedback. Validates file types
+/// using `FileType.allSupported` and calls `onDrop` with valid URLs.
+struct DropZoneView: View {
+    /// Called with the URLs of dropped/selected files.
+    var onDrop: ([URL]) -> Void
+    /// Tracks whether a drag is hovering over the zone.
+    @State private var isTargeted: Bool = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Image(systemName: "arrow.down.doc")
+                .font(.system(size: 32))
+                .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
+            Text("Drop files here")
+                .font(.headline)
+            Text("or drag onto the menu bar icon")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Choose Files\u{2026}") {
+                openFilePicker()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .padding(.top, 4)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(
+                    isTargeted ? Color.accentColor : Color.clear,
+                    style: StrokeStyle(lineWidth: 2, dash: [6])
+                )
+                .padding(8)
+        )
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+            handleDrop(providers)
+        }
+    }
+
+    /// Extracts file URLs from drop providers and calls onDrop.
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        var urls: [URL] = []
+        let group: DispatchGroup = DispatchGroup()
+
+        for provider in providers {
+            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
+                continue
+            }
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
+                defer { group.leave() }
+                if let data = item as? Data,
+                   let url: URL = URL(dataRepresentation: data, relativeTo: nil) {
+                    urls.append(url)
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            let supported: [URL] = urls.filter {
+                FileType.allSupported.contains($0.pathExtension.lowercased())
+            }
+            if !supported.isEmpty {
+                onDrop(supported)
+            }
+        }
+        return true
+    }
+
+    /// Opens a macOS file picker dialog for selecting files.
+    private func openFilePicker() {
+        let panel: NSOpenPanel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        let extensions: [UTType] = FileType.allSupported.compactMap { ext in
+            UTType(filenameExtension: ext)
+        }
+        panel.allowedContentTypes = extensions
+        panel.begin { response in
+            if response == .OK {
+                onDrop(panel.urls)
+            }
+        }
+    }
+}
