@@ -13,5 +13,10 @@ struct TrnscrbrApp: App {
         Settings {
             EmptyView()
         }
+        .commands {
+            // Settings are handled inside the popover, so disable the
+            // app-level settings command/window entry point.
+            CommandGroup(replacing: .appSettings) {}
+        }
     }
 }

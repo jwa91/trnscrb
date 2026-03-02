@@ -29,16 +29,16 @@ public final class SettingsViewModel: ObservableObject {
 
     /// Settings gateway for persistence.
     private let gateway: any SettingsGateway
-    /// URL session for connectivity tests.
-    private let urlSession: URLSession
+    /// Domain use case for connectivity testing.
+    private let connectivityUseCase: TestConnectivityUseCase
 
     /// Creates a view model backed by the given settings gateway.
     /// - Parameters:
     ///   - gateway: Settings persistence gateway.
-    ///   - urlSession: URL session for test requests (injectable for testing).
-    public init(gateway: any SettingsGateway, urlSession: URLSession = .shared) {
+    ///   - connectivityUseCase: Connectivity test use case.
+    public init(gateway: any SettingsGateway, connectivityUseCase: TestConnectivityUseCase) {
         self.gateway = gateway
-        self.urlSession = urlSession
+        self.connectivityUseCase = connectivityUseCase
     }
 
     /// Loads settings and secrets from persistent storage.
@@ -54,7 +54,8 @@ public final class SettingsViewModel: ObservableObject {
     }
 
     /// Saves settings and secrets to persistent storage.
-    public func save() async {
+    @discardableResult
+    public func save() async -> Bool {
         do {
             try await gateway.saveSettings(settings)
 
@@ -71,8 +72,10 @@ public final class SettingsViewModel: ObservableObject {
             }
 
             error = nil
+            return true
         } catch {
             self.error = error.localizedDescription
+            return false
         }
     }
 
@@ -87,50 +90,11 @@ public final class SettingsViewModel: ObservableObject {
                 s3TestResult = .failure("Fill in all S3 fields first")
                 return
             }
-
-            let signer: S3Signer = S3Signer(
-                accessKey: settings.s3AccessKey,
-                secretKey: s3SecretKey,
-                region: settings.s3Region
+            try await connectivityUseCase.testS3(
+                settings: settings,
+                s3SecretKey: s3SecretKey
             )
-            guard let bucketURL = URL(
-                string: "\(settings.s3EndpointURL)/\(settings.s3BucketName)"
-            ) else {
-                s3TestResult = .failure("Invalid endpoint URL")
-                return
-            }
-
-            // ListObjectsV2 with max-keys=0 — lightweight connectivity check
-            guard var components = URLComponents(
-                url: bucketURL, resolvingAgainstBaseURL: false
-            ) else {
-                s3TestResult = .failure("Invalid URL components")
-                return
-            }
-            components.queryItems = [
-                URLQueryItem(name: "list-type", value: "2"),
-                URLQueryItem(name: "max-keys", value: "0")
-            ]
-            guard let listURL = components.url else {
-                s3TestResult = .failure("Could not construct list URL")
-                return
-            }
-
-            var request: URLRequest = URLRequest(url: listURL)
-            request.httpMethod = "GET"
-            request.timeoutInterval = 10
-            signer.sign(&request, payloadHash: S3Signer.unsignedPayload)
-
-            let (_, response) = try await urlSession.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                s3TestResult = .failure("Not an HTTP response")
-                return
-            }
-            if http.statusCode == 200 {
-                s3TestResult = .success
-            } else {
-                s3TestResult = .failure("HTTP \(http.statusCode)")
-            }
+            s3TestResult = .success
         } catch {
             s3TestResult = .failure(error.localizedDescription)
         }
@@ -144,28 +108,8 @@ public final class SettingsViewModel: ObservableObject {
                 mistralTestResult = .failure("Enter an API key first")
                 return
             }
-
-            guard let url = URL(string: "https://api.mistral.ai/v1/models") else {
-                mistralTestResult = .failure("Invalid URL")
-                return
-            }
-            var request: URLRequest = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("Bearer \(mistralAPIKey)", forHTTPHeaderField: "Authorization")
-            request.timeoutInterval = 10
-
-            let (_, response) = try await urlSession.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                mistralTestResult = .failure("Not an HTTP response")
-                return
-            }
-            if http.statusCode == 200 {
-                mistralTestResult = .success
-            } else if http.statusCode == 401 {
-                mistralTestResult = .failure("Invalid API key")
-            } else {
-                mistralTestResult = .failure("HTTP \(http.statusCode)")
-            }
+            try await connectivityUseCase.testMistral(apiKey: mistralAPIKey)
+            mistralTestResult = .success
         } catch {
             mistralTestResult = .failure(error.localizedDescription)
         }

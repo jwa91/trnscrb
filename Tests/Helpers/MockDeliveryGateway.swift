@@ -2,14 +2,29 @@ import Foundation
 
 @testable import trnscrb
 
-final class MockDeliveryGateway: DeliveryGateway, @unchecked Sendable {
+actor MockDeliveryGateway: DeliveryGateway {
     /// Records delivered results.
-    var deliveredResults: [TranscriptionResult] = []
+    private var deliveredResults: [TranscriptionResult]
     /// If set, deliver throws this error.
-    var deliverError: (any Error)?
+    private var deliverError: (any Error & Sendable)?
+
+    init(deliverError: (any Error & Sendable)? = nil) {
+        self.deliverError = deliverError
+        self.deliveredResults = []
+    }
+
+    func setDeliverError(_ error: (any Error & Sendable)?) {
+        deliverError = error
+    }
+
+    func recordedDeliveredResults() -> [TranscriptionResult] {
+        deliveredResults
+    }
 
     func deliver(result: TranscriptionResult) async throws {
-        if let error = deliverError { throw error }
+        if let deliverError {
+            throw deliverError
+        }
         deliveredResults.append(result)
     }
 }

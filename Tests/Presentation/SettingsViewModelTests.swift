@@ -8,12 +8,20 @@ struct SettingsViewModelTests {
     private func makeViewModel(
         settings: AppSettings = AppSettings(),
         secrets: [SecretKey: String] = [:]
-    ) -> (SettingsViewModel, MockSettingsGateway) {
-        let gateway: MockSettingsGateway = MockSettingsGateway()
-        gateway.settings = settings
-        gateway.secrets = secrets
-        let vm: SettingsViewModel = SettingsViewModel(gateway: gateway)
-        return (vm, gateway)
+    ) -> (SettingsViewModel, MockSettingsGateway, MockConnectivityGateway) {
+        let gateway: MockSettingsGateway = MockSettingsGateway(
+            settings: settings,
+            secrets: secrets
+        )
+        let connectivityGateway: MockConnectivityGateway = MockConnectivityGateway()
+        let connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
+            gateway: connectivityGateway
+        )
+        let vm: SettingsViewModel = SettingsViewModel(
+            gateway: gateway,
+            connectivityUseCase: connectivityUseCase
+        )
+        return (vm, gateway, connectivityGateway)
     }
 
     // MARK: - Loading
@@ -23,7 +31,7 @@ struct SettingsViewModelTests {
             s3EndpointURL: "https://test.com",
             s3BucketName: "bucket"
         )
-        let (vm, _) = makeViewModel(settings: customSettings)
+        let (vm, _, _) = makeViewModel(settings: customSettings)
         await vm.load()
         #expect(vm.settings.s3EndpointURL == "https://test.com")
         #expect(vm.settings.s3BucketName == "bucket")
@@ -34,14 +42,14 @@ struct SettingsViewModelTests {
             .mistralAPIKey: "mk-123",
             .s3SecretKey: "sk-456"
         ]
-        let (vm, _) = makeViewModel(secrets: secrets)
+        let (vm, _, _) = makeViewModel(secrets: secrets)
         await vm.load()
         #expect(vm.mistralAPIKey == "mk-123")
         #expect(vm.s3SecretKey == "sk-456")
     }
 
     @Test func loadWithNoSecretsLeavesEmptyStrings() async {
-        let (vm, _) = makeViewModel()
+        let (vm, _, _) = makeViewModel()
         await vm.load()
         #expect(vm.mistralAPIKey == "")
         #expect(vm.s3SecretKey == "")
@@ -50,21 +58,24 @@ struct SettingsViewModelTests {
     // MARK: - Saving
 
     @Test func savePersistsSettingsToGateway() async {
-        let (vm, gateway) = makeViewModel()
+        let (vm, gateway, _) = makeViewModel()
         vm.settings.s3EndpointURL = "https://saved.com"
         vm.settings.s3BucketName = "saved-bucket"
-        await vm.save()
-        #expect(gateway.settings.s3EndpointURL == "https://saved.com")
-        #expect(gateway.settings.s3BucketName == "saved-bucket")
+        let didSave: Bool = await vm.save()
+        #expect(didSave)
+        let savedSettings: AppSettings = await gateway.snapshotSettings()
+        #expect(savedSettings.s3EndpointURL == "https://saved.com")
+        #expect(savedSettings.s3BucketName == "saved-bucket")
     }
 
     @Test func savePersistsSecretsToKeychain() async {
-        let (vm, gateway) = makeViewModel()
+        let (vm, gateway, _) = makeViewModel()
         vm.mistralAPIKey = "new-mk"
         vm.s3SecretKey = "new-sk"
         await vm.save()
-        #expect(gateway.secrets[.mistralAPIKey] == "new-mk")
-        #expect(gateway.secrets[.s3SecretKey] == "new-sk")
+        let secrets: [SecretKey: String] = await gateway.snapshotSecrets()
+        #expect(secrets[.mistralAPIKey] == "new-mk")
+        #expect(secrets[.s3SecretKey] == "new-sk")
     }
 
     @Test func saveRemovesEmptySecrets() async {
@@ -72,13 +83,14 @@ struct SettingsViewModelTests {
             .mistralAPIKey: "existing",
             .s3SecretKey: "existing"
         ]
-        let (vm, gateway) = makeViewModel(secrets: secrets)
+        let (vm, gateway, _) = makeViewModel(secrets: secrets)
         await vm.load()
         vm.mistralAPIKey = ""
         vm.s3SecretKey = ""
         await vm.save()
-        #expect(gateway.secrets[.mistralAPIKey] == nil)
-        #expect(gateway.secrets[.s3SecretKey] == nil)
+        let savedSecrets: [SecretKey: String] = await gateway.snapshotSecrets()
+        #expect(savedSecrets[.mistralAPIKey] == nil)
+        #expect(savedSecrets[.s3SecretKey] == nil)
     }
 
     // MARK: - Round-trip
@@ -89,13 +101,52 @@ struct SettingsViewModelTests {
             copyToClipboard: false,
             fileRetentionHours: 48
         )
-        let (vm, gateway) = makeViewModel(
+        let (vm, gateway, _) = makeViewModel(
             settings: original,
             secrets: [.mistralAPIKey: "rt-key"]
         )
         await vm.load()
         await vm.save()
-        #expect(gateway.settings == original)
-        #expect(gateway.secrets[.mistralAPIKey] == "rt-key")
+        #expect(await gateway.snapshotSettings() == original)
+        #expect(await gateway.snapshotSecrets()[.mistralAPIKey] == "rt-key")
+    }
+
+    // MARK: - Connectivity testing
+
+    @Test func testS3CallsConnectivityUseCaseOnSuccess() async {
+        let (vm, _, connectivityGateway) = makeViewModel()
+        vm.settings.s3EndpointURL = "https://s3.example.com"
+        vm.settings.s3AccessKey = "AKID"
+        vm.settings.s3BucketName = "bucket"
+        vm.s3SecretKey = "secret"
+
+        await vm.testS3()
+
+        #expect(vm.s3TestResult == .success)
+        #expect(await connectivityGateway.recordedS3CallCount() == 1)
+    }
+
+    @Test func testS3DoesNotCallConnectivityWhenRequiredFieldsMissing() async {
+        let (vm, _, connectivityGateway) = makeViewModel()
+        vm.settings.s3EndpointURL = ""
+        vm.settings.s3AccessKey = "AKID"
+        vm.settings.s3BucketName = "bucket"
+        vm.s3SecretKey = "secret"
+
+        await vm.testS3()
+
+        #expect(await connectivityGateway.recordedS3CallCount() == 0)
+        #expect(vm.s3TestResult == .failure("Fill in all S3 fields first"))
+    }
+
+    @Test func testMistralSurfacesConnectivityFailure() async {
+        let (vm, _, connectivityGateway) = makeViewModel()
+        vm.mistralAPIKey = "mk-invalid"
+        await connectivityGateway.setMistralError(ConnectivityError.invalidAPIKey)
+
+        await vm.testMistral()
+
+        #expect(await connectivityGateway.recordedMistralCallCount() == 1)
+        #expect(vm.mistralTestResult == .failure("Invalid API key"))
     }
 }

@@ -41,8 +41,17 @@ public struct FileDelivery: DeliveryGateway {
             return primary
         }
         let formatter: DateFormatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmm"
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
         let timestamp: String = formatter.string(from: Date())
-        return folder.appending(path: "\(baseName)-\(timestamp).md")
+
+        var attempt: Int = 0
+        while true {
+            let suffix: String = attempt == 0 ? timestamp : "\(timestamp)-\(attempt)"
+            let candidate: URL = folder.appending(path: "\(baseName)-\(suffix).md")
+            if !FileManager.default.fileExists(atPath: candidate.path()) {
+                return candidate
+            }
+            attempt += 1
+        }
     }
 }

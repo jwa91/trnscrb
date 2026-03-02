@@ -2,8 +2,10 @@ import AppKit
 
 /// Transparent drop target overlaid on the status bar button.
 ///
-/// Accepts file URL drops, validates against `FileType.allSupported`,
-/// and forwards valid URLs to the provided callback. Does not interfere
+/// Accepts file URL drops and forwards URLs to the provided callback.
+/// File-type validation happens in the view model so unsupported drops can
+/// produce user-visible errors instead of being silently ignored.
+/// Does not interfere
 /// with click handling — only drag-and-drop events are intercepted.
 final class StatusBarDropView: NSView {
     /// Called with validated file URLs when a drop is accepted.
@@ -24,13 +26,13 @@ final class StatusBarDropView: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard hasValidFiles(sender) else { return [] }
+        guard hasFileURLs(sender) else { return [] }
         onDragEntered?()
         return .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard hasValidFiles(sender) else { return [] }
+        guard hasFileURLs(sender) else { return [] }
         return .copy
     }
 
@@ -43,11 +45,7 @@ final class StatusBarDropView: NSView {
         guard let urls: [URL] = extractFileURLs(from: sender), !urls.isEmpty else {
             return false
         }
-        let supported: [URL] = urls.filter {
-            FileType.allSupported.contains($0.pathExtension.lowercased())
-        }
-        guard !supported.isEmpty else { return false }
-        onDrop?(supported)
+        onDrop?(urls)
         return true
     }
 
@@ -59,10 +57,10 @@ final class StatusBarDropView: NSView {
 
     // MARK: - Private
 
-    /// Checks whether the drag contains at least one supported file.
-    private func hasValidFiles(_ sender: NSDraggingInfo) -> Bool {
+    /// Checks whether the drag contains at least one file URL.
+    private func hasFileURLs(_ sender: NSDraggingInfo) -> Bool {
         guard let urls: [URL] = extractFileURLs(from: sender) else { return false }
-        return urls.contains { FileType.allSupported.contains($0.pathExtension.lowercased()) }
+        return !urls.isEmpty
     }
 
     /// Extracts file URLs from a dragging info pasteboard.
