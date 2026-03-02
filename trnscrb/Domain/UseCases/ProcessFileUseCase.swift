@@ -1,12 +1,27 @@
 import Foundation
 
+/// Errors from the file processing pipeline.
+public enum ProcessFileError: Error, Sendable, Equatable {
+    /// The file extension is not supported by any provider.
+    case unsupportedFileType(String)
+}
+
+/// Stages of the processing pipeline, reported via callback.
+public enum ProcessingStage: Sendable, Equatable {
+    /// File is being uploaded to object storage.
+    case uploading
+    /// File uploaded, transcription/OCR in progress.
+    case processing
+}
+
 /// Orchestrates the full file processing pipeline: upload -> transcribe -> deliver.
 ///
 /// This is the core use case. It:
-/// 1. Uploads the dropped file to S3 via `StorageGateway`
-/// 2. Finds the right `TranscriptionGateway` for the file type
-/// 3. Calls the transcription/OCR API with the presigned URL
-/// 4. Delivers the markdown result via `DeliveryGateway`
+/// 1. Validates the file extension and determines the file type
+/// 2. Uploads the dropped file to S3 via `StorageGateway`
+/// 3. Finds the right `TranscriptionGateway` for the file type
+/// 4. Calls the transcription/OCR API with the presigned URL
+/// 5. Delivers the markdown result via `DeliveryGateway`
 public final class ProcessFileUseCase: Sendable {
     /// Object storage for uploading files.
     private let storage: any StorageGateway
@@ -31,9 +46,43 @@ public final class ProcessFileUseCase: Sendable {
     }
 
     /// Processes a dropped file end-to-end.
-    /// - Parameter fileURL: Local path to the file.
+    /// - Parameters:
+    ///   - fileURL: Local path to the file.
+    ///   - onStageChange: Optional callback reporting pipeline stage transitions.
     /// - Returns: The transcription result with markdown content.
-    public func execute(fileURL: URL) async throws -> TranscriptionResult {
-        fatalError("Implementation in Phase 3")
+    public func execute(
+        fileURL: URL,
+        onStageChange: (@Sendable (ProcessingStage) -> Void)? = nil
+    ) async throws -> TranscriptionResult {
+        let ext: String = fileURL.pathExtension.lowercased()
+
+        guard let fileType: FileType = FileType.from(extension: ext) else {
+            throw ProcessFileError.unsupportedFileType(ext)
+        }
+
+        guard let transcriber = transcribers.first(
+            where: { $0.supportedExtensions.contains(ext) }
+        ) else {
+            throw ProcessFileError.unsupportedFileType(ext)
+        }
+
+        let appSettings: AppSettings = try await settings.loadSettings()
+        let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
+
+        onStageChange?(.uploading)
+        let presignedURL: URL = try await storage.upload(fileURL: fileURL, key: key)
+
+        onStageChange?(.processing)
+        let markdown: String = try await transcriber.process(sourceURL: presignedURL)
+
+        let result: TranscriptionResult = TranscriptionResult(
+            markdown: markdown,
+            sourceFileName: fileURL.lastPathComponent,
+            sourceFileType: fileType
+        )
+
+        try await delivery.deliver(result: result)
+
+        return result
     }
 }
