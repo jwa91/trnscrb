@@ -11,7 +11,9 @@ struct JobListView: View {
                 if !viewModel.activeJobs.isEmpty {
                     Section {
                         ForEach(viewModel.activeJobs) { job in
-                            JobRowView(job: job)
+                            JobRowView(job: job, onDelete: {
+                                viewModel.removeJob(id: job.id)
+                            })
                             Divider()
                         }
                     } header: {
@@ -22,13 +24,30 @@ struct JobListView: View {
                 if !viewModel.completedJobs.isEmpty {
                     Section {
                         ForEach(viewModel.completedJobs) { job in
-                            JobRowView(job: job) {
-                                viewModel.copyToClipboard(jobID: job.id)
-                            }
+                            JobRowView(
+                                job: job,
+                                onCopy: { viewModel.copyToClipboard(jobID: job.id) },
+                                onDelete: { viewModel.removeJob(id: job.id) }
+                            )
                             Divider()
                         }
                     } header: {
-                        sectionHeader("Recent")
+                        HStack {
+                            Text("Recent")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                            Spacer()
+                            Button("Clear All") {
+                                viewModel.clearCompleted()
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
                     }
                 }
             }

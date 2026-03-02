@@ -28,6 +28,7 @@ struct DropZoneView: View {
             .buttonStyle(.borderless)
             .font(.caption)
             .padding(.top, 4)
+            fileTypeHints
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,6 +43,17 @@ struct DropZoneView: View {
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers)
         }
+    }
+
+    /// Compact listing of supported file types grouped by category.
+    private var fileTypeHints: some View {
+        VStack(spacing: 2) {
+            Text("Audio: \(FileType.audioExtensions.sorted().joined(separator: ", "))")
+            Text("PDF \u{2022} Images: \(FileType.imageExtensions.sorted().joined(separator: ", "))")
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+        .padding(.top, 8)
     }
 
     /// Extracts file URLs from drop providers and calls onDrop.

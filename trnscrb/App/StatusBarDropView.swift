@@ -8,6 +8,10 @@ import AppKit
 final class StatusBarDropView: NSView {
     /// Called with validated file URLs when a drop is accepted.
     var onDrop: (([URL]) -> Void)?
+    /// Called when a valid drag enters the view (for icon highlight).
+    var onDragEntered: (() -> Void)?
+    /// Called when the drag exits the view or the drop completes.
+    var onDragExited: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -21,6 +25,7 @@ final class StatusBarDropView: NSView {
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard hasValidFiles(sender) else { return [] }
+        onDragEntered?()
         return .copy
     }
 
@@ -29,7 +34,12 @@ final class StatusBarDropView: NSView {
         return .copy
     }
 
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDragExited?()
+    }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onDragExited?()
         guard let urls: [URL] = extractFileURLs(from: sender), !urls.isEmpty else {
             return false
         }
