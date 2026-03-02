@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Network
-import UserNotifications
 
 /// Manages the job queue and coordinates file processing.
 ///
@@ -23,6 +22,8 @@ public final class JobListViewModel: ObservableObject {
     private let useCase: ProcessFileUseCase
     /// Settings gateway for configuration checks.
     private let settingsGateway: any SettingsGateway
+    /// Posts local user notifications when jobs complete or fail.
+    private let notificationUseCase: NotifyUserUseCase?
     /// Active processing tasks by job ID so work can be cancelled safely.
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     /// Jobs queued while offline. They resume automatically when connectivity returns.
@@ -38,9 +39,15 @@ public final class JobListViewModel: ObservableObject {
     /// - Parameters:
     ///   - useCase: Pipeline orchestrator for processing files.
     ///   - settingsGateway: Settings gateway for pre-flight configuration checks.
-    public init(useCase: ProcessFileUseCase, settingsGateway: any SettingsGateway) {
+    ///   - notificationUseCase: Optional use case for local user notifications.
+    public init(
+        useCase: ProcessFileUseCase,
+        settingsGateway: any SettingsGateway,
+        notificationUseCase: NotifyUserUseCase? = nil
+    ) {
         self.useCase = useCase
         self.settingsGateway = settingsGateway
+        self.notificationUseCase = notificationUseCase
         startNetworkMonitoring()
     }
 
@@ -220,7 +227,7 @@ public final class JobListViewModel: ObservableObject {
 
             guard runningTasks[id] != nil else { return }
             updateJob(id: id) { $0.complete(markdown: result.markdown) }
-            postSuccessNotification(for: result.sourceFileName)
+            await postSuccessNotification(for: result.sourceFileName)
         } catch is CancellationError {
             return
         } catch {
@@ -233,7 +240,7 @@ public final class JobListViewModel: ObservableObject {
                 return
             }
             updateJob(id: id) { $0.fail(error: error.localizedDescription) }
-            postFailureNotification(
+            await postFailureNotification(
                 fileName: jobs.first(where: { $0.id == id })?.fileName ?? "File",
                 errorMessage: error.localizedDescription
             )
@@ -327,35 +334,22 @@ public final class JobListViewModel: ObservableObject {
         }
     }
 
-    private func postSuccessNotification(for fileName: String) {
-        postNotification(
+    private func postSuccessNotification(for fileName: String) async {
+        await postNotification(
             title: "trnscrb",
             body: "\(fileName) ready — copied or saved based on your settings."
         )
     }
 
-    private func postFailureNotification(fileName: String, errorMessage: String) {
-        postNotification(
+    private func postFailureNotification(fileName: String, errorMessage: String) async {
+        await postNotification(
             title: "trnscrb",
             body: "\(fileName) failed: \(errorMessage)"
         )
     }
 
-    private func postNotification(title: String, body: String) {
-        // `UNUserNotificationCenter` is unavailable in SwiftPM test host processes.
-        let bundlePath: String = Bundle.main.bundleURL.path
-        if bundlePath.contains("/swift/pm")
-            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-            return
-        }
-        let content: UNMutableNotificationContent = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        let request: UNNotificationRequest = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
+    private func postNotification(title: String, body: String) async {
+        guard let notificationUseCase else { return }
+        await notificationUseCase.notify(title: title, body: body)
     }
 }

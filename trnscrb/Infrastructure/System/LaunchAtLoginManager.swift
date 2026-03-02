@@ -1,12 +1,12 @@
 import ServiceManagement
 
 /// Applies launch-at-login settings via SMAppService.
-enum LaunchAtLoginManager {
-    static func apply(enabled: Bool) throws {
+struct LaunchAtLoginManager: LaunchAtLoginGateway {
+    func apply(enabled: Bool) async throws {
         if enabled {
             try SMAppService.mainApp.register()
         } else {
-            try SMAppService.mainApp.unregister()
+            try await SMAppService.mainApp.unregister()
         }
     }
 }

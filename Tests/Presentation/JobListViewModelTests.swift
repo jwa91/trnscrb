@@ -21,8 +21,9 @@ struct JobListViewModelTests {
     private func makeViewModel(
         storage: MockStorageGateway = MockStorageGateway(),
         delivery: MockDeliveryGateway = MockDeliveryGateway(),
-        settings: MockSettingsGateway
-    ) -> (JobListViewModel, MockStorageGateway, MockDeliveryGateway, MockSettingsGateway) {
+        settings: MockSettingsGateway,
+        notificationGateway: MockNotificationGateway = MockNotificationGateway()
+    ) -> (JobListViewModel, MockStorageGateway, MockDeliveryGateway, MockSettingsGateway, MockNotificationGateway) {
         let audio: MockTranscriptionGateway = MockTranscriptionGateway(
             supportedExtensions: FileType.audioExtensions
         )
@@ -37,15 +38,16 @@ struct JobListViewModelTests {
         )
         let vm: JobListViewModel = JobListViewModel(
             useCase: useCase,
-            settingsGateway: settings
+            settingsGateway: settings,
+            notificationUseCase: NotifyUserUseCase(gateway: notificationGateway)
         )
-        return (vm, storage, delivery, settings)
+        return (vm, storage, delivery, settings, notificationGateway)
     }
 
     private func makeViewModel(
         storage: MockStorageGateway = MockStorageGateway(),
         delivery: MockDeliveryGateway = MockDeliveryGateway()
-    ) -> (JobListViewModel, MockStorageGateway, MockDeliveryGateway, MockSettingsGateway) {
+    ) -> (JobListViewModel, MockStorageGateway, MockDeliveryGateway, MockSettingsGateway, MockNotificationGateway) {
         makeViewModel(storage: storage, delivery: delivery, settings: configuredSettingsGateway())
     }
 
@@ -64,17 +66,32 @@ struct JobListViewModelTests {
         return true
     }
 
+    private func waitUntil(
+        timeout: Duration = .seconds(1),
+        _ condition: @escaping () async -> Bool
+    ) async -> Bool {
+        let clock: ContinuousClock = ContinuousClock()
+        let deadline: ContinuousClock.Instant = clock.now + timeout
+        while !(await condition()) {
+            if clock.now >= deadline {
+                return false
+            }
+            await Task.yield()
+        }
+        return true
+    }
+
     // MARK: - File validation
 
     @Test func rejectsUnsupportedFileType() async {
-        let (vm, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _) = makeViewModel()
         vm.processFiles([URL(filePath: "/tmp/file.xyz")])
         #expect(vm.jobs.isEmpty)
         #expect(vm.dropError == "Unsupported file type: .xyz")
     }
 
     @Test func createsJobForSupportedFile() async {
-        let (vm, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _) = makeViewModel()
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         #expect(vm.jobs.count == 1)
         #expect(vm.jobs[0].fileType == .audio)
@@ -82,7 +99,7 @@ struct JobListViewModelTests {
     }
 
     @Test func createsJobsForMultipleFiles() async {
-        let (vm, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _) = makeViewModel()
         vm.processFiles([
             URL(filePath: "/tmp/audio.mp3"),
             URL(filePath: "/tmp/doc.pdf"),
@@ -92,7 +109,7 @@ struct JobListViewModelTests {
     }
 
     @Test func filtersUnsupportedFromMixedBatch() async {
-        let (vm, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _) = makeViewModel()
         vm.processFiles([
             URL(filePath: "/tmp/good.mp3"),
             URL(filePath: "/tmp/bad.xyz"),
@@ -109,7 +126,7 @@ struct JobListViewModelTests {
             secrets: [.mistralAPIKey: "mk-test"]
         )
         // s3EndpointURL is empty by default — not configured
-        let (vm, _, _, _) = makeViewModel(settings: settings)
+        let (vm, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         let completed: Bool = await waitUntil {
@@ -131,7 +148,7 @@ struct JobListViewModelTests {
             secrets: [.s3SecretKey: "sk-test"]
         )
         // No Mistral API key
-        let (vm, _, _, _) = makeViewModel(settings: settings)
+        let (vm, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         let completed: Bool = await waitUntil {
@@ -146,7 +163,7 @@ struct JobListViewModelTests {
     // MARK: - Completed jobs history
 
     @Test func completedJobsListHasMaxTenItems() async {
-        let (vm, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _) = makeViewModel()
 
         // Process 12 files
         for i in 0..<12 {
@@ -164,7 +181,7 @@ struct JobListViewModelTests {
     // MARK: - Computed properties
 
     @Test func activeJobsFiltersCorrectly() async {
-        let (vm, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _) = makeViewModel()
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         // Job should be active immediately after creation
         #expect(vm.activeJobs.count == 1)
@@ -209,5 +226,27 @@ struct JobListViewModelTests {
         }
         #expect(await delivery.recordedDeliveredResults().isEmpty)
         #expect(vm.jobs.isEmpty)
+    }
+
+    @Test func successfulProcessingPostsNotificationOnlyAfterCompletion() async {
+        let notificationGateway: MockNotificationGateway = MockNotificationGateway()
+        let (vm, _, _, _, _) = makeViewModel(
+            settings: configuredSettingsGateway(),
+            notificationGateway: notificationGateway
+        )
+
+        #expect(await notificationGateway.recordedNotifications().isEmpty)
+
+        vm.processFiles([URL(filePath: "/tmp/success.mp3")])
+
+        let notified: Bool = await waitUntil(timeout: .seconds(2)) {
+            !(await notificationGateway.recordedNotifications().isEmpty)
+        }
+
+        #expect(notified)
+        let notifications: [(title: String, body: String)] = await notificationGateway.recordedNotifications()
+        #expect(notifications.count == 1)
+        #expect(notifications[0].title == "trnscrb")
+        #expect(notifications[0].body.contains("success.mp3 ready"))
     }
 }

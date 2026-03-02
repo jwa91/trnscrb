@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UserNotifications
 
 /// Application delegate and composition root.
 ///
@@ -20,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var jobListViewModel: JobListViewModel?
     /// Background retention cleanup use case.
     private var cleanupUseCase: CleanupRetentionUseCase?
+    /// Applies launch-at-login settings at startup and from the settings screen.
+    private var launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
     /// Timer driving periodic retention cleanup.
     private var retentionTimer: Timer?
 
@@ -41,10 +42,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             file: fileDelivery,
             settingsGateway: gateway
         )
+        let notificationUseCase: NotifyUserUseCase = NotifyUserUseCase(
+            gateway: UserNotificationClient()
+        )
         let connectivityClient: ConnectivityClient = ConnectivityClient()
         let connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
             gateway: connectivityClient
         )
+        let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase = ApplyLaunchAtLoginUseCase(
+            gateway: LaunchAtLoginManager()
+        )
+        self.launchAtLoginUseCase = launchAtLoginUseCase
 
         // Build use case
         let useCase: ProcessFileUseCase = ProcessFileUseCase(
@@ -58,11 +66,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Build presentation
         let settingsVM: SettingsViewModel = SettingsViewModel(
             gateway: gateway,
-            connectivityUseCase: connectivityUseCase
+            connectivityUseCase: connectivityUseCase,
+            launchAtLoginUseCase: launchAtLoginUseCase
         )
         let jobListVM: JobListViewModel = JobListViewModel(
             useCase: useCase,
-            settingsGateway: gateway
+            settingsGateway: gateway,
+            notificationUseCase: notificationUseCase
         )
         self.jobListViewModel = jobListVM
 
@@ -122,7 +132,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusItem = statusItem
 
         Task { @MainActor [weak self] in
-            await self?.requestNotificationAuthorization()
             await self?.applyLaunchAtLoginSetting()
             await self?.runRetentionCleanup()
         }
@@ -158,17 +167,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover?.performClose(nil)
     }
 
-    private func requestNotificationAuthorization() async {
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .sound]
-        )
-    }
-
     private func applyLaunchAtLoginSetting() async {
-        guard let settingsGateway else { return }
+        guard let settingsGateway, let launchAtLoginUseCase else { return }
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings()
-            try LaunchAtLoginManager.apply(enabled: settings.launchAtLogin)
+            try await launchAtLoginUseCase.apply(enabled: settings.launchAtLogin)
         } catch {
             // Keep launch behavior best-effort; invalid permissions/config should not crash the app.
         }

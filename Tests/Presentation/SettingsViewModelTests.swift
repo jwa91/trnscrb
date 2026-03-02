@@ -8,20 +8,25 @@ struct SettingsViewModelTests {
     private func makeViewModel(
         settings: AppSettings = AppSettings(),
         secrets: [SecretKey: String] = [:]
-    ) -> (SettingsViewModel, MockSettingsGateway, MockConnectivityGateway) {
+    ) -> (SettingsViewModel, MockSettingsGateway, MockConnectivityGateway, MockLaunchAtLoginGateway) {
         let gateway: MockSettingsGateway = MockSettingsGateway(
             settings: settings,
             secrets: secrets
         )
         let connectivityGateway: MockConnectivityGateway = MockConnectivityGateway()
+        let launchAtLoginGateway: MockLaunchAtLoginGateway = MockLaunchAtLoginGateway()
         let connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
             gateway: connectivityGateway
         )
+        let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase = ApplyLaunchAtLoginUseCase(
+            gateway: launchAtLoginGateway
+        )
         let vm: SettingsViewModel = SettingsViewModel(
             gateway: gateway,
-            connectivityUseCase: connectivityUseCase
+            connectivityUseCase: connectivityUseCase,
+            launchAtLoginUseCase: launchAtLoginUseCase
         )
-        return (vm, gateway, connectivityGateway)
+        return (vm, gateway, connectivityGateway, launchAtLoginGateway)
     }
 
     // MARK: - Loading
@@ -31,7 +36,7 @@ struct SettingsViewModelTests {
             s3EndpointURL: "https://test.com",
             s3BucketName: "bucket"
         )
-        let (vm, _, _) = makeViewModel(settings: customSettings)
+        let (vm, _, _, _) = makeViewModel(settings: customSettings)
         await vm.load()
         #expect(vm.settings.s3EndpointURL == "https://test.com")
         #expect(vm.settings.s3BucketName == "bucket")
@@ -42,14 +47,14 @@ struct SettingsViewModelTests {
             .mistralAPIKey: "mk-123",
             .s3SecretKey: "sk-456"
         ]
-        let (vm, _, _) = makeViewModel(secrets: secrets)
+        let (vm, _, _, _) = makeViewModel(secrets: secrets)
         await vm.load()
         #expect(vm.mistralAPIKey == "mk-123")
         #expect(vm.s3SecretKey == "sk-456")
     }
 
     @Test func loadWithNoSecretsLeavesEmptyStrings() async {
-        let (vm, _, _) = makeViewModel()
+        let (vm, _, _, _) = makeViewModel()
         await vm.load()
         #expect(vm.mistralAPIKey == "")
         #expect(vm.s3SecretKey == "")
@@ -58,7 +63,7 @@ struct SettingsViewModelTests {
     // MARK: - Saving
 
     @Test func savePersistsSettingsToGateway() async {
-        let (vm, gateway, _) = makeViewModel()
+        let (vm, gateway, _, _) = makeViewModel()
         vm.settings.s3EndpointURL = "https://saved.com"
         vm.settings.s3BucketName = "saved-bucket"
         let didSave: Bool = await vm.save()
@@ -69,7 +74,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func savePersistsSecretsToKeychain() async {
-        let (vm, gateway, _) = makeViewModel()
+        let (vm, gateway, _, _) = makeViewModel()
         vm.mistralAPIKey = "new-mk"
         vm.s3SecretKey = "new-sk"
         await vm.save()
@@ -83,7 +88,7 @@ struct SettingsViewModelTests {
             .mistralAPIKey: "existing",
             .s3SecretKey: "existing"
         ]
-        let (vm, gateway, _) = makeViewModel(secrets: secrets)
+        let (vm, gateway, _, _) = makeViewModel(secrets: secrets)
         await vm.load()
         vm.mistralAPIKey = ""
         vm.s3SecretKey = ""
@@ -101,7 +106,7 @@ struct SettingsViewModelTests {
             copyToClipboard: false,
             fileRetentionHours: 48
         )
-        let (vm, gateway, _) = makeViewModel(
+        let (vm, gateway, _, _) = makeViewModel(
             settings: original,
             secrets: [.mistralAPIKey: "rt-key"]
         )
@@ -114,7 +119,7 @@ struct SettingsViewModelTests {
     // MARK: - Connectivity testing
 
     @Test func testS3CallsConnectivityUseCaseOnSuccess() async {
-        let (vm, _, connectivityGateway) = makeViewModel()
+        let (vm, _, connectivityGateway, _) = makeViewModel()
         vm.settings.s3EndpointURL = "https://s3.example.com"
         vm.settings.s3AccessKey = "AKID"
         vm.settings.s3BucketName = "bucket"
@@ -127,7 +132,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func testS3DoesNotCallConnectivityWhenRequiredFieldsMissing() async {
-        let (vm, _, connectivityGateway) = makeViewModel()
+        let (vm, _, connectivityGateway, _) = makeViewModel()
         vm.settings.s3EndpointURL = ""
         vm.settings.s3AccessKey = "AKID"
         vm.settings.s3BucketName = "bucket"
@@ -140,7 +145,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func testMistralSurfacesConnectivityFailure() async {
-        let (vm, _, connectivityGateway) = makeViewModel()
+        let (vm, _, connectivityGateway, _) = makeViewModel()
         vm.mistralAPIKey = "mk-invalid"
         await connectivityGateway.setMistralError(ConnectivityError.invalidAPIKey)
 
@@ -148,5 +153,17 @@ struct SettingsViewModelTests {
 
         #expect(await connectivityGateway.recordedMistralCallCount() == 1)
         #expect(vm.mistralTestResult == .failure("Invalid API key"))
+    }
+
+    @Test func saveAppliesLaunchAtLoginSettingAfterPersistence() async {
+        let (vm, gateway, _, launchAtLoginGateway) = makeViewModel()
+        vm.settings.launchAtLogin = true
+
+        let didSave: Bool = await vm.save()
+
+        #expect(didSave)
+        #expect((await gateway.snapshotSettings()).launchAtLogin == true)
+        #expect(await launchAtLoginGateway.recordedCallCount() == 1)
+        #expect(await launchAtLoginGateway.recordedAppliedValues() == [true])
     }
 }

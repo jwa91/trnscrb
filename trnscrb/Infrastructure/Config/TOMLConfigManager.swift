@@ -52,7 +52,7 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             return AppSettings()
         }
         let content: String = try String(contentsOf: configFileURL, encoding: .utf8)
-        return parse(content)
+        return try parse(content)
     }
 
     /// Saves settings to the TOML config file, creating the directory if needed.
@@ -100,15 +100,20 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
     }
 
     /// Parses TOML content into AppSettings, using defaults for missing keys.
-    private func parse(_ content: String) -> AppSettings {
+    private func parse(_ content: String) throws -> AppSettings {
         var dict: [String: String] = [:]
-        for line in content.components(separatedBy: "\n") {
+        for (lineNumber, line) in content.components(separatedBy: "\n").enumerated() {
             let trimmed: String = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-            guard let eqIndex = trimmed.firstIndex(of: "=") else { continue }
+            guard let eqIndex = trimmed.firstIndex(of: "=") else {
+                throw ConfigError.parseError("Malformed config line \(lineNumber + 1)")
+            }
             let key: String = trimmed[..<eqIndex].trimmingCharacters(in: .whitespaces)
             let rawValue: String = String(trimmed[trimmed.index(after: eqIndex)...])
                 .trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty, !rawValue.isEmpty else {
+                throw ConfigError.parseError("Malformed config line \(lineNumber + 1)")
+            }
             dict[key] = unquote(rawValue)
         }
 
@@ -120,11 +125,47 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             s3Region: dict["s3_region"] ?? defaults.s3Region,
             s3PathPrefix: dict["s3_path_prefix"] ?? defaults.s3PathPrefix,
             saveFolderPath: dict["save_folder_path"] ?? defaults.saveFolderPath,
-            copyToClipboard: dict["copy_to_clipboard"].map { $0 == "true" } ?? defaults.copyToClipboard,
-            saveToFolder: dict["save_to_folder"].map { $0 == "true" } ?? defaults.saveToFolder,
-            fileRetentionHours: Int(dict["file_retention_hours"] ?? "") ?? defaults.fileRetentionHours,
-            launchAtLogin: dict["launch_at_login"].map { $0 == "true" } ?? defaults.launchAtLogin
+            copyToClipboard: try parseBool(
+                dict["copy_to_clipboard"],
+                key: "copy_to_clipboard",
+                defaultValue: defaults.copyToClipboard
+            ),
+            saveToFolder: try parseBool(
+                dict["save_to_folder"],
+                key: "save_to_folder",
+                defaultValue: defaults.saveToFolder
+            ),
+            fileRetentionHours: try parseInt(
+                dict["file_retention_hours"],
+                key: "file_retention_hours",
+                defaultValue: defaults.fileRetentionHours
+            ),
+            launchAtLogin: try parseBool(
+                dict["launch_at_login"],
+                key: "launch_at_login",
+                defaultValue: defaults.launchAtLogin
+            )
         )
+    }
+
+    private func parseBool(_ value: String?, key: String, defaultValue: Bool) throws -> Bool {
+        guard let value else { return defaultValue }
+        switch value {
+        case "true":
+            return true
+        case "false":
+            return false
+        default:
+            throw ConfigError.parseError("Invalid boolean for \(key)")
+        }
+    }
+
+    private func parseInt(_ value: String?, key: String, defaultValue: Int) throws -> Int {
+        guard let value else { return defaultValue }
+        guard let intValue: Int = Int(value) else {
+            throw ConfigError.parseError("Invalid integer for \(key)")
+        }
+        return intValue
     }
 
     /// Wraps a string value in TOML double quotes, escaping inner quotes and backslashes.
