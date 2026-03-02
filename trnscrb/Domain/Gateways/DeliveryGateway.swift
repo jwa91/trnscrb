@@ -6,5 +6,5 @@ import Foundation
 public protocol DeliveryGateway: Sendable {
     /// Delivers a transcription result to the user.
     /// - Parameter result: The completed transcription result.
-    func deliver(result: TranscriptionResult) async throws
+    func deliver(result: TranscriptionResult) async throws -> DeliveryReport
 }

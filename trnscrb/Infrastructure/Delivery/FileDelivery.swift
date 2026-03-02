@@ -21,7 +21,7 @@ public struct FileDelivery: DeliveryGateway {
     }
 
     /// Saves the markdown content as a `.md` file in the configured folder.
-    public func deliver(result: TranscriptionResult) async throws {
+    public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         let settings: AppSettings = try await settingsGateway.loadSettings()
         let folderPath: String = (settings.saveFolderPath as NSString).expandingTildeInPath
         let folderURL: URL = URL(filePath: folderPath)
@@ -32,6 +32,7 @@ public struct FileDelivery: DeliveryGateway {
         let fileURL: URL = outputFileURL(folder: folderURL, baseName: baseName)
 
         try result.markdown.write(to: fileURL, atomically: true, encoding: .utf8)
+        return .success
     }
 
     /// Determines the output file URL, appending a timestamp if the file already exists.

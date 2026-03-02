@@ -28,18 +28,60 @@ public struct CompositeDelivery: DeliveryGateway {
     }
 
     /// Delivers the result to all enabled output modes.
-    public func deliver(result: TranscriptionResult) async throws {
+    public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         let settings: AppSettings = try await settingsGateway.loadSettings()
         guard settings.hasEnabledOutputDestination else {
             // Never drop successful output on the floor; clipboard is the spec default.
-            try await clipboard.deliver(result: result)
-            return
+            return try await clipboard.deliver(result: result)
         }
+
+        var successfulDeliveries: Int = 0
+        var firstError: (any Error)?
+        var clipboardFailed: Bool = false
+        var fileFailed: Bool = false
+
         if settings.copyToClipboard {
-            try await clipboard.deliver(result: result)
+            do {
+                _ = try await clipboard.deliver(result: result)
+                successfulDeliveries += 1
+            } catch {
+                clipboardFailed = true
+                if firstError == nil {
+                    firstError = error
+                }
+            }
         }
+
         if settings.saveToFolder {
-            try await file.deliver(result: result)
+            do {
+                _ = try await file.deliver(result: result)
+                successfulDeliveries += 1
+            } catch {
+                fileFailed = true
+                if firstError == nil {
+                    firstError = error
+                }
+            }
         }
+
+        if successfulDeliveries == 0, let firstError {
+            throw firstError
+        }
+
+        var warnings: [String] = []
+        if successfulDeliveries > 0 && settings.copyToClipboard && settings.saveToFolder {
+            if clipboardFailed {
+                warnings.append(
+                    "Saved markdown to the output folder, but copying to the clipboard failed."
+                )
+            }
+            if fileFailed {
+                warnings.append(
+                    "Copied markdown to the clipboard, but saving the file failed."
+                )
+            }
+        }
+
+        return DeliveryReport(warnings: warnings)
     }
 }

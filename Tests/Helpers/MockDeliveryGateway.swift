@@ -7,9 +7,15 @@ actor MockDeliveryGateway: DeliveryGateway {
     private var deliveredResults: [TranscriptionResult]
     /// If set, deliver throws this error.
     private var deliverError: (any Error & Sendable)?
+    /// Optional warnings returned after a successful delivery.
+    private var deliverWarnings: [String]
 
-    init(deliverError: (any Error & Sendable)? = nil) {
+    init(
+        deliverError: (any Error & Sendable)? = nil,
+        deliverWarnings: [String] = []
+    ) {
         self.deliverError = deliverError
+        self.deliverWarnings = deliverWarnings
         self.deliveredResults = []
     }
 
@@ -17,14 +23,19 @@ actor MockDeliveryGateway: DeliveryGateway {
         deliverError = error
     }
 
+    func setDeliverWarnings(_ warnings: [String]) {
+        deliverWarnings = warnings
+    }
+
     func recordedDeliveredResults() -> [TranscriptionResult] {
         deliveredResults
     }
 
-    func deliver(result: TranscriptionResult) async throws {
+    func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         if let deliverError {
             throw deliverError
         }
         deliveredResults.append(result)
+        return DeliveryReport(warnings: deliverWarnings)
     }
 }

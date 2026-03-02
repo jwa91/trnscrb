@@ -8,11 +8,19 @@ public struct TranscriptionResult: Sendable, Equatable {
     public let sourceFileName: String
     /// The type of file that was processed.
     public let sourceFileType: FileType
+    /// Non-fatal delivery warnings produced after transcription succeeded.
+    public let deliveryWarnings: [String]
 
     /// Creates a transcription result.
-    public init(markdown: String, sourceFileName: String, sourceFileType: FileType) {
+    public init(
+        markdown: String,
+        sourceFileName: String,
+        sourceFileType: FileType,
+        deliveryWarnings: [String] = []
+    ) {
         self.markdown = markdown
         self.sourceFileName = sourceFileName
         self.sourceFileType = sourceFileType
+        self.deliveryWarnings = deliveryWarnings
     }
 }

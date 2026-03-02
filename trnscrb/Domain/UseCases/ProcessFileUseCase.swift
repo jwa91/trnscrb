@@ -97,9 +97,14 @@ public final class ProcessFileUseCase: Sendable {
             sourceFileType: fileType
         )
 
-        try await delivery.deliver(result: result)
+        let deliveryReport: DeliveryReport = try await delivery.deliver(result: result)
 
-        return result
+        return TranscriptionResult(
+            markdown: result.markdown,
+            sourceFileName: result.sourceFileName,
+            sourceFileType: result.sourceFileType,
+            deliveryWarnings: deliveryReport.warnings
+        )
     }
 
     /// Retries an async operation with exponential backoff.

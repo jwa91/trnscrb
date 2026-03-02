@@ -17,6 +17,7 @@ struct JobStatusTests {
         let job: Job = makeJob()
         #expect(job.status == .pending)
         #expect(job.markdown == nil)
+        #expect(job.deliveryWarnings.isEmpty)
         #expect(job.completedAt == nil)
     }
 
@@ -65,7 +66,22 @@ struct JobStateTransitionTests {
         job.complete(markdown: "# Hello")
         #expect(job.status == .completed)
         #expect(job.markdown == "# Hello")
+        #expect(job.deliveryWarnings.isEmpty)
         #expect(job.completedAt != nil)
+    }
+
+    @Test func processingToCompletedWithWarnings() {
+        var job: Job = makeJob()
+        job.startUpload()
+        job.startProcessing()
+        job.complete(
+            markdown: "# Hello",
+            deliveryWarnings: ["Copied markdown to the clipboard, but saving the file failed."]
+        )
+        #expect(job.status == .completed)
+        #expect(job.markdown == "# Hello")
+        #expect(job.deliveryWarnings == ["Copied markdown to the clipboard, but saving the file failed."])
+        #expect(job.warningMessage == "Copied markdown to the clipboard, but saving the file failed.")
     }
 
     // MARK: - Failure transitions

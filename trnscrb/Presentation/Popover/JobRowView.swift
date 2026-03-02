@@ -27,13 +27,13 @@ struct JobRowView: View {
                 statusView
             }
 
-            if case .failed(let error) = job.status {
-                Text(error)
+            if let detailMessage = detailMessage {
+                Text(detailMessage)
                     .font(.caption2)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(detailColor)
                     .lineLimit(2)
                     .padding(.leading, 24)
-                    .help(error)
+                    .help(detailMessage)
             }
         }
         .padding(.vertical, 4)
@@ -82,13 +82,33 @@ struct JobRowView: View {
             ProgressView()
                 .controlSize(.small)
         case .completed:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.caption)
+            if job.deliveryWarnings.isEmpty {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.caption)
+            } else {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+            }
         case .failed:
             Image(systemName: "exclamation.triangle.fill")
                 .foregroundStyle(.red)
                 .font(.caption)
         }
+    }
+
+    private var detailMessage: String? {
+        if case .failed(let error) = job.status {
+            return error
+        }
+        return job.warningMessage
+    }
+
+    private var detailColor: Color {
+        if case .failed = job.status {
+            return .red
+        }
+        return .orange
     }
 }
