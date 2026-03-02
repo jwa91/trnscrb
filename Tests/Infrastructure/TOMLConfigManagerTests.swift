@@ -134,4 +134,49 @@ struct TOMLConfigManagerTests {
         #expect(loaded.s3Region == "auto")
         #expect(loaded.copyToClipboard == true)
     }
+
+    @Test func loadThrowsParseErrorForMalformedLine() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = """
+        s3_endpoint_url = "https://test.com"
+        this is not valid toml
+        """
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let keychainStore: KeychainStore = KeychainStore(service: "com.trnscrb.test.toml.\(UUID().uuidString)")
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            keychainStore: keychainStore
+        )
+
+        await #expect(throws: ConfigError.self) {
+            _ = try await manager.loadSettings()
+        }
+    }
+
+    @Test func loadThrowsParseErrorForInvalidBoolean() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = """
+        copy_to_clipboard = maybe
+        """
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let keychainStore: KeychainStore = KeychainStore(service: "com.trnscrb.test.toml.\(UUID().uuidString)")
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            keychainStore: keychainStore
+        )
+
+        await #expect(throws: ConfigError.self) {
+            _ = try await manager.loadSettings()
+        }
+    }
 }

@@ -166,26 +166,54 @@ public struct S3Client: StorageGateway {
             delegate: progressDelegate,
             delegateQueue: nil
         )
+        let uploadTaskBox: UploadTaskBox = UploadTaskBox()
+        let continuationBox: UploadContinuationBox = UploadContinuationBox()
 
         onProgress(0)
-        return try await withCheckedThrowingContinuation { continuation in
-            let task: URLSessionUploadTask = progressSession.uploadTask(with: request, fromFile: fileURL) {
-                data, response, error in
-                progressSession.finishTasksAndInvalidate()
-                if let error {
-                    continuation.resume(throwing: error)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                continuationBox.install(continuation)
+
+                let task: URLSessionUploadTask = progressSession.uploadTask(
+                    with: request,
+                    fromFile: fileURL
+                ) { data, response, error in
+                    progressSession.finishTasksAndInvalidate()
+                    if let error {
+                        if uploadTaskBox.wasCancelled
+                            || (error as? URLError)?.code == .cancelled
+                        {
+                            continuationBox.resume(with: .failure(CancellationError()))
+                        } else {
+                            continuationBox.resume(with: .failure(error))
+                        }
+                        return
+                    }
+                    guard let data, let response else {
+                        continuationBox.resume(
+                            with: .failure(
+                                S3Error.requestFailed(
+                                    statusCode: 0,
+                                    body: "Missing upload response"
+                                )
+                            )
+                        )
+                        return
+                    }
+                    onProgress(1)
+                    continuationBox.resume(with: .success((data, response)))
+                }
+
+                guard uploadTaskBox.set(task) else {
+                    continuationBox.resume(with: .failure(CancellationError()))
                     return
                 }
-                guard let data, let response else {
-                    continuation.resume(
-                        throwing: S3Error.requestFailed(statusCode: 0, body: "Missing upload response")
-                    )
-                    return
-                }
-                onProgress(1)
-                continuation.resume(returning: (data, response))
+
+                task.resume()
             }
-            task.resume()
+        } onCancel: {
+            uploadTaskBox.cancel()
+            continuationBox.resume(with: .failure(CancellationError()))
         }
     }
 
@@ -332,6 +360,89 @@ private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, @u
         guard totalBytesExpectedToSend > 0 else { return }
         let progress: Double = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
         onProgress(min(max(progress, 0), 1))
+    }
+}
+
+private final class UploadTaskBox: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var task: URLSessionUploadTask?
+    private var isCancelled: Bool = false
+
+    func set(_ task: URLSessionUploadTask) -> Bool {
+        lock.lock()
+        if isCancelled {
+            lock.unlock()
+            task.cancel()
+            return false
+        }
+        self.task = task
+        lock.unlock()
+        return true
+    }
+
+    func cancel() {
+        let taskToCancel: URLSessionUploadTask?
+        lock.lock()
+        isCancelled = true
+        taskToCancel = task
+        lock.unlock()
+        taskToCancel?.cancel()
+    }
+
+    var wasCancelled: Bool {
+        lock.lock()
+        let isCancelled: Bool = self.isCancelled
+        lock.unlock()
+        return isCancelled
+    }
+}
+
+private final class UploadContinuationBox: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var continuation: CheckedContinuation<(Data, URLResponse), Error>?
+    private var pendingResult: Result<(Data, URLResponse), Error>?
+    private var isCompleted: Bool = false
+
+    func install(_ continuation: CheckedContinuation<(Data, URLResponse), Error>) {
+        let resultToResume: Result<(Data, URLResponse), Error>?
+        lock.lock()
+        if isCompleted {
+            lock.unlock()
+            return
+        }
+        if let pendingResult {
+            isCompleted = true
+            self.pendingResult = nil
+            resultToResume = pendingResult
+        } else {
+            self.continuation = continuation
+            resultToResume = nil
+        }
+        lock.unlock()
+
+        if let resultToResume {
+            continuation.resume(with: resultToResume)
+        }
+    }
+
+    func resume(with result: Result<(Data, URLResponse), Error>) {
+        let continuationToResume: CheckedContinuation<(Data, URLResponse), Error>?
+        lock.lock()
+        if isCompleted || pendingResult != nil {
+            lock.unlock()
+            return
+        }
+        if let continuation {
+            isCompleted = true
+            self.continuation = nil
+            continuationToResume = continuation
+        } else {
+            pendingResult = result
+            continuationToResume = nil
+        }
+        lock.unlock()
+
+        continuationToResume?.resume(with: result)
     }
 }
 

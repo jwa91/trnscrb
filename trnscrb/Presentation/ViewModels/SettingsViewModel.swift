@@ -31,14 +31,22 @@ public final class SettingsViewModel: ObservableObject {
     private let gateway: any SettingsGateway
     /// Domain use case for connectivity testing.
     private let connectivityUseCase: TestConnectivityUseCase
+    /// Applies launch-at-login changes to the system after a successful save.
+    private let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
 
     /// Creates a view model backed by the given settings gateway.
     /// - Parameters:
     ///   - gateway: Settings persistence gateway.
     ///   - connectivityUseCase: Connectivity test use case.
-    public init(gateway: any SettingsGateway, connectivityUseCase: TestConnectivityUseCase) {
+    ///   - launchAtLoginUseCase: Optional system integration for launch-at-login changes.
+    public init(
+        gateway: any SettingsGateway,
+        connectivityUseCase: TestConnectivityUseCase,
+        launchAtLoginUseCase: ApplyLaunchAtLoginUseCase? = nil
+    ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
+        self.launchAtLoginUseCase = launchAtLoginUseCase
     }
 
     /// Loads settings and secrets from persistent storage.
@@ -70,6 +78,8 @@ public final class SettingsViewModel: ObservableObject {
             } else {
                 try await gateway.setSecret(s3SecretKey, for: .s3SecretKey)
             }
+
+            try await launchAtLoginUseCase?.apply(enabled: settings.launchAtLogin)
 
             error = nil
             return true

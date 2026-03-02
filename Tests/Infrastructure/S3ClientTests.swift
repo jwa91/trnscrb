@@ -15,6 +15,95 @@ private actor ProgressCollector {
     }
 }
 
+private final class SlowUploadObserver: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var didStart: Bool = false
+    private var didStop: Bool = false
+
+    func markStarted() {
+        lock.lock()
+        didStart = true
+        lock.unlock()
+    }
+
+    func markStopped() {
+        lock.lock()
+        didStop = true
+        lock.unlock()
+    }
+
+    func started() -> Bool {
+        lock.lock()
+        let started: Bool = didStart
+        lock.unlock()
+        return started
+    }
+
+    func stopped() -> Bool {
+        lock.lock()
+        let stopped: Bool = didStop
+        lock.unlock()
+        return stopped
+    }
+}
+
+private final class SlowUploadRegistry: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var observer: SlowUploadObserver?
+
+    func setObserver(_ observer: SlowUploadObserver) {
+        lock.lock()
+        self.observer = observer
+        lock.unlock()
+    }
+
+    func markStarted() {
+        lock.lock()
+        let observer: SlowUploadObserver? = self.observer
+        lock.unlock()
+        observer?.markStarted()
+    }
+
+    func markStopped() {
+        lock.lock()
+        let observer: SlowUploadObserver? = self.observer
+        lock.unlock()
+        observer?.markStopped()
+    }
+}
+
+private final class SlowUploadURLProtocol: URLProtocol {
+    static let registry: SlowUploadRegistry = SlowUploadRegistry()
+    private var workItem: DispatchWorkItem?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.registry.markStarted()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let response: HTTPURLResponse = HTTPURLResponse(
+                url: self.request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: Data())
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+        self.workItem = workItem
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2, execute: workItem)
+    }
+
+    override func stopLoading() {
+        workItem?.cancel()
+        Self.registry.markStopped()
+        client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+    }
+}
+
 @Suite(.serialized)
 struct S3ClientTests {
     private func makeClient(
@@ -38,6 +127,41 @@ struct S3ClientTests {
         let (_, session, mock) = makeMockURLSession()
         let client: S3Client = S3Client(settingsGateway: gateway, urlSession: session)
         return (client, mock)
+    }
+
+    private func makeSlowUploadClient() -> (S3Client, SlowUploadObserver) {
+        let gateway: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                s3EndpointURL: "https://s3.example.com",
+                s3AccessKey: "AKID",
+                s3BucketName: "test-bucket",
+                s3Region: "us-east-1",
+                s3PathPrefix: "trnscrb/"
+            ),
+            secrets: [.s3SecretKey: "SECRET"]
+        )
+        let observer: SlowUploadObserver = SlowUploadObserver()
+        SlowUploadURLProtocol.registry.setObserver(observer)
+        let config: URLSessionConfiguration = .ephemeral
+        config.protocolClasses = [SlowUploadURLProtocol.self]
+        let session: URLSession = URLSession(configuration: config)
+        let client: S3Client = S3Client(settingsGateway: gateway, urlSession: session)
+        return (client, observer)
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(1),
+        _ condition: @escaping () async -> Bool
+    ) async -> Bool {
+        let clock: ContinuousClock = ContinuousClock()
+        let deadline: ContinuousClock.Instant = clock.now + timeout
+        while !(await condition()) {
+            if clock.now >= deadline {
+                return false
+            }
+            await Task.yield()
+        }
+        return true
     }
 
     // MARK: - Upload
@@ -132,6 +256,38 @@ struct S3ClientTests {
 
         await #expect(throws: S3Error.self) {
             _ = try await client.upload(fileURL: tempFile, key: "k")
+        }
+    }
+
+    @Test func uploadCancelsPromptlyWhenTaskIsCancelled() async throws {
+        let (client, observer) = makeSlowUploadClient()
+        let tempFile: URL = FileManager.default.temporaryDirectory.appending(path: "cancel.mp3")
+        try Data(repeating: 7, count: 1024 * 32).write(to: tempFile)
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        let uploadTask: Task<URL, Error> = Task {
+            try await client.upload(fileURL: tempFile, key: "trnscrb/cancel.mp3")
+        }
+
+        let started: Bool = await waitUntil { observer.started() }
+        #expect(started)
+
+        uploadTask.cancel()
+
+        let cancelledPromptly: Bool = await waitUntil(timeout: .milliseconds(300)) {
+            observer.stopped()
+        }
+
+        #expect(cancelledPromptly)
+
+        do {
+            _ = try await uploadTask.value
+            #expect(Bool(false))
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            let urlError: URLError? = error as? URLError
+            #expect(urlError?.code == .cancelled)
         }
     }
 
