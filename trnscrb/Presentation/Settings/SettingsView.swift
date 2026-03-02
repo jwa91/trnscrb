@@ -68,12 +68,20 @@ struct SettingsView: View {
                 .textFieldStyle(.roundedBorder)
             SecureField("Secret Key", text: $viewModel.s3SecretKey)
                 .textFieldStyle(.roundedBorder)
+                .lineLimit(1)
+                .truncationMode(.tail)
             TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
                 .textFieldStyle(.roundedBorder)
             TextField("Region", text: $viewModel.settings.s3Region)
                 .textFieldStyle(.roundedBorder)
             TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
                 .textFieldStyle(.roundedBorder)
+            HStack {
+                testButton("Test", result: viewModel.s3TestResult) {
+                    Task { await viewModel.testS3() }
+                }
+                testResultView(viewModel.s3TestResult)
+            }
         }
     }
 
@@ -82,6 +90,14 @@ struct SettingsView: View {
         Section("Mistral API") {
             SecureField("API Key", text: $viewModel.mistralAPIKey)
                 .textFieldStyle(.roundedBorder)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            HStack {
+                testButton("Test", result: viewModel.mistralTestResult) {
+                    Task { await viewModel.testMistral() }
+                }
+                testResultView(viewModel.mistralTestResult)
+            }
         }
     }
 
@@ -112,6 +128,40 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
+        }
+    }
+
+    // MARK: - Test button helpers
+
+    private func testButton(
+        _ title: String,
+        result: TestResult,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(title) { action() }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .disabled(result == .testing)
+    }
+
+    @ViewBuilder
+    private func testResultView(_ result: TestResult) -> some View {
+        switch result {
+        case .idle:
+            EmptyView()
+        case .testing:
+            ProgressView()
+                .controlSize(.small)
+        case .success:
+            Label("Connected", systemImage: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+        case .failure(let message):
+            Text(message)
+                .font(.caption2)
+                .foregroundStyle(.red)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 }

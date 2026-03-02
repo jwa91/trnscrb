@@ -6,18 +6,30 @@ struct JobRowView: View {
     let job: Job
     /// Called when the user clicks a completed job to copy its markdown.
     var onCopy: (() -> Void)?
+    /// Called when the user deletes this job.
+    var onDelete: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: fileTypeIcon)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            Text(job.fileName)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .font(.caption)
-            Spacer()
-            statusView
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Image(systemName: fileTypeIcon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                Text(job.fileName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .font(.caption)
+                Spacer()
+                statusView
+            }
+
+            if case .failed(let error) = job.status {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .padding(.leading, 24)
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
@@ -25,6 +37,16 @@ struct JobRowView: View {
         .onTapGesture {
             if case .completed = job.status {
                 onCopy?()
+            }
+        }
+        .contextMenu {
+            if case .completed = job.status {
+                Button("Copy Markdown") {
+                    onCopy?()
+                }
+            }
+            Button("Delete", role: .destructive) {
+                onDelete?()
             }
         }
     }

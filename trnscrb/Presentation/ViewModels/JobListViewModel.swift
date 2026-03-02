@@ -91,6 +91,24 @@ public final class JobListViewModel: ObservableObject {
         }
     }
 
+    /// Removes a single job by ID.
+    /// - Parameter jobID: ID of the job to remove.
+    public func removeJob(id jobID: UUID) {
+        jobs.removeAll { $0.id == jobID }
+    }
+
+    /// Removes all completed and failed jobs.
+    public func clearCompleted() {
+        jobs.removeAll { job in
+            switch job.status {
+            case .completed, .failed:
+                return true
+            case .pending, .uploading, .processing:
+                return false
+            }
+        }
+    }
+
     /// Copies the markdown from a completed job to the clipboard.
     /// - Parameter jobID: ID of the completed job.
     public func copyToClipboard(jobID: UUID) {

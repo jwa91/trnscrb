@@ -55,10 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.jobListViewModel = jobListVM
 
-        // Setup popover
+        // Setup popover — use .applicationDefined so it doesn't dismiss
+        // when the user clicks Finder to start a drag operation.
         let popover: NSPopover = NSPopover()
         popover.contentSize = NSSize(width: 320, height: 360)
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
@@ -85,8 +86,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Add drop target overlay
             let dropView: StatusBarDropView = StatusBarDropView(frame: button.bounds)
             dropView.autoresizingMask = [.width, .height]
-            dropView.onDrop = { [weak jobListVM] urls in
+            dropView.onDrop = { [weak self, weak jobListVM] urls in
                 jobListVM?.processFiles(urls)
+                self?.showPopover()
+            }
+            dropView.onDragEntered = { [weak self] in
+                self?.statusItem?.button?.image = NSImage(
+                    systemSymbolName: "arrow.down.doc.fill",
+                    accessibilityDescription: "trnscrb drop"
+                )
+            }
+            dropView.onDragExited = { [weak self] in
+                self?.statusItem?.button?.image = NSImage(
+                    systemSymbolName: "doc.text",
+                    accessibilityDescription: "trnscrb"
+                )
             }
             button.addSubview(dropView)
         }
@@ -99,14 +113,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             closePopover()
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            // Must be async — NSStatusBarButton resets highlight on mouse-up.
-            // Dispatching to the next run loop iteration runs after that reset.
-            DispatchQueue.main.async {
-                button.isHighlighted = true
-            }
-            startEventMonitor()
+            showPopover()
         }
+    }
+
+    /// Shows the popover and starts the event monitor.
+    private func showPopover() {
+        guard let popover, let button = statusItem?.button else { return }
+        guard !popover.isShown else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // Must be async — NSStatusBarButton resets highlight on mouse-up.
+        // Dispatching to the next run loop iteration runs after that reset.
+        DispatchQueue.main.async {
+            button.isHighlighted = true
+        }
+        startEventMonitor()
     }
 
     /// Closes the popover and removes the event monitor.
