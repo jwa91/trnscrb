@@ -4,7 +4,6 @@ import SwiftUI
 struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel
-    @State private var selectedJobID: UUID?
 
     var body: some View {
         ScrollView {
@@ -14,8 +13,8 @@ struct JobListView: View {
                         ForEach(viewModel.activeJobs) { job in
                             JobRowView(
                                 job: job,
-                                isSelected: selectedJobID == job.id,
-                                onSelect: { selectedJobID = job.id },
+                                isSelected: viewModel.selectedJobID == job.id,
+                                onSelect: { viewModel.selectJob(id: job.id) },
                                 onDelete: { viewModel.removeJob(id: job.id) }
                             )
                             Divider()
@@ -30,8 +29,8 @@ struct JobListView: View {
                         ForEach(viewModel.completedJobs) { job in
                             JobRowView(
                                 job: job,
-                                isSelected: selectedJobID == job.id,
-                                onSelect: { selectedJobID = job.id },
+                                isSelected: viewModel.selectedJobID == job.id,
+                                onSelect: { viewModel.selectJob(id: job.id) },
                                 onCopy: { viewModel.copyToClipboard(jobID: job.id) },
                                 onDelete: { viewModel.removeJob(id: job.id) }
                             )
@@ -60,9 +59,9 @@ struct JobListView: View {
         }
         .onDeleteCommand(perform: handleDeleteCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
-            if let selectedJobID,
+            if let selectedJobID = viewModel.selectedJobID,
                !jobs.contains(where: { $0.id == selectedJobID }) {
-                self.selectedJobID = nil
+                viewModel.selectJob(id: nil)
             }
         }
     }
@@ -82,9 +81,9 @@ struct JobListView: View {
     }
 
     private func handleDeleteCommand() {
-        if let selectedJobID {
+        if let selectedJobID = viewModel.selectedJobID {
             viewModel.removeJob(id: selectedJobID)
-            self.selectedJobID = nil
+            viewModel.selectJob(id: nil)
             return
         }
         if let fallbackID: UUID = viewModel.completedJobs.first?.id ?? viewModel.activeJobs.first?.id {

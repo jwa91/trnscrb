@@ -5,7 +5,7 @@ import UserNotifications
 public struct UserNotificationClient: NotificationGateway {
     public init() {}
 
-    public func notify(title: String, body: String) async {
+    public func notify(identifier: String, title: String, body: String) async {
         guard !isTestHost else { return }
 
         let center: UNUserNotificationCenter = .current()
@@ -30,7 +30,7 @@ public struct UserNotificationClient: NotificationGateway {
         content.body = body
 
         let request: UNNotificationRequest = UNNotificationRequest(
-            identifier: UUID().uuidString,
+            identifier: identifier,
             content: content,
             trigger: nil
         )

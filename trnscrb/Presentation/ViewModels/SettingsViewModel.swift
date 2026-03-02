@@ -31,22 +31,22 @@ public final class SettingsViewModel: ObservableObject {
     private let gateway: any SettingsGateway
     /// Domain use case for connectivity testing.
     private let connectivityUseCase: TestConnectivityUseCase
-    /// Applies launch-at-login changes to the system after a successful save.
-    private let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
+    /// Persists settings, secrets, and launch-at-login atomically.
+    private let saveSettingsUseCase: SaveSettingsUseCase
 
     /// Creates a view model backed by the given settings gateway.
     /// - Parameters:
     ///   - gateway: Settings persistence gateway.
     ///   - connectivityUseCase: Connectivity test use case.
-    ///   - launchAtLoginUseCase: Optional system integration for launch-at-login changes.
+    ///   - saveSettingsUseCase: Saves settings, secrets, and launch-at-login changes.
     public init(
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
-        launchAtLoginUseCase: ApplyLaunchAtLoginUseCase? = nil
+        saveSettingsUseCase: SaveSettingsUseCase
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
-        self.launchAtLoginUseCase = launchAtLoginUseCase
+        self.saveSettingsUseCase = saveSettingsUseCase
     }
 
     /// Loads settings and secrets from persistent storage.
@@ -65,21 +65,11 @@ public final class SettingsViewModel: ObservableObject {
     @discardableResult
     public func save() async -> Bool {
         do {
-            try await gateway.saveSettings(settings)
-
-            if mistralAPIKey.isEmpty {
-                try await gateway.removeSecret(for: .mistralAPIKey)
-            } else {
-                try await gateway.setSecret(mistralAPIKey, for: .mistralAPIKey)
-            }
-
-            if s3SecretKey.isEmpty {
-                try await gateway.removeSecret(for: .s3SecretKey)
-            } else {
-                try await gateway.setSecret(s3SecretKey, for: .s3SecretKey)
-            }
-
-            try await launchAtLoginUseCase?.apply(enabled: settings.launchAtLogin)
+            try await saveSettingsUseCase.save(
+                settings: settings,
+                mistralAPIKey: mistralAPIKey,
+                s3SecretKey: s3SecretKey
+            )
 
             error = nil
             return true
