@@ -63,6 +63,7 @@ struct ProcessFileUseCaseTests {
         #expect(result.markdown == "# Meeting Notes")
         #expect(result.sourceFileName == "meeting.mp3")
         #expect(result.sourceFileType == .audio)
+        #expect(result.deliveryWarnings.isEmpty)
         let uploadedKeys: [String] = await storage.recordedUploadedKeys()
         #expect(uploadedKeys.count == 1)
         #expect(uploadedKeys[0].hasPrefix("trnscrb/"))
@@ -259,6 +260,19 @@ struct ProcessFileUseCaseTests {
         _ = try? await useCase.execute(fileURL: URL(filePath: "/tmp/test.mp3"))
 
         #expect(await delivery.recordedDeliveredResults().isEmpty)
+    }
+
+    @Test func returnsDeliveryWarningsWhenOneDestinationFails() async throws {
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(
+            deliverWarnings: ["Copied markdown to the clipboard, but saving the file failed."]
+        )
+        let (useCase, _, _, _, _, _) = makeUseCase(delivery: delivery)
+
+        let result: TranscriptionResult = try await useCase.execute(
+            fileURL: URL(filePath: "/tmp/test.mp3")
+        )
+
+        #expect(result.deliveryWarnings == ["Copied markdown to the clipboard, but saving the file failed."])
     }
 
     // MARK: - Extension case insensitivity

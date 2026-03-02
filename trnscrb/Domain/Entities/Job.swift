@@ -31,6 +31,8 @@ public struct Job: Sendable, Identifiable, Equatable {
     public private(set) var status: JobStatus
     /// Markdown output, set on completion.
     public private(set) var markdown: String?
+    /// Non-fatal warnings surfaced after successful completion.
+    public private(set) var deliveryWarnings: [String]
     /// When the job was created.
     public let createdAt: Date
     /// When the job completed or failed.
@@ -48,6 +50,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         self.fileURL = fileURL
         self.status = .pending
         self.markdown = nil
+        self.deliveryWarnings = []
         self.createdAt = createdAt
         self.completedAt = nil
     }
@@ -71,9 +74,10 @@ public struct Job: Sendable, Identifiable, Equatable {
     }
 
     /// Transitions from `processing` to `completed` with markdown output.
-    public mutating func complete(markdown: String) {
+    public mutating func complete(markdown: String, deliveryWarnings: [String] = []) {
         guard case .processing = status else { return }
         self.markdown = markdown
+        self.deliveryWarnings = deliveryWarnings
         self.status = .completed
         self.completedAt = Date()
     }
@@ -83,6 +87,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         switch status {
         case .pending, .uploading, .processing:
             self.status = .failed(error: error)
+            self.deliveryWarnings = []
             self.completedAt = Date()
         case .completed, .failed:
             break
@@ -94,9 +99,16 @@ public struct Job: Sendable, Identifiable, Equatable {
         switch status {
         case .pending, .uploading, .processing, .failed:
             status = .pending
+            deliveryWarnings = []
             completedAt = nil
         case .completed:
             break
         }
+    }
+
+    /// User-facing warning summary, if delivery completed with warnings.
+    public var warningMessage: String? {
+        guard !deliveryWarnings.isEmpty else { return nil }
+        return deliveryWarnings.joined(separator: " ")
     }
 }

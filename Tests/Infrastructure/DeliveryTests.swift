@@ -19,7 +19,7 @@ struct ClipboardDeliveryTests {
     @Test func deliverCopiesMarkdownToClipboard() async throws {
         let delivery: ClipboardDelivery = ClipboardDelivery()
         let result: TranscriptionResult = makeResult(markdown: "# Hello World")
-        try await delivery.deliver(result: result)
+        _ = try await delivery.deliver(result: result)
 
         let clipboard: String? = NSPasteboard.general.string(forType: .string)
         #expect(clipboard == "# Hello World")
@@ -27,8 +27,8 @@ struct ClipboardDeliveryTests {
 
     @Test func deliverOverwritesPreviousClipboard() async throws {
         let delivery: ClipboardDelivery = ClipboardDelivery()
-        try await delivery.deliver(result: makeResult(markdown: "first"))
-        try await delivery.deliver(result: makeResult(markdown: "second"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "first"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "second"))
 
         let clipboard: String? = NSPasteboard.general.string(forType: .string)
         #expect(clipboard == "second")
@@ -56,7 +56,7 @@ struct FileDeliveryTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
 
-        try await delivery.deliver(result: makeResult(markdown: "# Notes", fileName: "meeting.mp3"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "# Notes", fileName: "meeting.mp3"))
 
         let fileURL: URL = tempDir.appending(path: "meeting.md")
         let content: String = try String(contentsOf: fileURL, encoding: .utf8)
@@ -69,7 +69,7 @@ struct FileDeliveryTests {
         let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
 
         #expect(!FileManager.default.fileExists(atPath: tempDir.path()))
-        try await delivery.deliver(result: makeResult())
+        _ = try await delivery.deliver(result: makeResult())
         #expect(FileManager.default.fileExists(atPath: tempDir.path()))
     }
 
@@ -79,9 +79,9 @@ struct FileDeliveryTests {
         let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
 
         // First delivery — creates recording.md
-        try await delivery.deliver(result: makeResult(markdown: "first", fileName: "recording.mp3"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "first", fileName: "recording.mp3"))
         // Second delivery — should create recording-TIMESTAMP.md
-        try await delivery.deliver(result: makeResult(markdown: "second", fileName: "recording.mp3"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "second", fileName: "recording.mp3"))
 
         let files: [String] = try FileManager.default.contentsOfDirectory(atPath: tempDir.path())
         #expect(files.count == 2)
@@ -94,9 +94,9 @@ struct FileDeliveryTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
 
-        try await delivery.deliver(result: makeResult(markdown: "first", fileName: "recording.mp3"))
-        try await delivery.deliver(result: makeResult(markdown: "second", fileName: "recording.mp3"))
-        try await delivery.deliver(result: makeResult(markdown: "third", fileName: "recording.mp3"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "first", fileName: "recording.mp3"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "second", fileName: "recording.mp3"))
+        _ = try await delivery.deliver(result: makeResult(markdown: "third", fileName: "recording.mp3"))
 
         let files: [String] = try FileManager.default.contentsOfDirectory(atPath: tempDir.path())
         let recordingFiles: [String] = files.filter { $0.hasPrefix("recording") && $0.hasSuffix(".md") }
@@ -110,7 +110,7 @@ struct FileDeliveryTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
 
-        try await delivery.deliver(result: makeResult(fileName: "scan.pdf"))
+        _ = try await delivery.deliver(result: makeResult(fileName: "scan.pdf"))
 
         let files: [String] = try FileManager.default.contentsOfDirectory(atPath: tempDir.path())
         #expect(files == ["scan.md"])

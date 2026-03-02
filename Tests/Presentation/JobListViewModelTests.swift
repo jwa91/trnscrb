@@ -291,4 +291,34 @@ struct JobListViewModelTests {
         #expect(notifications[0].title == "trnscrb")
         #expect(notifications[0].body.contains("success.mp3 ready"))
     }
+
+    @Test func successfulProcessingWithDeliveryWarningMarksCompletedJobAndWarnsUser() async {
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(
+            deliverWarnings: ["Copied markdown to the clipboard, but saving the file failed."]
+        )
+        let notificationGateway: MockNotificationGateway = MockNotificationGateway()
+        let (vm, _, _, _, _) = makeViewModel(
+            delivery: delivery,
+            settings: configuredSettingsGateway(),
+            notificationGateway: notificationGateway
+        )
+
+        vm.processFiles([URL(filePath: "/tmp/warned.mp3")])
+
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+        #expect(completed)
+        #expect(vm.completedJobs.first?.status == .completed)
+        #expect(vm.completedJobs.first?.deliveryWarnings == [
+            "Copied markdown to the clipboard, but saving the file failed."
+        ])
+
+        let notified: Bool = await waitUntil(timeout: .seconds(2)) {
+            !(await notificationGateway.recordedNotifications().isEmpty)
+        }
+        #expect(notified)
+        let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
+        #expect(notifications[0].body.contains("saving the file failed"))
+    }
 }

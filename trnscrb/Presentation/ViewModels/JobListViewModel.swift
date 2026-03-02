@@ -255,9 +255,18 @@ public final class JobListViewModel: ObservableObject {
             }
 
             guard runningTasks[id] != nil else { return }
-            updateJob(id: id) { $0.complete(markdown: result.markdown) }
+            updateJob(id: id) {
+                $0.complete(
+                    markdown: result.markdown,
+                    deliveryWarnings: result.deliveryWarnings
+                )
+            }
             selectJob(id: id)
-            await postSuccessNotification(for: result.sourceFileName, jobID: id)
+            await postSuccessNotification(
+                for: result.sourceFileName,
+                jobID: id,
+                warningMessage: result.deliveryWarnings.joined(separator: " ")
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -365,11 +374,21 @@ public final class JobListViewModel: ObservableObject {
         }
     }
 
-    private func postSuccessNotification(for fileName: String, jobID: UUID) async {
+    private func postSuccessNotification(
+        for fileName: String,
+        jobID: UUID,
+        warningMessage: String
+    ) async {
+        let body: String
+        if warningMessage.isEmpty {
+            body = "\(fileName) ready — copied or saved based on your settings."
+        } else {
+            body = "\(fileName) ready — \(warningMessage)"
+        }
         await postNotification(
             identifier: jobID.uuidString,
             title: "trnscrb",
-            body: "\(fileName) ready — copied or saved based on your settings."
+            body: body
         )
     }
 

@@ -6,9 +6,10 @@ public struct ClipboardDelivery: DeliveryGateway {
     public init() {}
 
     /// Copies the markdown content to the system clipboard.
-    public func deliver(result: TranscriptionResult) async throws {
+    public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         let pasteboard: NSPasteboard = .general
         pasteboard.clearContents()
         pasteboard.setString(result.markdown, forType: .string)
+        return .success
     }
 }
