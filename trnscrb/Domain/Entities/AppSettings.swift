@@ -27,6 +27,8 @@ public struct AppSettings: Sendable, Equatable {
     public var saveFolderPath: String
     /// Whether to also copy markdown output to the clipboard.
     public var copyToClipboard: Bool
+    /// Whether to save markdown output to a file in the save folder.
+    public var saveToFolder: Bool
     /// Hours to retain files in S3 before cleanup.
     public var fileRetentionHours: Int
     /// Whether to launch at login.
@@ -41,6 +43,7 @@ public struct AppSettings: Sendable, Equatable {
         s3PathPrefix: String = "trnscrb/",
         saveFolderPath: String = "~/Documents/trnscrb/",
         copyToClipboard: Bool = true,
+        saveToFolder: Bool = false,
         fileRetentionHours: Int = 24,
         launchAtLogin: Bool = false
     ) {
@@ -51,6 +54,7 @@ public struct AppSettings: Sendable, Equatable {
         self.s3PathPrefix = s3PathPrefix
         self.saveFolderPath = saveFolderPath
         self.copyToClipboard = copyToClipboard
+        self.saveToFolder = saveToFolder
         self.fileRetentionHours = fileRetentionHours
         self.launchAtLogin = launchAtLogin
     }

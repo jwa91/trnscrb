@@ -50,6 +50,7 @@ struct TOMLConfigManagerTests {
             s3PathPrefix: "uploads/",
             saveFolderPath: "~/Desktop/output/",
             copyToClipboard: false,
+            saveToFolder: true,
             fileRetentionHours: 48,
             launchAtLogin: true
         )

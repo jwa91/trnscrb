@@ -92,6 +92,7 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             "s3_path_prefix = \(quoted(settings.s3PathPrefix))",
             "save_folder_path = \(quoted(settings.saveFolderPath))",
             "copy_to_clipboard = \(settings.copyToClipboard)",
+            "save_to_folder = \(settings.saveToFolder)",
             "file_retention_hours = \(settings.fileRetentionHours)",
             "launch_at_login = \(settings.launchAtLogin)"
         ]
@@ -120,6 +121,7 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             s3PathPrefix: dict["s3_path_prefix"] ?? defaults.s3PathPrefix,
             saveFolderPath: dict["save_folder_path"] ?? defaults.saveFolderPath,
             copyToClipboard: dict["copy_to_clipboard"].map { $0 == "true" } ?? defaults.copyToClipboard,
+            saveToFolder: dict["save_to_folder"].map { $0 == "true" } ?? defaults.saveToFolder,
             fileRetentionHours: Int(dict["file_retention_hours"] ?? "") ?? defaults.fileRetentionHours,
             launchAtLogin: dict["launch_at_login"].map { $0 == "true" } ?? defaults.launchAtLogin
         )

@@ -90,6 +90,7 @@ struct SettingsView: View {
         Section("Output") {
             TextField("Save Folder", text: $viewModel.settings.saveFolderPath)
                 .textFieldStyle(.roundedBorder)
+            Toggle("Save markdown to folder", isOn: $viewModel.settings.saveToFolder)
             Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
         }
     }
