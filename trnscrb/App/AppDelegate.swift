@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover?
     /// Settings gateway for the lifetime of the app.
     private var settingsGateway: (any SettingsGateway)?
+    /// Job list view model — retained for status bar drop forwarding.
+    private var jobListViewModel: JobListViewModel?
     /// Monitors clicks outside the popover to dismiss it.
     private var eventMonitor: Any?
 
@@ -26,8 +28,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let gateway: TOMLConfigManager = TOMLConfigManager(keychainStore: keychainStore)
         settingsGateway = gateway
 
+        let s3Client: S3Client = S3Client(settingsGateway: gateway)
+        let audioProvider: MistralAudioProvider = MistralAudioProvider(settingsGateway: gateway)
+        let ocrProvider: MistralOCRProvider = MistralOCRProvider(settingsGateway: gateway)
+        let clipboardDelivery: ClipboardDelivery = ClipboardDelivery()
+        let fileDelivery: FileDelivery = FileDelivery(settingsGateway: gateway)
+        let compositeDelivery: CompositeDelivery = CompositeDelivery(
+            clipboard: clipboardDelivery,
+            file: fileDelivery,
+            settingsGateway: gateway
+        )
+
+        // Build use case
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: s3Client,
+            transcribers: [audioProvider, ocrProvider],
+            delivery: compositeDelivery,
+            settings: gateway
+        )
+
         // Build presentation
         let settingsVM: SettingsViewModel = SettingsViewModel(gateway: gateway)
+        let jobListVM: JobListViewModel = JobListViewModel(
+            useCase: useCase,
+            settingsGateway: gateway
+        )
+        self.jobListViewModel = jobListVM
 
         // Setup popover
         let popover: NSPopover = NSPopover()
@@ -35,7 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(
-            rootView: PopoverView(settingsViewModel: settingsVM)
+            rootView: PopoverView(
+                settingsViewModel: settingsVM,
+                jobListViewModel: jobListVM
+            )
         )
         self.popover = popover
 
@@ -52,6 +81,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
             // Avoid known right-click highlight sticking bug (Jesse Squires).
             button.sendAction(on: [.leftMouseDown, .rightMouseUp])
+
+            // Add drop target overlay
+            let dropView: StatusBarDropView = StatusBarDropView(frame: button.bounds)
+            dropView.autoresizingMask = [.width, .height]
+            dropView.onDrop = { [weak jobListVM] urls in
+                jobListVM?.processFiles(urls)
+            }
+            button.addSubview(dropView)
         }
         self.statusItem = statusItem
     }
