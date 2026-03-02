@@ -8,7 +8,11 @@ public struct NotifyUserUseCase: Sendable {
         self.gateway = gateway
     }
 
-    public func notify(title: String, body: String) async {
-        await gateway.notify(title: title, body: body)
+    public func notify(
+        title: String,
+        body: String,
+        identifier: String = UUID().uuidString
+    ) async {
+        await gateway.notify(identifier: identifier, title: title, body: body)
     }
 }

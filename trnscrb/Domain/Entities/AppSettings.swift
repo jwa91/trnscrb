@@ -63,4 +63,9 @@ public struct AppSettings: Sendable, Equatable {
     public var isS3Configured: Bool {
         !s3EndpointURL.isEmpty && !s3AccessKey.isEmpty && !s3BucketName.isEmpty
     }
+
+    /// Whether at least one output destination is enabled.
+    public var hasEnabledOutputDestination: Bool {
+        copyToClipboard || saveToFolder
+    }
 }

@@ -63,7 +63,7 @@ struct CompositeDeliveryTests {
         #expect(await file.deliveredCount() == 1)
     }
 
-    @Test func deliversToNeitherWhenBothDisabled() async throws {
+    @Test func fallsBackToClipboardWhenBothOutputsAreDisabled() async throws {
         let clipboard: SpyDelivery = SpyDelivery()
         let file: SpyDelivery = SpyDelivery()
         let gateway: MockSettingsGateway = MockSettingsGateway(
@@ -73,7 +73,7 @@ struct CompositeDeliveryTests {
             clipboard: clipboard, file: file, settingsGateway: gateway
         )
         try await delivery.deliver(result: makeResult())
-        #expect(await clipboard.deliveredCount() == 0)
+        #expect(await clipboard.deliveredCount() == 1)
         #expect(await file.deliveredCount() == 0)
     }
 }

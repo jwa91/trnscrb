@@ -11,6 +11,8 @@ import Network
 public final class JobListViewModel: ObservableObject {
     /// All jobs, both active and completed.
     @Published public var jobs: [Job] = []
+    /// Currently selected job, used for keyboard actions and notification re-entry.
+    @Published public var selectedJobID: UUID?
     /// Error message when S3 or API key is not configured.
     @Published public var configurationError: String?
     /// Last user-facing drop error (for unsupported file types).
@@ -69,14 +71,33 @@ public final class JobListViewModel: ObservableObject {
 
     /// Jobs that have completed or failed, newest first.
     public var completedJobs: [Job] {
-        jobs.filter { job in
-            switch job.status {
-            case .completed, .failed:
-                return true
-            case .pending, .uploading, .processing:
-                return false
+        jobs
+            .filter { job in
+                switch job.status {
+                case .completed, .failed:
+                    return true
+                case .pending, .uploading, .processing:
+                    return false
+                }
             }
+            .sorted { lhs, rhs in
+                let lhsCompletedAt: Date = lhs.completedAt ?? lhs.createdAt
+                let rhsCompletedAt: Date = rhs.completedAt ?? rhs.createdAt
+                if lhsCompletedAt != rhsCompletedAt {
+                    return lhsCompletedAt > rhsCompletedAt
+                }
+                return lhs.createdAt > rhs.createdAt
+            }
+    }
+
+    /// Selects a job so the UI can reveal it after keyboard actions or notification re-entry.
+    public func selectJob(id: UUID?) {
+        guard let id else {
+            selectedJobID = nil
+            return
         }
+        guard jobs.contains(where: { $0.id == id }) else { return }
+        selectedJobID = id
     }
 
     /// Validates and queues files for processing.
@@ -139,6 +160,9 @@ public final class JobListViewModel: ObservableObject {
     public func removeJob(id jobID: UUID) {
         cancelTask(for: jobID)
         queuedOfflineJobs[jobID] = nil
+        if selectedJobID == jobID {
+            selectedJobID = nil
+        }
         jobs.removeAll { $0.id == jobID }
     }
 
@@ -173,6 +197,11 @@ public final class JobListViewModel: ObservableObject {
             let settings: AppSettings = try await settingsGateway.loadSettings()
             guard settings.isS3Configured else {
                 configurationError = "Configure your S3 storage in settings."
+                return false
+            }
+            guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
+                  !s3SecretKey.isEmpty else {
+                configurationError = "Configure your S3 secret key in settings."
                 return false
             }
             guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
@@ -227,7 +256,8 @@ public final class JobListViewModel: ObservableObject {
 
             guard runningTasks[id] != nil else { return }
             updateJob(id: id) { $0.complete(markdown: result.markdown) }
-            await postSuccessNotification(for: result.sourceFileName)
+            selectJob(id: id)
+            await postSuccessNotification(for: result.sourceFileName, jobID: id)
         } catch is CancellationError {
             return
         } catch {
@@ -242,6 +272,7 @@ public final class JobListViewModel: ObservableObject {
             updateJob(id: id) { $0.fail(error: error.localizedDescription) }
             await postFailureNotification(
                 fileName: jobs.first(where: { $0.id == id })?.fileName ?? "File",
+                jobID: id,
                 errorMessage: error.localizedDescription
             )
         }
@@ -334,22 +365,24 @@ public final class JobListViewModel: ObservableObject {
         }
     }
 
-    private func postSuccessNotification(for fileName: String) async {
+    private func postSuccessNotification(for fileName: String, jobID: UUID) async {
         await postNotification(
+            identifier: jobID.uuidString,
             title: "trnscrb",
             body: "\(fileName) ready — copied or saved based on your settings."
         )
     }
 
-    private func postFailureNotification(fileName: String, errorMessage: String) async {
+    private func postFailureNotification(fileName: String, jobID: UUID, errorMessage: String) async {
         await postNotification(
+            identifier: jobID.uuidString,
             title: "trnscrb",
             body: "\(fileName) failed: \(errorMessage)"
         )
     }
 
-    private func postNotification(title: String, body: String) async {
+    private func postNotification(identifier: String, title: String, body: String) async {
         guard let notificationUseCase else { return }
-        await notificationUseCase.notify(title: title, body: body)
+        await notificationUseCase.notify(title: title, body: body, identifier: identifier)
     }
 }

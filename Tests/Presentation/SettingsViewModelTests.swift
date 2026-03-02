@@ -18,13 +18,14 @@ struct SettingsViewModelTests {
         let connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
             gateway: connectivityGateway
         )
-        let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase = ApplyLaunchAtLoginUseCase(
-            gateway: launchAtLoginGateway
+        let saveSettingsUseCase: SaveSettingsUseCase = SaveSettingsUseCase(
+            gateway: gateway,
+            launchAtLoginUseCase: ApplyLaunchAtLoginUseCase(gateway: launchAtLoginGateway)
         )
         let vm: SettingsViewModel = SettingsViewModel(
             gateway: gateway,
             connectivityUseCase: connectivityUseCase,
-            launchAtLoginUseCase: launchAtLoginUseCase
+            saveSettingsUseCase: saveSettingsUseCase
         )
         return (vm, gateway, connectivityGateway, launchAtLoginGateway)
     }
@@ -165,5 +166,18 @@ struct SettingsViewModelTests {
         #expect((await gateway.snapshotSettings()).launchAtLogin == true)
         #expect(await launchAtLoginGateway.recordedCallCount() == 1)
         #expect(await launchAtLoginGateway.recordedAppliedValues() == [true])
+    }
+
+    @Test func saveRejectsWhenAllOutputsAreDisabled() async {
+        let (vm, gateway, _, launchAtLoginGateway) = makeViewModel()
+        vm.settings.copyToClipboard = false
+        vm.settings.saveToFolder = false
+
+        let didSave: Bool = await vm.save()
+
+        #expect(!didSave)
+        #expect(vm.error == "Enable clipboard or folder output before saving.")
+        #expect(await gateway.snapshotSettings() == AppSettings())
+        #expect(await launchAtLoginGateway.recordedCallCount() == 0)
     }
 }

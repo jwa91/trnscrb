@@ -30,6 +30,11 @@ public struct CompositeDelivery: DeliveryGateway {
     /// Delivers the result to all enabled output modes.
     public func deliver(result: TranscriptionResult) async throws {
         let settings: AppSettings = try await settingsGateway.loadSettings()
+        guard settings.hasEnabledOutputDestination else {
+            // Never drop successful output on the floor; clipboard is the spec default.
+            try await clipboard.deliver(result: result)
+            return
+        }
         if settings.copyToClipboard {
             try await clipboard.deliver(result: result)
         }

@@ -160,6 +160,27 @@ struct JobListViewModelTests {
         #expect(vm.jobs.isEmpty)
     }
 
+    @Test func setsConfigErrorWhenS3SecretMissing() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                s3EndpointURL: "https://s3.example.com",
+                s3AccessKey: "AKID",
+                s3BucketName: "bucket"
+            ),
+            secrets: [.mistralAPIKey: "mk-test"]
+        )
+        let (vm, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/test.mp3")])
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == "Configure your S3 secret key in settings.")
+        #expect(vm.jobs.isEmpty)
+    }
+
     // MARK: - Completed jobs history
 
     @Test func completedJobsListHasMaxTenItems() async {
@@ -176,6 +197,26 @@ struct JobListViewModelTests {
         #expect(didComplete)
         let completed: [Job] = vm.completedJobs
         #expect(completed.count <= 10)
+    }
+
+    @Test func completedJobsAreSortedNewestFirst() async throws {
+        let (vm, _, _, _, _) = makeViewModel()
+
+        var older: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/older.mp3"))
+        older.startUpload()
+        older.startProcessing()
+        older.complete(markdown: "# older")
+
+        try await Task.sleep(for: .milliseconds(10))
+
+        var newer: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/newer.mp3"))
+        newer.startUpload()
+        newer.startProcessing()
+        newer.complete(markdown: "# newer")
+
+        vm.jobs = [older, newer]
+
+        #expect(vm.completedJobs.map(\.fileName) == ["newer.mp3", "older.mp3"])
     }
 
     // MARK: - Computed properties
@@ -244,8 +285,9 @@ struct JobListViewModelTests {
         }
 
         #expect(notified)
-        let notifications: [(title: String, body: String)] = await notificationGateway.recordedNotifications()
+        let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
         #expect(notifications.count == 1)
+        #expect(UUID(uuidString: notifications[0].identifier) == vm.completedJobs.first?.id)
         #expect(notifications[0].title == "trnscrb")
         #expect(notifications[0].body.contains("success.mp3 ready"))
     }

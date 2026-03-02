@@ -1,0 +1,109 @@
+import Foundation
+
+/// Validation and transaction errors that can occur while saving settings.
+public enum SettingsSaveError: Error, LocalizedError, Sendable {
+    case noOutputDestination
+
+    public var errorDescription: String? {
+        switch self {
+        case .noOutputDestination:
+            return "Enable clipboard or folder output before saving."
+        }
+    }
+}
+
+/// Persists settings, secrets, and launch-at-login as one rollbackable operation.
+public struct SaveSettingsUseCase: Sendable {
+    private let gateway: any SettingsGateway
+    private let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
+
+    public init(
+        gateway: any SettingsGateway,
+        launchAtLoginUseCase: ApplyLaunchAtLoginUseCase? = nil
+    ) {
+        self.gateway = gateway
+        self.launchAtLoginUseCase = launchAtLoginUseCase
+    }
+
+    public func save(
+        settings: AppSettings,
+        mistralAPIKey: String,
+        s3SecretKey: String
+    ) async throws {
+        guard settings.hasEnabledOutputDestination else {
+            throw SettingsSaveError.noOutputDestination
+        }
+
+        let snapshot: SettingsSnapshot = try await loadSnapshot()
+        var didPersistSettings: Bool = false
+        var didPersistMistralAPIKey: Bool = false
+        var didPersistS3SecretKey: Bool = false
+        var didAttemptLaunchAtLoginApply: Bool = false
+
+        do {
+            try await gateway.saveSettings(settings)
+            didPersistSettings = true
+            try await persistSecret(mistralAPIKey, for: .mistralAPIKey)
+            didPersistMistralAPIKey = true
+            try await persistSecret(s3SecretKey, for: .s3SecretKey)
+            didPersistS3SecretKey = true
+            didAttemptLaunchAtLoginApply = launchAtLoginUseCase != nil
+            try await launchAtLoginUseCase?.apply(enabled: settings.launchAtLogin)
+        } catch {
+            await rollback(
+                to: snapshot,
+                didPersistSettings: didPersistSettings,
+                didPersistMistralAPIKey: didPersistMistralAPIKey,
+                didPersistS3SecretKey: didPersistS3SecretKey,
+                didAttemptLaunchAtLoginApply: didAttemptLaunchAtLoginApply
+            )
+            throw error
+        }
+    }
+
+    private func loadSnapshot() async throws -> SettingsSnapshot {
+        let settings: AppSettings = try await gateway.loadSettings()
+        let mistralAPIKey: String = try await gateway.getSecret(for: .mistralAPIKey) ?? ""
+        let s3SecretKey: String = try await gateway.getSecret(for: .s3SecretKey) ?? ""
+        return SettingsSnapshot(
+            settings: settings,
+            mistralAPIKey: mistralAPIKey,
+            s3SecretKey: s3SecretKey
+        )
+    }
+
+    private func persistSecret(_ value: String, for key: SecretKey) async throws {
+        if value.isEmpty {
+            try await gateway.removeSecret(for: key)
+        } else {
+            try await gateway.setSecret(value, for: key)
+        }
+    }
+
+    private func rollback(
+        to snapshot: SettingsSnapshot,
+        didPersistSettings: Bool,
+        didPersistMistralAPIKey: Bool,
+        didPersistS3SecretKey: Bool,
+        didAttemptLaunchAtLoginApply: Bool
+    ) async {
+        if didPersistSettings {
+            try? await gateway.saveSettings(snapshot.settings)
+        }
+        if didPersistMistralAPIKey {
+            try? await persistSecret(snapshot.mistralAPIKey, for: .mistralAPIKey)
+        }
+        if didPersistS3SecretKey {
+            try? await persistSecret(snapshot.s3SecretKey, for: .s3SecretKey)
+        }
+        if didAttemptLaunchAtLoginApply {
+            try? await launchAtLoginUseCase?.apply(enabled: snapshot.settings.launchAtLogin)
+        }
+    }
+}
+
+private struct SettingsSnapshot: Sendable {
+    let settings: AppSettings
+    let mistralAPIKey: String
+    let s3SecretKey: String
+}

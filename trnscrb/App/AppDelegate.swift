@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 /// Application delegate and composition root.
 ///
@@ -21,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cleanupUseCase: CleanupRetentionUseCase?
     /// Applies launch-at-login settings at startup and from the settings screen.
     private var launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
+    /// Persists settings and secrets as a single use case for the settings screen.
+    private var saveSettingsUseCase: SaveSettingsUseCase?
     /// Timer driving periodic retention cleanup.
     private var retentionTimer: Timer?
 
@@ -53,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             gateway: LaunchAtLoginManager()
         )
         self.launchAtLoginUseCase = launchAtLoginUseCase
+        let saveSettingsUseCase: SaveSettingsUseCase = SaveSettingsUseCase(
+            gateway: gateway,
+            launchAtLoginUseCase: launchAtLoginUseCase
+        )
+        self.saveSettingsUseCase = saveSettingsUseCase
+        UNUserNotificationCenter.current().delegate = self
 
         // Build use case
         let useCase: ProcessFileUseCase = ProcessFileUseCase(
@@ -67,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsVM: SettingsViewModel = SettingsViewModel(
             gateway: gateway,
             connectivityUseCase: connectivityUseCase,
-            launchAtLoginUseCase: launchAtLoginUseCase
+            saveSettingsUseCase: saveSettingsUseCase
         )
         let jobListVM: JobListViewModel = JobListViewModel(
             useCase: useCase,
@@ -204,6 +213,23 @@ extension AppDelegate: NSPopoverDelegate {
     nonisolated func popoverDidClose(_ notification: Notification) {
         DispatchQueue.main.async { @MainActor in
             self.statusItem?.button?.isHighlighted = false
+        }
+    }
+}
+
+// MARK: - UNUserNotificationCenterDelegate
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let identifier: String = response.notification.request.identifier
+        await MainActor.run {
+            self.showPopover()
+            if let jobID: UUID = UUID(uuidString: identifier) {
+                self.jobListViewModel?.selectJob(id: jobID)
+            }
         }
     }
 }
