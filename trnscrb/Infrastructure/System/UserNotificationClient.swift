@@ -6,7 +6,7 @@ public struct UserNotificationClient: NotificationGateway {
     public init() {}
 
     public func notify(identifier: String, title: String, body: String) async {
-        guard !isTestHost else { return }
+        guard NotificationRuntimeSupport.areUserNotificationsSupported() else { return }
 
         let center: UNUserNotificationCenter = .current()
         let authorizationStatus: UNAuthorizationStatus = await notificationAuthorizationStatus(
@@ -41,13 +41,6 @@ public struct UserNotificationClient: NotificationGateway {
             }
         }
     }
-
-    private var isTestHost: Bool {
-        let bundlePath: String = Bundle.main.bundleURL.path
-        return bundlePath.contains("/swift/pm")
-            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    }
-
     private func notificationAuthorizationStatus(center: UNUserNotificationCenter) async
         -> UNAuthorizationStatus
     {

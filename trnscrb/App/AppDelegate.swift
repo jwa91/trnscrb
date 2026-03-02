@@ -61,7 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launchAtLoginUseCase: launchAtLoginUseCase
         )
         self.saveSettingsUseCase = saveSettingsUseCase
-        UNUserNotificationCenter.current().delegate = self
+        if NotificationRuntimeSupport.areUserNotificationsSupported() {
+            UNUserNotificationCenter.current().delegate = self
+        }
 
         // Build use case
         let useCase: ProcessFileUseCase = ProcessFileUseCase(
