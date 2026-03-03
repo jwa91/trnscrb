@@ -12,7 +12,7 @@ struct PopoverContentLayout: Equatable {
 
     var dropZoneMode: DropZoneMode {
         if activeJobCount > 0 {
-            return .hidden
+            return .compact
         }
         if completedJobCount > 0 {
             return .compact

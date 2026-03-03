@@ -8,14 +8,16 @@ struct JobRowView: View {
     var isSelected: Bool = false
     /// Whether the inline markdown preview is visible.
     var isExpanded: Bool = false
-    /// Whether the copied confirmation is visible.
-    var showsCopyConfirmation: Bool = false
+    /// Whether markdown copy confirmation is visible.
+    var showsMarkdownCopyConfirmation: Bool = false
+    /// Whether source URL copy confirmation is visible.
+    var showsSourceCopyConfirmation: Bool = false
     /// Called when the row becomes selected.
     var onSelect: (() -> Void)?
     /// Called when the user requests a markdown copy.
-    var onCopy: (() -> Void)?
-    /// Called when the user wants to reveal the saved markdown file in Finder.
-    var onRevealInFinder: (() -> Void)?
+    var onCopyMarkdown: (() -> Void)?
+    /// Called when the user requests copying the source URL.
+    var onCopySourceURL: (() -> Void)?
     /// Called when the user toggles preview expansion.
     var onToggleExpansion: (() -> Void)?
     /// Called when the user deletes this job.
@@ -25,22 +27,7 @@ struct JobRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                if canExpand {
-                    Button(action: {
-                        onSelect?()
-                        onToggleExpansion?()
-                    }) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 10)
-                    }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
-                } else {
-                    Color.clear
-                        .frame(width: 10, height: 10)
-                }
+                leadingIndicatorView
                 Image(systemName: fileTypeIcon)
                     .foregroundStyle(.secondary)
                     .frame(width: 16)
@@ -57,7 +44,7 @@ struct JobRowView: View {
                     .font(.caption2)
                     .foregroundStyle(detailColor)
                     .lineLimit(2)
-                    .padding(.leading, 34)
+                    .padding(.leading, leadingContentPadding)
                     .help(detailMessage)
             }
 
@@ -66,7 +53,7 @@ struct JobRowView: View {
                     Text(markdownPreview)
                         .font(.system(.caption, design: .monospaced))
                         .lineLimit(4)
-                        .textSelection(.enabled)
+                        .allowsHitTesting(false)
                         .foregroundStyle(.primary)
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,32 +61,8 @@ struct JobRowView: View {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(Color.primary.opacity(0.05))
                         )
-
-                    if let savedFileURL = job.savedFileURL {
-                        Link(destination: savedFileURL) {
-                            Label {
-                                Text(savedFileURL.path())
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            } icon: {
-                                Image(systemName: "doc.text")
-                            }
-                            .font(.caption2)
-                        }
-                        .pointingHandCursor()
-                        .help(savedFileURL.path())
-                    }
-
-                    if let presignedSourceURL = job.presignedSourceURL {
-                        Link(destination: presignedSourceURL) {
-                            Label("Open S3 URL", systemImage: "link")
-                                .font(.caption2)
-                        }
-                        .pointingHandCursor()
-                        .help(presignedSourceURL.absoluteString)
-                    }
                 }
-                .padding(.leading, 34)
+                .padding(.leading, leadingContentPadding)
             }
         }
         .padding(.vertical, 4)
@@ -109,16 +72,16 @@ struct JobRowView: View {
         .pointingHandCursor()
         .onHover { isHovered = $0 }
         .onTapGesture {
-            onSelect?()
+            handleRowTap()
         }
         .contextMenu {
             if case .completed = job.status {
                 Button("Copy Markdown") {
-                    onCopy?()
+                    onCopyMarkdown?()
                 }
-                if onRevealInFinder != nil {
-                    Button("Reveal in Finder") {
-                        onRevealInFinder?()
+                if onCopySourceURL != nil {
+                    Button("Copy S3 URL") {
+                        onCopySourceURL?()
                     }
                 }
             }
@@ -166,30 +129,40 @@ struct JobRowView: View {
     @ViewBuilder
     private var completionStatusView: some View {
         HStack(spacing: 6) {
-            completionIndicator
-
-            if let onCopy {
+            if let onCopyMarkdown {
                 completionActionButton(
                     systemName: "doc.on.doc",
                     title: "Copy Markdown",
-                    action: onCopy
+                    successTitle: "Copied Markdown",
+                    isConfirmed: showsMarkdownCopyConfirmation,
+                    action: onCopyMarkdown
                 )
             }
 
-            completionActionButton(
-                systemName: "folder",
-                title: "Reveal in Finder",
-                action: { onRevealInFinder?() }
-            )
-
-            if showsCopyConfirmation {
-                Text("Copied!")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-                    .transition(.opacity)
+            if let onCopySourceURL {
+                completionActionButton(
+                    systemName: "link",
+                    title: "Copy S3 URL",
+                    successTitle: "Copied S3 URL",
+                    isConfirmed: showsSourceCopyConfirmation,
+                    action: onCopySourceURL
+                )
             }
+
         }
-        .animation(.easeOut(duration: 0.18), value: showsCopyConfirmation)
+        .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
+        .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
+    }
+
+    @ViewBuilder
+    private var leadingIndicatorView: some View {
+        if case .completed = job.status {
+            completionTimestampView
+                .frame(width: leadingIndicatorWidth, alignment: .leading)
+        } else {
+            Color.clear
+                .frame(width: leadingIndicatorWidth, height: 1)
+        }
     }
 
     private var detailMessage: String? {
@@ -216,6 +189,14 @@ struct JobRowView: View {
         return .clear
     }
 
+    private var leadingIndicatorWidth: CGFloat {
+        36
+    }
+
+    private var leadingContentPadding: CGFloat {
+        leadingIndicatorWidth + 32
+    }
+
     private var canExpand: Bool {
         if case .completed = job.status {
             return markdownPreview != nil
@@ -240,38 +221,95 @@ struct JobRowView: View {
     }
 
     @ViewBuilder
-    private var completionIndicator: some View {
-        if job.deliveryWarnings.isEmpty {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+    private var completionTimestampView: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            let display: CompletionTimestampDisplay = completionTimestampDisplay(at: context.date)
+            Text(display.text)
                 .font(.caption2)
-        } else {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.orange)
-                .font(.caption2)
+                .foregroundStyle(display.color)
+                .monospacedDigit()
+                .help(display.tooltip)
         }
     }
 
     private func completionActionButton(
         systemName: String,
         title: String,
+        successTitle: String,
         isEnabled: Bool = true,
+        isConfirmed: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: {
             onSelect?()
             action()
         }) {
-            Image(systemName: systemName)
+            Image(systemName: isConfirmed ? "checkmark" : systemName)
                 .font(.caption2.weight(.semibold))
                 .frame(width: 12, height: 12)
+                .foregroundStyle(isConfirmed ? Color.green : Color.primary)
         }
         .buttonStyle(.bordered)
         .buttonBorderShape(.capsule)
         .controlSize(.mini)
         .labelStyle(.iconOnly)
-        .help(title)
+        .help(isConfirmed ? successTitle : title)
         .disabled(!isEnabled)
         .pointingHandCursor()
     }
+
+    private func handleRowTap() {
+        onSelect?()
+        if canExpand {
+            onToggleExpansion?()
+        }
+    }
+
+    private func completionTimestampDisplay(at now: Date) -> CompletionTimestampDisplay {
+        let baseColor: Color = job.deliveryWarnings.isEmpty ? .secondary : .orange
+        guard let completedAt: Date = job.completedAt else {
+            return CompletionTimestampDisplay(
+                text: "done",
+                tooltip: "Completed",
+                color: baseColor
+            )
+        }
+
+        let elapsed: TimeInterval = max(0, now.timeIntervalSince(completedAt))
+        let text: String
+        let color: Color
+        if elapsed < 30 {
+            text = "now"
+            color = .green
+        } else {
+            text = Self.completionTimestampFormatter.string(from: completedAt)
+            color = baseColor
+        }
+
+        return CompletionTimestampDisplay(
+            text: text,
+            tooltip: "Completed \(Self.completionTooltipFormatter.string(from: completedAt))",
+            color: color
+        )
+    }
+
+    private struct CompletionTimestampDisplay {
+        let text: String
+        let tooltip: String
+        let color: Color
+    }
+
+    private static let completionTimestampFormatter: DateFormatter = {
+        let formatter: DateFormatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("Hm")
+        return formatter
+    }()
+
+    private static let completionTooltipFormatter: DateFormatter = {
+        let formatter: DateFormatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }

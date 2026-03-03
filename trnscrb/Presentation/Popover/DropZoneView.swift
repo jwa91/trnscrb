@@ -22,24 +22,40 @@ struct DropZoneView: View {
 
     var body: some View {
         content
-        .frame(maxWidth: .infinity, maxHeight: mode == .full ? .infinity : nil)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(backgroundColor)
-                .padding(8)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(
-                    isTargeted ? Color.accentColor : Color.clear,
-                    style: StrokeStyle(lineWidth: 2, dash: [6])
-                )
-                .padding(8)
-        )
-        .onHover { isHovered = $0 }
-        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-            handleDrop(providers)
-        }
+            .padding(innerPadding)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(innerBackgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        borderColor,
+                        style: StrokeStyle(lineWidth: borderLineWidth, dash: [6])
+                    )
+            )
+            .padding(outerPadding)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: mode == .full ? 180 : nil)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(outerBackgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(outerBorderColor, lineWidth: 1)
+            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, mode == .full ? 10 : 6)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .pointingHandCursor()
+            .onTapGesture {
+                openFilePicker()
+            }
+            .onHover { isHovered = $0 }
+            .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+                handleDrop(providers)
+            }
     }
 
     @ViewBuilder
@@ -47,20 +63,18 @@ struct DropZoneView: View {
         switch mode {
         case .full:
             VStack(spacing: 8) {
-                Spacer()
                 Image(systemName: "arrow.down.doc")
                     .font(.system(size: 32))
                     .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.secondary)
                 Text("Drop files here")
                     .font(.headline)
-                Text("or drag onto the menu bar icon")
+                Text("or click to choose audio, PDFs, and images")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                chooseFilesButton
-                    .padding(.top, 4)
                 fileTypeHints
-                Spacer()
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
         case .compact:
             HStack(spacing: 10) {
                 Image(systemName: "arrow.down.doc")
@@ -71,25 +85,16 @@ struct DropZoneView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Add more files")
                         .font(.caption.weight(.semibold))
-                    Text("Drop here or choose audio, PDFs, and images")
+                    Text("Drop here or click to choose audio, PDFs, and images")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-
                 Spacer(minLength: 8)
-                chooseFilesButton
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
-    }
-
-    private var chooseFilesButton: some View {
-        DropZoneChooseFilesButton(
-            title: mode == .full ? "Choose Files\u{2026}" : "Choose\u{2026}",
-            action: openFilePicker
-        )
     }
 
     /// Compact listing of supported file types grouped by category.
@@ -103,14 +108,60 @@ struct DropZoneView: View {
         .padding(.top, 8)
     }
 
-    private var backgroundColor: Color {
+    private var innerPadding: EdgeInsets {
+        switch mode {
+        case .full:
+            return EdgeInsets(top: 14, leading: 12, bottom: 14, trailing: 12)
+        case .compact:
+            return EdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
+        }
+    }
+
+    private var outerPadding: EdgeInsets {
+        switch mode {
+        case .full:
+            return EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
+        case .compact:
+            return EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
+        }
+    }
+
+    private var innerBackgroundColor: Color {
         if isTargeted {
-            return Color.accentColor.opacity(0.12)
+            return Color.accentColor.opacity(0.1)
         }
         if isHovered {
-            return Color.primary.opacity(0.04)
+            return Color.primary.opacity(0.03)
         }
         return .clear
+    }
+
+    private var outerBackgroundColor: Color {
+        if isTargeted {
+            return Color.accentColor.opacity(0.05)
+        }
+        return Color.primary.opacity(0.02)
+    }
+
+    private var outerBorderColor: Color {
+        if isTargeted {
+            return Color.accentColor.opacity(0.45)
+        }
+        return Color.secondary.opacity(0.22)
+    }
+
+    private var borderColor: Color {
+        if isTargeted {
+            return Color.accentColor
+        }
+        if isHovered {
+            return Color.secondary.opacity(0.6)
+        }
+        return Color.secondary.opacity(0.45)
+    }
+
+    private var borderLineWidth: CGFloat {
+        isTargeted ? 2 : 1.2
     }
 
     /// Extracts file URLs from drop providers and calls onDrop.
@@ -146,25 +197,6 @@ struct DropZoneView: View {
         let urls: [URL] = SupportedFilePicker.pickFiles()
         guard !urls.isEmpty else { return }
         onDrop(urls)
-    }
-}
-
-private struct DropZoneChooseFilesButton: View {
-    let title: String
-    let action: () -> Void
-
-    @State private var isHovered: Bool = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(isHovered ? Color.accentColor : Color.accentColor.opacity(0.88))
-                .underline(isHovered)
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { isHovered = $0 }
     }
 }
 
