@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Endpoint: `POST https://api.mistral.ai/v1/audio/transcriptions`
 /// Model: `voxtral-mini-latest`
-/// Accepts a presigned S3 URL via the `file_url` parameter.
+/// Accepts a presigned S3 URL via the `file_url` multipart form field.
 public struct MistralAudioProvider: TranscriptionGateway {
     /// Mistral audio transcription endpoint URL string.
     private static let endpointString: String = "https://api.mistral.ai/v1/audio/transcriptions"
@@ -29,20 +29,26 @@ public struct MistralAudioProvider: TranscriptionGateway {
     /// Transcribes audio at the given presigned URL and returns the text.
     public func process(sourceURL: URL) async throws -> String {
         let apiKey: String = try await loadAPIKey()
-
-        let body: [String: Any] = [
-            "model": "voxtral-mini-latest",
-            "file_url": sourceURL.absoluteString
-        ]
+        AppLog.network.info("Starting audio transcription for \(sourceURL.absoluteString, privacy: .public)")
 
         guard let endpointURL: URL = URL(string: Self.endpointString) else {
             throw MistralError.invalidResponse("Invalid endpoint URL")
         }
+        let boundary: String = "Boundary-\(UUID().uuidString)"
         var request: URLRequest = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.httpBody = multipartBody(
+            boundary: boundary,
+            fields: [
+                ("model", "voxtral-mini-latest"),
+                ("file_url", sourceURL.absoluteString)
+            ]
+        )
         request.timeoutInterval = 300
 
         let (data, response) = try await urlSession.data(for: request)
@@ -50,6 +56,7 @@ public struct MistralAudioProvider: TranscriptionGateway {
         guard let http = response as? HTTPURLResponse else {
             throw MistralError.invalidResponse("Not an HTTP response")
         }
+        AppLog.network.info("Audio response HTTP \(http.statusCode, privacy: .public)")
         guard http.statusCode == 200 else {
             let responseBody: String = String(data: data, encoding: .utf8) ?? ""
             throw MistralError.requestFailed(statusCode: http.statusCode, body: responseBody)
@@ -65,10 +72,33 @@ public struct MistralAudioProvider: TranscriptionGateway {
 
     /// Retrieves the Mistral API key from the Keychain via SettingsGateway.
     private func loadAPIKey() async throws -> String {
-        guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
+        guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey)?
+            .trimmedCredentialValue,
               !apiKey.isEmpty else {
             throw MistralError.missingAPIKey
         }
         return apiKey
+    }
+
+    private func multipartBody(
+        boundary: String,
+        fields: [(name: String, value: String)]
+    ) -> Data {
+        var data: Data = Data()
+
+        for field in fields {
+            data.append("--\(boundary)\r\n")
+            data.append("Content-Disposition: form-data; name=\"\(field.name)\"\r\n\r\n")
+            data.append("\(field.value)\r\n")
+        }
+
+        data.append("--\(boundary)--\r\n")
+        return data
+    }
+}
+
+private extension Data {
+    mutating func append(_ string: String) {
+        self.append(Data(string.utf8))
     }
 }

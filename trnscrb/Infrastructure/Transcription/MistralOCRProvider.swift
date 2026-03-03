@@ -37,6 +37,7 @@ public struct MistralOCRProvider: TranscriptionGateway {
             "model": "mistral-ocr-latest",
             "document": documentChunk(for: sourceURL)
         ]
+        AppLog.network.info("Starting OCR request for \(sourceURL.absoluteString, privacy: .public)")
 
         var request: URLRequest = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
@@ -50,6 +51,7 @@ public struct MistralOCRProvider: TranscriptionGateway {
         guard let http = response as? HTTPURLResponse else {
             throw MistralError.invalidResponse("Not an HTTP response")
         }
+        AppLog.network.info("OCR response HTTP \(http.statusCode, privacy: .public)")
         guard http.statusCode == 200 else {
             let responseBody: String = String(data: data, encoding: .utf8) ?? ""
             throw MistralError.requestFailed(statusCode: http.statusCode, body: responseBody)
@@ -62,7 +64,8 @@ public struct MistralOCRProvider: TranscriptionGateway {
 
     /// Retrieves the Mistral API key from the Keychain via SettingsGateway.
     private func loadAPIKey() async throws -> String {
-        guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
+        guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey)?
+            .trimmedCredentialValue,
               !apiKey.isEmpty else {
             throw MistralError.missingAPIKey
         }
@@ -75,12 +78,12 @@ public struct MistralOCRProvider: TranscriptionGateway {
         if FileType.pdfExtensions.contains(ext) {
             return [
                 "type": "document_url",
-                "documentUrl": url.absoluteString
+                "document_url": url.absoluteString
             ]
         } else {
             return [
                 "type": "image_url",
-                "image_url": ["url": url.absoluteString]
+                "image_url": url.absoluteString
             ]
         }
     }

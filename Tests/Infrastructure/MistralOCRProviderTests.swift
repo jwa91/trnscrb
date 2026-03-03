@@ -38,7 +38,7 @@ struct MistralOCRProviderTests {
             #expect(body["model"] as? String == "mistral-ocr-latest")
             let doc = body["document"] as! [String: Any]
             #expect(doc["type"] as? String == "document_url")
-            #expect(doc["documentUrl"] as? String == "https://s3.example.com/bucket/doc.pdf")
+            #expect(doc["document_url"] as? String == "https://s3.example.com/bucket/doc.pdf")
 
             let responseJSON: String = """
             {"pages": [{"index": 0, "markdown": "# Page 1"}, {"index": 1, "markdown": "## Page 2"}]}
@@ -64,8 +64,7 @@ struct MistralOCRProviderTests {
             let body = try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
             let doc = body["document"] as! [String: Any]
             #expect(doc["type"] as? String == "image_url")
-            let imageURL = doc["image_url"] as! [String: Any]
-            #expect(imageURL["url"] as? String == "https://s3.example.com/bucket/photo.jpg")
+            #expect(doc["image_url"] as? String == "https://s3.example.com/bucket/photo.jpg")
 
             let responseJSON: String = """
             {"pages": [{"index": 0, "markdown": "Handwritten notes content"}]}

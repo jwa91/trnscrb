@@ -30,7 +30,11 @@ public struct SaveSettingsUseCase: Sendable {
         mistralAPIKey: String,
         s3SecretKey: String
     ) async throws {
-        guard settings.hasEnabledOutputDestination else {
+        let normalizedSettings: AppSettings = settings.normalizedForUse
+        let normalizedMistralAPIKey: String = mistralAPIKey.trimmedCredentialValue
+        let normalizedS3SecretKey: String = s3SecretKey.trimmedCredentialValue
+
+        guard normalizedSettings.hasEnabledOutputDestination else {
             throw SettingsSaveError.noOutputDestination
         }
 
@@ -41,14 +45,18 @@ public struct SaveSettingsUseCase: Sendable {
         var didAttemptLaunchAtLoginApply: Bool = false
 
         do {
-            try await gateway.saveSettings(settings)
+            try await gateway.saveSettings(normalizedSettings)
             didPersistSettings = true
-            try await persistSecret(mistralAPIKey, for: .mistralAPIKey)
+            try await persistSecret(normalizedMistralAPIKey, for: .mistralAPIKey)
             didPersistMistralAPIKey = true
-            try await persistSecret(s3SecretKey, for: .s3SecretKey)
+            try await persistSecret(normalizedS3SecretKey, for: .s3SecretKey)
             didPersistS3SecretKey = true
-            didAttemptLaunchAtLoginApply = launchAtLoginUseCase != nil
-            try await launchAtLoginUseCase?.apply(enabled: settings.launchAtLogin)
+            didAttemptLaunchAtLoginApply =
+                launchAtLoginUseCase != nil
+                && snapshot.settings.launchAtLogin != normalizedSettings.launchAtLogin
+            if didAttemptLaunchAtLoginApply {
+                try await launchAtLoginUseCase?.apply(enabled: normalizedSettings.launchAtLogin)
+            }
         } catch {
             await rollback(
                 to: snapshot,

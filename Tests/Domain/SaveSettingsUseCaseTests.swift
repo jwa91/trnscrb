@@ -101,6 +101,40 @@ struct SaveSettingsUseCaseTests {
         }
     }
 
+    @Test func saveDoesNotApplyLaunchAtLoginWhenValueIsUnchanged() async throws {
+        let originalSettings: AppSettings = AppSettings(
+            s3EndpointURL: "https://old.example.com",
+            s3AccessKey: "OLDKEY",
+            s3BucketName: "old-bucket",
+            copyToClipboard: true,
+            saveToFolder: true,
+            launchAtLogin: false
+        )
+        let gateway: RecordingSettingsGateway = RecordingSettingsGateway(
+            settings: originalSettings,
+            secrets: [
+                .mistralAPIKey: "old-mistral",
+                .s3SecretKey: "old-secret"
+            ]
+        )
+        let launchGateway: MockLaunchAtLoginGateway = MockLaunchAtLoginGateway()
+        let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
+            gateway: gateway,
+            launchAtLoginUseCase: ApplyLaunchAtLoginUseCase(gateway: launchGateway)
+        )
+
+        try await useCase.save(
+            settings: originalSettings,
+            mistralAPIKey: "new-mistral",
+            s3SecretKey: "new-secret"
+        )
+
+        #expect(await launchGateway.recordedCallCount() == 0)
+        let secrets: [SecretKey: String] = await gateway.snapshotSecrets()
+        #expect(secrets[.mistralAPIKey] == "new-mistral")
+        #expect(secrets[.s3SecretKey] == "new-secret")
+    }
+
     @Test func saveRollsBackPersistedStateWhenSecretWriteFails() async {
         let originalSettings: AppSettings = AppSettings(
             s3EndpointURL: "https://old.example.com",

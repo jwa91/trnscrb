@@ -6,6 +6,15 @@ public enum ProcessFileError: Error, Sendable, Equatable {
     case unsupportedFileType(String)
 }
 
+extension ProcessFileError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedFileType(let ext):
+            return "Unsupported file type: .\(ext)"
+        }
+    }
+}
+
 /// Stages of the processing pipeline, reported via callback.
 public enum ProcessingStage: Sendable, Equatable {
     /// File is being uploaded to object storage.
@@ -57,8 +66,10 @@ public final class ProcessFileUseCase: Sendable {
         onUploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> TranscriptionResult {
         let ext: String = fileURL.pathExtension.lowercased()
+        AppLog.pipeline.info("Starting process for \(fileURL.lastPathComponent, privacy: .public)")
 
         guard let fileType: FileType = FileType.from(extension: ext) else {
+            AppLog.pipeline.error("Unsupported file type \(ext, privacy: .public)")
             throw ProcessFileError.unsupportedFileType(ext)
         }
 
@@ -68,10 +79,11 @@ public final class ProcessFileUseCase: Sendable {
             throw ProcessFileError.unsupportedFileType(ext)
         }
 
-        let appSettings: AppSettings = try await settings.loadSettings()
+        let appSettings: AppSettings = try await settings.loadSettings().normalizedForUse
         let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
 
         onStageChange?(.uploading)
+        AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
         let presignedURL: URL = try await retry(
             maxAttempts: 3,
             initialBackoffNanoseconds: 250_000_000
@@ -82,14 +94,17 @@ public final class ProcessFileUseCase: Sendable {
                 onProgress: onUploadProgress
             )
         }
+        AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public)")
 
         onStageChange?(.processing)
+        AppLog.pipeline.info("Calling transcriber for \(fileURL.lastPathComponent, privacy: .public) as \(String(describing: fileType), privacy: .public)")
         let markdown: String = try await retry(
             maxAttempts: 2,
             initialBackoffNanoseconds: 500_000_000
         ) {
             try await transcriber.process(sourceURL: presignedURL)
         }
+        AppLog.pipeline.info("Transcriber completed for \(fileURL.lastPathComponent, privacy: .public)")
 
         let result: TranscriptionResult = TranscriptionResult(
             markdown: markdown,
@@ -98,6 +113,7 @@ public final class ProcessFileUseCase: Sendable {
         )
 
         let deliveryReport: DeliveryReport = try await delivery.deliver(result: result)
+        AppLog.pipeline.info("Delivery completed for \(fileURL.lastPathComponent, privacy: .public)")
 
         return TranscriptionResult(
             markdown: result.markdown,
@@ -121,7 +137,10 @@ public final class ProcessFileUseCase: Sendable {
             do {
                 return try await operation()
             } catch {
-                guard attempt < maxAttempts else {
+                AppLog.pipeline.error(
+                    "Attempt \(attempt, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                )
+                guard attempt < maxAttempts, shouldRetry(error) else {
                     throw error
                 }
                 try await Task.sleep(nanoseconds: backoff)
@@ -129,5 +148,47 @@ public final class ProcessFileUseCase: Sendable {
                 backoff = min(backoff * 2, 5_000_000_000)
             }
         }
+    }
+
+    private func shouldRetry(_ error: any Error) -> Bool {
+        if error is CancellationError {
+            return false
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut,
+                 .networkConnectionLost,
+                 .notConnectedToInternet,
+                 .cannotConnectToHost,
+                 .cannotFindHost,
+                 .dnsLookupFailed,
+                 .resourceUnavailable:
+                return true
+            default:
+                return false
+            }
+        }
+
+        if let s3Error = error as? S3Error {
+            switch s3Error {
+            case .invalidConfiguration:
+                return false
+            case .requestFailed(let statusCode, _):
+                return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
+            }
+        }
+
+        if let mistralError = error as? MistralError {
+            switch mistralError {
+            case .missingAPIKey, .invalidResponse:
+                return false
+            case .requestFailed(let statusCode, _):
+                return statusCode == 408 || statusCode == 409 || statusCode == 429
+                    || (500...599).contains(statusCode)
+            }
+        }
+
+        return false
     }
 }

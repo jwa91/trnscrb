@@ -3,6 +3,41 @@ import Testing
 
 @testable import trnscrb
 
+private final class SecretStoreSpy: SecretStore, @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var values: [SecretKey: String]
+    private var getCounts: [SecretKey: Int] = [:]
+
+    init(values: [SecretKey: String] = [:]) {
+        self.values = values
+    }
+
+    func get(for key: SecretKey) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        getCounts[key, default: 0] += 1
+        return values[key]
+    }
+
+    func set(_ value: String, for key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func remove(for key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = nil
+    }
+
+    func recordedGetCount(for key: SecretKey) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return getCounts[key, default: 0]
+    }
+}
+
 struct TOMLConfigManagerTests {
     /// Creates a manager backed by a temporary directory, cleaned up automatically.
     private func makeManager() throws -> (TOMLConfigManager, URL) {
@@ -178,5 +213,26 @@ struct TOMLConfigManagerTests {
         await #expect(throws: ConfigError.self) {
             _ = try await manager.loadSettings()
         }
+    }
+
+    @Test func getSecretUsesCachedValueAfterFirstLookup() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let secretStore: SecretStoreSpy = SecretStoreSpy(
+            values: [.mistralAPIKey: "mk-test"]
+        )
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            secretStore: secretStore
+        )
+
+        let firstValue: String? = try await manager.getSecret(for: .mistralAPIKey)
+        let secondValue: String? = try await manager.getSecret(for: .mistralAPIKey)
+
+        #expect(firstValue == "mk-test")
+        #expect(secondValue == "mk-test")
+        #expect(secretStore.recordedGetCount(for: .mistralAPIKey) == 1)
     }
 }

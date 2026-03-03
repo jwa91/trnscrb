@@ -104,6 +104,64 @@ private final class SlowUploadURLProtocol: URLProtocol {
     }
 }
 
+private actor CountingSettingsGateway: SettingsGateway {
+    private let settings: AppSettings
+    private let secrets: [SecretKey: String]
+    private var getSecretCallCount: Int = 0
+
+    init(settings: AppSettings, secrets: [SecretKey: String] = [:]) {
+        self.settings = settings
+        self.secrets = secrets
+    }
+
+    func loadSettings() async throws -> AppSettings {
+        settings
+    }
+
+    func saveSettings(_ settings: AppSettings) async throws {
+        _ = settings
+    }
+
+    func getSecret(for key: SecretKey) async throws -> String? {
+        getSecretCallCount += 1
+        return secrets[key]
+    }
+
+    func setSecret(_ value: String, for key: SecretKey) async throws {
+        _ = value
+        _ = key
+    }
+
+    func removeSecret(for key: SecretKey) async throws {
+        _ = key
+    }
+
+    func recordedGetSecretCallCount() -> Int {
+        getSecretCallCount
+    }
+}
+
+private final class FileAccessSpy: SecurityScopedFileAccessing, @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private(set) var startedURLs: [URL] = []
+    private(set) var stoppedURLs: [URL] = []
+    var startResult: Bool = true
+
+    func startAccessing(_ url: URL) -> Bool {
+        lock.lock()
+        startedURLs.append(url)
+        let startResult: Bool = self.startResult
+        lock.unlock()
+        return startResult
+    }
+
+    func stopAccessing(_ url: URL) {
+        lock.lock()
+        stoppedURLs.append(url)
+        lock.unlock()
+    }
+}
+
 @Suite(.serialized)
 struct S3ClientTests {
     private func makeClient(
@@ -112,7 +170,8 @@ struct S3ClientTests {
         secretKey: String = "SECRET",
         bucket: String = "test-bucket",
         region: String = "us-east-1",
-        pathPrefix: String = "trnscrb/"
+        pathPrefix: String = "trnscrb/",
+        fileAccess: (any SecurityScopedFileAccessing)? = nil
     ) -> (S3Client, MockRequestHandler) {
         let gateway: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
@@ -125,7 +184,11 @@ struct S3ClientTests {
             secrets: [.s3SecretKey: secretKey]
         )
         let (_, session, mock) = makeMockURLSession()
-        let client: S3Client = S3Client(settingsGateway: gateway, urlSession: session)
+        let client: S3Client = S3Client(
+            settingsGateway: gateway,
+            urlSession: session,
+            fileAccess: fileAccess ?? SecurityScopedFileAccess()
+        )
         return (client, mock)
     }
 
@@ -216,6 +279,26 @@ struct S3ClientTests {
         let progressValues: [Double] = await collector.snapshot()
         #expect(progressValues.first == 0)
         #expect(progressValues.last == 1)
+    }
+
+    @Test func uploadStartsAndStopsSecurityScopedFileAccess() async throws {
+        let fileAccess: FileAccessSpy = FileAccessSpy()
+        let (client, mock) = makeClient(fileAccess: fileAccess)
+        let tempFile: URL = FileManager.default.temporaryDirectory.appending(path: "scoped.mp3")
+        try Data("audio-content".utf8).write(to: tempFile)
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        mock.handler = { request in
+            let response: HTTPURLResponse = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data())
+        }
+
+        _ = try await client.upload(fileURL: tempFile, key: "trnscrb/scoped.mp3")
+
+        #expect(fileAccess.startedURLs == [tempFile])
+        #expect(fileAccess.stoppedURLs == [tempFile])
     }
 
     @Test func uploadEncodesPathSegmentsInObjectURL() async throws {
@@ -364,6 +447,17 @@ struct S3ClientTests {
 
         let keys: [String] = try await client.listCreatedBefore(Date())
         #expect(keys.isEmpty)
+    }
+
+    @Test func listCreatedBeforeSkipsSecretLookupWhenS3IsNotConfigured() async {
+        let gateway: CountingSettingsGateway = CountingSettingsGateway(settings: AppSettings())
+        let (_, session, _) = makeMockURLSession()
+        let client: S3Client = S3Client(settingsGateway: gateway, urlSession: session)
+
+        await #expect(throws: S3Error.self) {
+            _ = try await client.listCreatedBefore(Date())
+        }
+        #expect(await gateway.recordedGetSecretCallCount() == 0)
     }
 
     @Test func listCreatedBeforePaginatesAcrossContinuationToken() async throws {

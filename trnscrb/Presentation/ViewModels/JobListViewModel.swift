@@ -178,6 +178,16 @@ public final class JobListViewModel: ObservableObject {
         }
     }
 
+    /// Clears the current configuration error banner.
+    public func clearConfigurationError() {
+        configurationError = nil
+    }
+
+    /// Clears the current drop error banner.
+    public func clearDropError() {
+        dropError = nil
+    }
+
     /// Copies the markdown from a completed job to the clipboard.
     /// - Parameter jobID: ID of the completed job.
     public func copyToClipboard(jobID: UUID) {
@@ -194,18 +204,18 @@ public final class JobListViewModel: ObservableObject {
     /// - Returns: `true` if configuration is valid, `false` otherwise.
     private func checkConfiguration() async -> Bool {
         do {
-            let settings: AppSettings = try await settingsGateway.loadSettings()
+            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
             guard settings.isS3Configured else {
                 configurationError = "Configure your S3 storage in settings."
                 return false
             }
             guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
-                  !s3SecretKey.isEmpty else {
+                  !s3SecretKey.trimmedCredentialValue.isEmpty else {
                 configurationError = "Configure your S3 secret key in settings."
                 return false
             }
             guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
-                  !apiKey.isEmpty else {
+                  !apiKey.trimmedCredentialValue.isEmpty else {
                 configurationError = "Configure your Mistral API key in settings."
                 return false
             }
@@ -225,6 +235,7 @@ public final class JobListViewModel: ObservableObject {
 
         do {
             guard let fileURL: URL = jobs.first(where: { $0.id == id })?.fileURL else { return }
+            AppLog.ui.info("Job \(id.uuidString, privacy: .public) started for \(fileURL.lastPathComponent, privacy: .public)")
             guard runningTasks[id] != nil else { return }
             guard isNetworkOnline else {
                 queueOfflineJob(id: id, fileURL: fileURL)
@@ -255,12 +266,15 @@ public final class JobListViewModel: ObservableObject {
             }
 
             guard runningTasks[id] != nil else { return }
-            updateJob(id: id) {
-                $0.complete(
-                    markdown: result.markdown,
-                    deliveryWarnings: result.deliveryWarnings
-                )
+            guard completeJob(
+                id: id,
+                markdown: result.markdown,
+                deliveryWarnings: result.deliveryWarnings
+            ) else {
+                AppLog.ui.error("Job \(id.uuidString, privacy: .public) finished, but UI state could not be finalized")
+                return
             }
+            AppLog.ui.info("Job \(id.uuidString, privacy: .public) completed")
             selectJob(id: id)
             await postSuccessNotification(
                 for: result.sourceFileName,
@@ -268,6 +282,7 @@ public final class JobListViewModel: ObservableObject {
                 warningMessage: result.deliveryWarnings.joined(separator: " ")
             )
         } catch is CancellationError {
+            AppLog.ui.info("Job \(id.uuidString, privacy: .public) cancelled")
             return
         } catch {
             guard runningTasks[id] != nil else { return }
@@ -278,7 +293,11 @@ public final class JobListViewModel: ObservableObject {
                 dropError = "You're offline. Jobs will resume automatically once connectivity returns."
                 return
             }
+            AppLog.ui.error(
+                "Job \(id.uuidString, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+            )
             updateJob(id: id) { $0.fail(error: error.localizedDescription) }
+            selectJob(id: id)
             await postFailureNotification(
                 fileName: jobs.first(where: { $0.id == id })?.fileName ?? "File",
                 jobID: id,
@@ -311,6 +330,43 @@ public final class JobListViewModel: ObservableObject {
     private func updateJob(id: UUID, _ mutation: (inout Job) -> Void) {
         guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return }
         mutation(&jobs[index])
+    }
+
+    /// Finalizes a successfully processed job even if async stage callbacks arrive late.
+    ///
+    /// The processing stage is currently reported via an async hop back to the main actor.
+    /// If the pipeline completes before that hop runs, the job can still be in `uploading`
+    /// and a direct call to `Job.complete()` would be ignored by the state machine.
+    private func completeJob(
+        id: UUID,
+        markdown: String,
+        deliveryWarnings: [String]
+    ) -> Bool {
+        guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return false }
+
+        switch jobs[index].status {
+        case .pending:
+            jobs[index].startUpload()
+            jobs[index].startProcessing()
+        case .uploading:
+            jobs[index].startProcessing()
+        case .processing:
+            break
+        case .completed:
+            return true
+        case .failed:
+            return false
+        }
+
+        jobs[index].complete(
+            markdown: markdown,
+            deliveryWarnings: deliveryWarnings
+        )
+
+        if case .completed = jobs[index].status {
+            return true
+        }
+        return false
     }
 
     /// Removes the oldest completed/failed jobs beyond the retention limit.

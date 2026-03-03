@@ -30,6 +30,7 @@ public struct CompositeDelivery: DeliveryGateway {
     /// Delivers the result to all enabled output modes.
     public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         let settings: AppSettings = try await settingsGateway.loadSettings()
+        AppLog.delivery.info("Starting delivery for \(result.sourceFileName, privacy: .public)")
         guard settings.hasEnabledOutputDestination else {
             // Never drop successful output on the floor; clipboard is the spec default.
             return try await clipboard.deliver(result: result)
@@ -65,6 +66,9 @@ public struct CompositeDelivery: DeliveryGateway {
         }
 
         if successfulDeliveries == 0, let firstError {
+            AppLog.delivery.error(
+                "All delivery targets failed for \(result.sourceFileName, privacy: .public): \(firstError.localizedDescription, privacy: .public)"
+            )
             throw firstError
         }
 

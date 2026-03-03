@@ -26,6 +26,10 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var s3TestResult: TestResult = .idle
     /// Result of the last Mistral API test.
     @Published public var mistralTestResult: TestResult = .idle
+    /// Controls whether the Mistral API key is visible in the UI.
+    @Published public var isMistralAPIKeyVisible: Bool = false
+    /// Controls whether the S3 secret key is visible in the UI.
+    @Published public var isS3SecretKeyVisible: Bool = false
 
     /// Settings gateway for persistence.
     private let gateway: any SettingsGateway
@@ -65,6 +69,10 @@ public final class SettingsViewModel: ObservableObject {
     @discardableResult
     public func save() async -> Bool {
         do {
+            settings = settings.normalizedForUse
+            mistralAPIKey = mistralAPIKey.trimmedCredentialValue
+            s3SecretKey = s3SecretKey.trimmedCredentialValue
+
             try await saveSettingsUseCase.save(
                 settings: settings,
                 mistralAPIKey: mistralAPIKey,
@@ -83,6 +91,9 @@ public final class SettingsViewModel: ObservableObject {
     public func testS3() async {
         s3TestResult = .testing
         do {
+            settings = settings.normalizedForUse
+            s3SecretKey = s3SecretKey.trimmedCredentialValue
+
             guard !settings.s3EndpointURL.isEmpty,
                   !settings.s3AccessKey.isEmpty,
                   !settings.s3BucketName.isEmpty,
@@ -104,6 +115,7 @@ public final class SettingsViewModel: ObservableObject {
     public func testMistral() async {
         mistralTestResult = .testing
         do {
+            mistralAPIKey = mistralAPIKey.trimmedCredentialValue
             guard !mistralAPIKey.isEmpty else {
                 mistralTestResult = .failure("Enter an API key first")
                 return
