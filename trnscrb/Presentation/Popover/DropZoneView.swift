@@ -6,32 +6,21 @@ import UniformTypeIdentifiers
 /// Shows a visual target area with hover feedback. Validates file types
 /// using `FileType.allSupported` and calls `onDrop` with valid URLs.
 struct DropZoneView: View {
+    enum Mode {
+        case full
+        case compact
+    }
+
     /// Called with the URLs of dropped/selected files.
     var onDrop: ([URL]) -> Void
+    /// Layout variant for the idle or inline uploader state.
+    var mode: Mode = .full
     /// Tracks whether a drag is hovering over the zone.
     @State private var isTargeted: Bool = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            Spacer()
-            Image(systemName: "arrow.down.doc")
-                .font(.system(size: 32))
-                .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
-            Text("Drop files here")
-                .font(.headline)
-            Text("or drag onto the menu bar icon")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button("Choose Files\u{2026}") {
-                openFilePicker()
-            }
-            .buttonStyle(.borderless)
-            .font(.caption)
-            .padding(.top, 4)
-            fileTypeHints
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        content
+        .frame(maxWidth: .infinity, maxHeight: mode == .full ? .infinity : nil)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(
@@ -43,6 +32,57 @@ struct DropZoneView: View {
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers)
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch mode {
+        case .full:
+            VStack(spacing: 8) {
+                Spacer()
+                Image(systemName: "arrow.down.doc")
+                    .font(.system(size: 32))
+                    .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
+                Text("Drop files here")
+                    .font(.headline)
+                Text("or drag onto the menu bar icon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                chooseFilesButton
+                    .padding(.top, 4)
+                fileTypeHints
+                Spacer()
+            }
+        case .compact:
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.down.doc")
+                    .font(.system(size: 18))
+                    .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Add more files")
+                        .font(.caption.weight(.semibold))
+                    Text("Drop here or choose audio, PDFs, and images")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+                chooseFilesButton
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+        }
+    }
+
+    private var chooseFilesButton: some View {
+        Button(mode == .full ? "Choose Files\u{2026}" : "Choose\u{2026}") {
+            openFilePicker()
+        }
+        .buttonStyle(.borderless)
+        .font(.caption)
     }
 
     /// Compact listing of supported file types grouped by category.
@@ -86,6 +126,7 @@ struct DropZoneView: View {
 
     /// Opens a macOS file picker dialog for selecting files.
     private func openFilePicker() {
+        NSApp.activate(ignoringOtherApps: true)
         let panel: NSOpenPanel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
@@ -93,10 +134,9 @@ struct DropZoneView: View {
             UTType(filenameExtension: ext)
         }
         panel.allowedContentTypes = extensions
-        panel.begin { response in
-            if response == .OK {
-                onDrop(panel.urls)
-            }
+        let response: NSApplication.ModalResponse = panel.runModal()
+        if response == .OK {
+            onDrop(panel.urls)
         }
     }
 }

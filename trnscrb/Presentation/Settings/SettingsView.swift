@@ -66,12 +66,14 @@ struct SettingsView: View {
         Section("S3 Storage") {
             TextField("Endpoint URL", text: $viewModel.settings.s3EndpointURL)
                 .textFieldStyle(.roundedBorder)
+                .help("You can paste either https://host or just host; the app will use HTTPS.")
             TextField("Access Key", text: $viewModel.settings.s3AccessKey)
                 .textFieldStyle(.roundedBorder)
-            SecureField("Secret Key", text: $viewModel.s3SecretKey)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            secretField(
+                "Secret Key",
+                text: $viewModel.s3SecretKey,
+                isVisible: $viewModel.isS3SecretKeyVisible
+            )
             TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
                 .textFieldStyle(.roundedBorder)
             TextField("Region", text: $viewModel.settings.s3Region)
@@ -90,10 +92,11 @@ struct SettingsView: View {
     /// Mistral API key field.
     private var mistralSection: some View {
         Section("Mistral API") {
-            SecureField("API Key", text: $viewModel.mistralAPIKey)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            secretField(
+                "API Key",
+                text: $viewModel.mistralAPIKey,
+                isVisible: $viewModel.isMistralAPIKeyVisible
+            )
             HStack {
                 testButton("Test", result: viewModel.mistralTestResult) {
                     Task { await viewModel.testMistral() }
@@ -164,6 +167,34 @@ struct SettingsView: View {
                 .foregroundStyle(.red)
                 .lineLimit(1)
                 .truncationMode(.tail)
+        }
+    }
+
+    private func secretField(
+        _ title: String,
+        text: Binding<String>,
+        isVisible: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 8) {
+            Group {
+                if isVisible.wrappedValue {
+                    TextField(title, text: text)
+                } else {
+                    SecureField(title, text: text)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .lineLimit(1)
+            .truncationMode(.middle)
+
+            Button {
+                isVisible.wrappedValue.toggle()
+            } label: {
+                Image(systemName: isVisible.wrappedValue ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.borderless)
+            .help(isVisible.wrappedValue ? "Hide value" : "Show value")
         }
     }
 }

@@ -9,17 +9,33 @@ public enum KeychainError: Error, Sendable {
     case dataConversionFailed
 }
 
+extension KeychainError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .unexpectedStatus(let status):
+            let systemMessage: String = (SecCopyErrorMessageString(status, nil) as String?)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if systemMessage.isEmpty {
+                return "Keychain error (\(status))."
+            }
+            return "Keychain error (\(status)): \(systemMessage)"
+        case .dataConversionFailed:
+            return "The secret could not be encoded for Keychain storage."
+        }
+    }
+}
+
 /// Wraps the macOS Keychain for storing and retrieving secrets.
 ///
 /// Each secret is stored as a generic password keyed by service + account.
 /// The service name scopes all items to this app (or a test namespace).
-public struct KeychainStore: Sendable {
+public struct KeychainStore: SecretStore, Sendable {
     /// Keychain service name used to scope stored items.
     private let service: String
 
     /// Creates a KeychainStore scoped to the given service name.
     /// - Parameter service: Keychain service identifier (default: `"com.trnscrb"`).
-    public init(service: String = "com.trnscrb") {
+    public init(service: String = "com.trnscrb.credentials.v2") {
         self.service = service
     }
 

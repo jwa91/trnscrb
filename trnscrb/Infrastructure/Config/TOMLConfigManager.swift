@@ -14,16 +14,25 @@ public enum ConfigError: Error, Sendable {
 public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
     /// Directory containing `config.toml`.
     private let configDirectory: URL
-    /// Keychain wrapper for secret storage.
-    private let keychainStore: KeychainStore
+    /// Secret store wrapper for secret storage.
+    private let secretStore: any SecretStore
+    /// In-memory cache to avoid repeated keychain prompts in the same session.
+    private let secretCache: SecretCache = SecretCache()
 
     /// Creates a config manager.
     /// - Parameters:
     ///   - configDirectory: Override for config directory (defaults to XDG path).
     ///   - keychainStore: Keychain wrapper for secret storage.
-    public init(
+    public convenience init(
         configDirectory: URL? = nil,
         keychainStore: KeychainStore = KeychainStore()
+    ) {
+        self.init(configDirectory: configDirectory, secretStore: keychainStore)
+    }
+
+    init(
+        configDirectory: URL? = nil,
+        secretStore: any SecretStore
     ) {
         if let configDirectory {
             self.configDirectory = configDirectory
@@ -35,7 +44,7 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
                     .appending(path: ".config/trnscrb")
             }
         }
-        self.keychainStore = keychainStore
+        self.secretStore = secretStore
     }
 
     /// URL of the TOML config file.
@@ -67,17 +76,29 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
 
     /// Retrieves a secret from the Keychain.
     public func getSecret(for key: SecretKey) async throws -> String? {
-        try keychainStore.get(for: key)
+        let cachedSecret: SecretCache.LookupResult = secretCache.cachedSecret(for: key)
+        switch cachedSecret {
+        case .cached(let value):
+            return value
+        case .notLoaded:
+            break
+        }
+
+        let value: String? = try secretStore.get(for: key)
+        secretCache.store(value, for: key)
+        return value
     }
 
     /// Stores a secret in the Keychain.
     public func setSecret(_ value: String, for key: SecretKey) async throws {
-        try keychainStore.set(value, for: key)
+        try secretStore.set(value, for: key)
+        secretCache.store(value, for: key)
     }
 
     /// Removes a secret from the Keychain.
     public func removeSecret(for key: SecretKey) async throws {
-        try keychainStore.remove(for: key)
+        try secretStore.remove(for: key)
+        secretCache.store(nil, for: key)
     }
 
     // MARK: - TOML serialization
@@ -186,5 +207,41 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
                 .replacingOccurrences(of: "\\\\", with: "\\")
         }
         return result
+    }
+}
+
+private final class SecretCache: @unchecked Sendable {
+    enum LookupResult {
+        case notLoaded
+        case cached(String?)
+    }
+
+    private enum Entry {
+        case value(String)
+        case missing
+    }
+
+    private let lock: NSLock = NSLock()
+    private var values: [SecretKey: Entry] = [:]
+
+    func cachedSecret(for key: SecretKey) -> LookupResult {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = values[key] else {
+            return .notLoaded
+        }
+
+        switch entry {
+        case .value(let value):
+            return .cached(value)
+        case .missing:
+            return .cached(nil)
+        }
+    }
+
+    func store(_ value: String?, for key: SecretKey) {
+        lock.lock()
+        values[key] = value.map(Entry.value) ?? .missing
+        lock.unlock()
     }
 }

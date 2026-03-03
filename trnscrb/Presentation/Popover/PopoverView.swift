@@ -26,22 +26,45 @@ struct PopoverView: View {
 
     /// Main content shown when settings is not active.
     private var mainContent: some View {
-        VStack(spacing: 0) {
+        let layout: PopoverContentLayout = PopoverContentLayout(
+            activeJobCount: jobListViewModel.activeJobs.count,
+            completedJobCount: jobListViewModel.completedJobs.count
+        )
+
+        return VStack(spacing: 0) {
             if let error: String = jobListViewModel.configurationError {
-                banner(error, icon: "exclamationmark.triangle", color: .orange)
+                banner(
+                    error,
+                    icon: "exclamationmark.triangle",
+                    color: .orange,
+                    showSettingsButton: true,
+                    onDismiss: jobListViewModel.clearConfigurationError
+                )
             }
 
             if let dropError: String = jobListViewModel.dropError {
-                banner(dropError, icon: "xmark.circle", color: .red)
+                banner(
+                    dropError,
+                    icon: "xmark.circle",
+                    color: .red,
+                    showSettingsButton: false,
+                    onDismiss: jobListViewModel.clearDropError
+                )
             }
 
-            if jobListViewModel.activeJobs.isEmpty && jobListViewModel.completedJobs.isEmpty {
+            switch layout.dropZoneMode {
+            case .full:
                 DropZoneView(onDrop: jobListViewModel.processFiles)
-            } else {
-                if jobListViewModel.activeJobs.isEmpty {
-                    DropZoneView(onDrop: jobListViewModel.processFiles)
-                        .frame(height: 100)
-                }
+            case .compact:
+                DropZoneView(
+                    onDrop: jobListViewModel.processFiles,
+                    mode: .compact
+                )
+            case .hidden:
+                EmptyView()
+            }
+
+            if !jobListViewModel.activeJobs.isEmpty || !jobListViewModel.completedJobs.isEmpty {
                 JobListView(viewModel: jobListViewModel)
             }
 
@@ -56,7 +79,13 @@ struct PopoverView: View {
     }
 
     /// Banner shown when S3 or API key is not configured.
-    private func banner(_ message: String, icon: String, color: Color) -> some View {
+    private func banner(
+        _ message: String,
+        icon: String,
+        color: Color,
+        showSettingsButton: Bool,
+        onDismiss: @escaping () -> Void
+    ) -> some View {
         HStack {
             Image(systemName: icon)
                 .foregroundStyle(color)
@@ -64,8 +93,18 @@ struct PopoverView: View {
                 .font(.caption)
                 .lineLimit(2)
             Spacer()
-            Button("Settings") {
-                showSettings = true
+            if showSettingsButton {
+                Button("Settings") {
+                    showSettings = true
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
             }
             .buttonStyle(.borderless)
             .font(.caption)

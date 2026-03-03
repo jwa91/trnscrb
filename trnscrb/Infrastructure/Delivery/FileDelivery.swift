@@ -25,6 +25,7 @@ public struct FileDelivery: DeliveryGateway {
         let settings: AppSettings = try await settingsGateway.loadSettings()
         let folderPath: String = (settings.saveFolderPath as NSString).expandingTildeInPath
         let folderURL: URL = URL(filePath: folderPath)
+        AppLog.delivery.info("Saving markdown for \(result.sourceFileName, privacy: .public) to \(folderPath, privacy: .public)")
 
         try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
 
@@ -32,6 +33,7 @@ public struct FileDelivery: DeliveryGateway {
         let fileURL: URL = outputFileURL(folder: folderURL, baseName: baseName)
 
         try result.markdown.write(to: fileURL, atomically: true, encoding: .utf8)
+        AppLog.delivery.info("Saved markdown to \(fileURL.path(), privacy: .public)")
         return .success
     }
 

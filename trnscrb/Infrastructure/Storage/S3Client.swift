@@ -9,6 +9,20 @@ public enum S3Error: Error, Sendable {
     case requestFailed(statusCode: Int, body: String)
 }
 
+extension S3Error: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .invalidConfiguration(let message):
+            return message
+        case .requestFailed(let statusCode, let body):
+            let trimmedBody: String = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmedBody.isEmpty
+                ? "S3 request failed with HTTP \(statusCode)."
+                : "S3 request failed with HTTP \(statusCode): \(trimmedBody)"
+        }
+    }
+}
+
 /// S3-compatible object storage client implementing `StorageGateway`.
 ///
 /// Uses path-style URLs: `https://{endpoint}/{bucket}/{key}`.
@@ -19,14 +33,22 @@ public struct S3Client: StorageGateway {
     private let settingsGateway: any SettingsGateway
     /// URL session for HTTP requests.
     private let urlSession: URLSession
+    /// Opens security-scoped file URLs when needed.
+    private let fileAccess: any SecurityScopedFileAccessing
 
     /// Creates an S3 client.
     /// - Parameters:
     ///   - settingsGateway: Provides S3 credentials and bucket config.
     ///   - urlSession: URL session for HTTP requests (injectable for testing).
-    public init(settingsGateway: any SettingsGateway, urlSession: URLSession = .shared) {
+    ///   - fileAccess: Opens security-scoped file URLs for sandboxed reads.
+    init(
+        settingsGateway: any SettingsGateway,
+        urlSession: URLSession = .shared,
+        fileAccess: any SecurityScopedFileAccessing = SecurityScopedFileAccess()
+    ) {
         self.settingsGateway = settingsGateway
         self.urlSession = urlSession
+        self.fileAccess = fileAccess
     }
 
     /// Uploads a local file to S3 and returns a presigned GET URL.
@@ -35,6 +57,13 @@ public struct S3Client: StorageGateway {
         key: String,
         onProgress: (@Sendable (Double) -> Void)?
     ) async throws -> URL {
+        let startedAccessing: Bool = fileAccess.startAccessing(fileURL)
+        defer {
+            if startedAccessing {
+                fileAccess.stopAccessing(fileURL)
+            }
+        }
+
         let (settings, signer) = try await loadConfig()
         let objectURL: URL = try Self.objectURL(
             endpoint: settings.s3EndpointURL, bucket: settings.s3BucketName, key: key
@@ -118,12 +147,14 @@ public struct S3Client: StorageGateway {
     // MARK: - Private helpers
 
     private func loadConfig() async throws -> (AppSettings, S3Signer) {
-        let settings: AppSettings = try await settingsGateway.loadSettings()
-        guard let secretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey) else {
-            throw S3Error.invalidConfiguration("S3 secret key not configured")
-        }
+        let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
         guard settings.isS3Configured else {
             throw S3Error.invalidConfiguration("S3 endpoint, access key, or bucket not configured")
+        }
+        guard let secretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey)?
+            .trimmedCredentialValue,
+              !secretKey.isEmpty else {
+            throw S3Error.invalidConfiguration("S3 secret key not configured")
         }
         let signer: S3Signer = S3Signer(
             accessKey: settings.s3AccessKey,

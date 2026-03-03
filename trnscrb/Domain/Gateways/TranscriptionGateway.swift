@@ -10,7 +10,8 @@ public protocol TranscriptionGateway: Sendable {
     var supportedExtensions: Set<String> { get }
 
     /// Processes a file at the given URL and returns markdown.
-    /// - Parameter sourceURL: Presigned URL pointing to the file in storage.
+    /// - Parameter sourceURL: Source the provider can read directly. Audio providers
+    ///   may require a local file URL, while OCR providers can use a presigned URL.
     /// - Returns: Markdown string produced by transcription or OCR.
     func process(sourceURL: URL) async throws -> String
 }

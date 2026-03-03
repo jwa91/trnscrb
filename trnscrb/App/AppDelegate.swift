@@ -144,7 +144,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor [weak self] in
             await self?.applyLaunchAtLoginSetting()
-            await self?.runRetentionCleanup()
         }
         scheduleRetentionCleanup()
     }

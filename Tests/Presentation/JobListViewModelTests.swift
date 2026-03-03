@@ -321,4 +321,40 @@ struct JobListViewModelTests {
         let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
         #expect(notifications[0].body.contains("saving the file failed"))
     }
+
+    @Test func failedProcessingMarksJobAsFailedInsteadOfLeavingItActive() async {
+        let storage: MockStorageGateway = MockStorageGateway()
+        let delivery: MockDeliveryGateway = MockDeliveryGateway()
+        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            processError: MistralError.requestFailed(statusCode: 422, body: "bad request")
+        )
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+        )
+
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: delivery,
+            settings: settings
+        )
+        let vm: JobListViewModel = JobListViewModel(useCase: useCase, settingsGateway: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/failure.mp3")])
+
+        let failed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+
+        #expect(failed)
+        #expect(vm.selectedJobID == vm.completedJobs.first?.id)
+        guard case .failed(let message)? = vm.completedJobs.first?.status else {
+            #expect(Bool(false))
+            return
+        }
+        #expect(message.contains("HTTP 422"))
+        #expect(await delivery.recordedDeliveredResults().isEmpty)
+    }
 }

@@ -38,14 +38,17 @@ public struct ConnectivityClient: ConnectivityGateway {
     }
 
     public func testS3(settings: AppSettings, s3SecretKey: String) async throws {
+        let normalizedSettings: AppSettings = settings.normalizedForUse
+        let normalizedS3SecretKey: String = s3SecretKey.trimmedCredentialValue
+
         let signer: S3Signer = S3Signer(
-            accessKey: settings.s3AccessKey,
-            secretKey: s3SecretKey,
-            region: settings.s3Region
+            accessKey: normalizedSettings.s3AccessKey,
+            secretKey: normalizedS3SecretKey,
+            region: normalizedSettings.s3Region
         )
 
-        guard let bucketURL = URL(string: settings.s3EndpointURL)?
-            .appendingPathComponent(settings.s3BucketName, isDirectory: false) as URL? else {
+        guard let bucketURL = URL(string: normalizedSettings.s3EndpointURL)?
+            .appendingPathComponent(normalizedSettings.s3BucketName, isDirectory: false) as URL? else {
             throw ConnectivityError.invalidEndpointURL
         }
         guard var components = URLComponents(
@@ -79,6 +82,7 @@ public struct ConnectivityClient: ConnectivityGateway {
     }
 
     public func testMistral(apiKey: String) async throws {
+        let normalizedAPIKey: String = apiKey.trimmedCredentialValue
         guard let url = URL(string: "https://api.mistral.ai/v1/models") else {
             throw ConnectivityError.invalidMistralURL
         }
@@ -86,7 +90,7 @@ public struct ConnectivityClient: ConnectivityGateway {
         var request: URLRequest = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 10
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(normalizedAPIKey)", forHTTPHeaderField: "Authorization")
 
         let (_, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else {
