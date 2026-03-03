@@ -311,4 +311,46 @@ struct TOMLConfigManagerTests {
         #expect(secondValue == "mk-test")
         #expect(secretStore.recordedGetCount(for: .mistralAPIKey) == 1)
     }
+
+    @Test func setSecretUpdatesCachedValueWithoutRequeryingStore() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let secretStore: SecretStoreSpy = SecretStoreSpy(
+            values: [.mistralAPIKey: "old-value"]
+        )
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            secretStore: secretStore
+        )
+
+        _ = try await manager.getSecret(for: .mistralAPIKey)
+        try await manager.setSecret("new-value", for: .mistralAPIKey)
+        let cachedValue: String? = try await manager.getSecret(for: .mistralAPIKey)
+
+        #expect(cachedValue == "new-value")
+        #expect(secretStore.recordedGetCount(for: .mistralAPIKey) == 1)
+    }
+
+    @Test func removeSecretCachesMissingValueWithoutRequeryingStore() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let secretStore: SecretStoreSpy = SecretStoreSpy(
+            values: [.mistralAPIKey: "existing"]
+        )
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            secretStore: secretStore
+        )
+
+        _ = try await manager.getSecret(for: .mistralAPIKey)
+        try await manager.removeSecret(for: .mistralAPIKey)
+        let cachedValue: String? = try await manager.getSecret(for: .mistralAPIKey)
+
+        #expect(cachedValue == nil)
+        #expect(secretStore.recordedGetCount(for: .mistralAPIKey) == 1)
+    }
 }

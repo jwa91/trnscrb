@@ -36,8 +36,6 @@ struct DropZoneView: View {
                 )
                 .padding(8)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .pointingHandCursor()
         .onHover { isHovered = $0 }
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers)
