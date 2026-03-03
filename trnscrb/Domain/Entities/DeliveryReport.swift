@@ -8,6 +8,4 @@ public struct DeliveryReport: Sendable, Equatable {
     public init(warnings: [String] = []) {
         self.warnings = warnings
     }
-
-    public static let success: DeliveryReport = DeliveryReport()
 }

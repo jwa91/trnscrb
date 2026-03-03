@@ -22,8 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cleanupUseCase: CleanupRetentionUseCase?
     /// Applies launch-at-login settings at startup and from the settings screen.
     private var launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
-    /// Persists settings and secrets as a single use case for the settings screen.
-    private var saveSettingsUseCase: SaveSettingsUseCase?
     /// Timer driving periodic retention cleanup.
     private var retentionTimer: Timer?
 
@@ -60,7 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             gateway: gateway,
             launchAtLoginUseCase: launchAtLoginUseCase
         )
-        self.saveSettingsUseCase = saveSettingsUseCase
         if NotificationRuntimeSupport.areUserNotificationsSupported() {
             UNUserNotificationCenter.current().delegate = self
         }

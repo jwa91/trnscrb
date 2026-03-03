@@ -23,10 +23,6 @@ actor MockDeliveryGateway: DeliveryGateway {
         deliverError = error
     }
 
-    func setDeliverWarnings(_ warnings: [String]) {
-        deliverWarnings = warnings
-    }
-
     func recordedDeliveredResults() -> [TranscriptionResult] {
         deliveredResults
     }
