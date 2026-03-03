@@ -26,6 +26,12 @@ struct MistralAudioProviderTests {
         #expect(provider.supportedExtensions == FileType.audioExtensions)
     }
 
+    @Test func metadataMatchesMistralRemoteRouting() {
+        let (provider, _) = makeProvider()
+        #expect(provider.providerMode == .mistral)
+        #expect(provider.sourceKind == .remoteURL)
+    }
+
     // MARK: - Request format
 
     @Test func processCallsCorrectEndpoint() async throws {

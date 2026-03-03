@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let s3Client: S3Client = S3Client(settingsGateway: gateway)
         let audioProvider: MistralAudioProvider = MistralAudioProvider(settingsGateway: gateway)
         let ocrProvider: MistralOCRProvider = MistralOCRProvider(settingsGateway: gateway)
+        let localAudioProvider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider()
+        let localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
         let clipboardDelivery: ClipboardDelivery = ClipboardDelivery()
         let fileDelivery: FileDelivery = FileDelivery(
             settingsGateway: gateway,
@@ -68,11 +70,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Build use case
+        let isLocalModeAvailable: @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
         let useCase: ProcessFileUseCase = ProcessFileUseCase(
             storage: s3Client,
-            transcribers: [audioProvider, ocrProvider],
+            transcribers: [audioProvider, ocrProvider, localAudioProvider, localDocumentProvider],
             delivery: compositeDelivery,
-            settings: gateway
+            settings: gateway,
+            isLocalModeAvailable: isLocalModeAvailable
         )
         cleanupUseCase = CleanupRetentionUseCase(storage: s3Client, settings: gateway)
 
@@ -87,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             useCase: useCase,
             settingsGateway: gateway,
             outputFolderGateway: outputFolderClient,
-            notificationUseCase: notificationUseCase
+            notificationUseCase: notificationUseCase,
+            isLocalModeAvailable: isLocalModeAvailable
         )
         self.jobListViewModel = jobListVM
 

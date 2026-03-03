@@ -114,7 +114,10 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             "save_folder_path = \(quoted(settings.saveFolderPath))",
             "copy_to_clipboard = \(settings.copyToClipboard)",
             "file_retention_hours = \(settings.fileRetentionHours)",
-            "launch_at_login = \(settings.launchAtLogin)"
+            "launch_at_login = \(settings.launchAtLogin)",
+            "audio_provider_mode = \(quoted(settings.audioProviderMode.rawValue))",
+            "pdf_provider_mode = \(quoted(settings.pdfProviderMode.rawValue))",
+            "image_provider_mode = \(quoted(settings.imageProviderMode.rawValue))"
         ]
         return lines.joined(separator: "\n") + "\n"
     }
@@ -159,6 +162,21 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
                 dict["launch_at_login"],
                 key: "launch_at_login",
                 defaultValue: defaults.launchAtLogin
+            ),
+            audioProviderMode: try parseProviderMode(
+                dict["audio_provider_mode"],
+                key: "audio_provider_mode",
+                defaultValue: defaults.audioProviderMode
+            ),
+            pdfProviderMode: try parseProviderMode(
+                dict["pdf_provider_mode"],
+                key: "pdf_provider_mode",
+                defaultValue: defaults.pdfProviderMode
+            ),
+            imageProviderMode: try parseProviderMode(
+                dict["image_provider_mode"],
+                key: "image_provider_mode",
+                defaultValue: defaults.imageProviderMode
             )
         )
     }
@@ -181,6 +199,18 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             throw ConfigError.parseError("Invalid integer for \(key)")
         }
         return intValue
+    }
+
+    private func parseProviderMode(
+        _ value: String?,
+        key: String,
+        defaultValue: ProviderMode
+    ) throws -> ProviderMode {
+        guard let value else { return defaultValue }
+        guard let mode: ProviderMode = ProviderMode(rawValue: value) else {
+            throw ConfigError.parseError("Invalid provider mode for \(key)")
+        }
+        return mode
     }
 
     /// Wraps a string value in TOML double quotes, escaping inner quotes and backslashes.

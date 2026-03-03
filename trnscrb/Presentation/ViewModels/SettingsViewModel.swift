@@ -60,7 +60,8 @@ public final class SettingsViewModel: ObservableObject {
     /// Loads settings and secrets from persistent storage.
     public func load() async {
         do {
-            settings = try await gateway.loadSettings()
+            let loadedSettings: AppSettings = try await gateway.loadSettings()
+            settings = normalizedProviderModesForCurrentRuntime(loadedSettings)
             mistralAPIKey = try await gateway.getSecret(for: .mistralAPIKey) ?? ""
             s3SecretKey = try await gateway.getSecret(for: .s3SecretKey) ?? ""
             error = nil
@@ -73,7 +74,7 @@ public final class SettingsViewModel: ObservableObject {
     @discardableResult
     public func save() async -> Bool {
         do {
-            settings = settings.normalizedForUse
+            settings = normalizedProviderModesForCurrentRuntime(settings.normalizedForUse)
             mistralAPIKey = mistralAPIKey.trimmedCredentialValue
             s3SecretKey = s3SecretKey.trimmedCredentialValue
             _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
@@ -96,6 +97,31 @@ public final class SettingsViewModel: ObservableObject {
         let trimmedPath: String = settings.saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPath.isEmpty else { return "" }
         return URL(filePath: (trimmedPath as NSString).expandingTildeInPath).standardizedFileURL.path()
+    }
+
+    public var isLocalAppleModeAvailable: Bool {
+        if #available(macOS 26, *) {
+            return true
+        }
+        return false
+    }
+
+    private func normalizedProviderModesForCurrentRuntime(_ input: AppSettings) -> AppSettings {
+        guard !isLocalAppleModeAvailable else { return input }
+        return AppSettings(
+            s3EndpointURL: input.s3EndpointURL,
+            s3AccessKey: input.s3AccessKey,
+            s3BucketName: input.s3BucketName,
+            s3Region: input.s3Region,
+            s3PathPrefix: input.s3PathPrefix,
+            saveFolderPath: input.saveFolderPath,
+            copyToClipboard: input.copyToClipboard,
+            fileRetentionHours: input.fileRetentionHours,
+            launchAtLogin: input.launchAtLogin,
+            audioProviderMode: .mistral,
+            pdfProviderMode: .mistral,
+            imageProviderMode: .mistral
+        )
     }
 
     /// Tests S3 connectivity by sending a HEAD request to the bucket.

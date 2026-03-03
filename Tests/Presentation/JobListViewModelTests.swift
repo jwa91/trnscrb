@@ -26,7 +26,13 @@ struct JobListViewModelTests {
         settings: MockSettingsGateway,
         notificationGateway: MockNotificationGateway = MockNotificationGateway(),
         outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(),
-        copyFeedbackDuration: Duration = .seconds(1.5)
+        copyFeedbackDuration: Duration = .seconds(1.5),
+        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) -> (
         JobListViewModel,
         MockStorageGateway,
@@ -52,7 +58,8 @@ struct JobListViewModelTests {
             settingsGateway: settings,
             outputFolderGateway: outputFolderGateway,
             notificationUseCase: NotifyUserUseCase(gateway: notificationGateway),
-            copyFeedbackDuration: copyFeedbackDuration
+            copyFeedbackDuration: copyFeedbackDuration,
+            isLocalModeAvailable: isLocalModeAvailable
         )
         return (vm, storage, delivery, settings, notificationGateway, outputFolderGateway)
     }
@@ -62,7 +69,13 @@ struct JobListViewModelTests {
         delivery: MockDeliveryGateway = MockDeliveryGateway(
             savedFileURL: URL(filePath: "/tmp/trnscrb-output.md")
         ),
-        copyFeedbackDuration: Duration = .seconds(1.5)
+        copyFeedbackDuration: Duration = .seconds(1.5),
+        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) -> (
         JobListViewModel,
         MockStorageGateway,
@@ -75,7 +88,8 @@ struct JobListViewModelTests {
             storage: storage,
             delivery: delivery,
             settings: configuredSettingsGateway(),
-            copyFeedbackDuration: copyFeedbackDuration
+            copyFeedbackDuration: copyFeedbackDuration,
+            isLocalModeAvailable: isLocalModeAvailable
         )
     }
 
@@ -154,7 +168,10 @@ struct JobListViewModelTests {
             secrets: [.mistralAPIKey: "mk-test"]
         )
         // s3EndpointURL is empty by default — not configured
-        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+        let (vm, _, _, _, _, _) = makeViewModel(
+            settings: settings,
+            isLocalModeAvailable: { false }
+        )
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         let completed: Bool = await waitUntil {
@@ -176,7 +193,10 @@ struct JobListViewModelTests {
             secrets: [.s3SecretKey: "sk-test"]
         )
         // No Mistral API key
-        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+        let (vm, _, _, _, _, _) = makeViewModel(
+            settings: settings,
+            isLocalModeAvailable: { false }
+        )
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         let completed: Bool = await waitUntil {
@@ -197,7 +217,10 @@ struct JobListViewModelTests {
             ),
             secrets: [.mistralAPIKey: "mk-test"]
         )
-        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+        let (vm, _, _, _, _, _) = makeViewModel(
+            settings: settings,
+            isLocalModeAvailable: { false }
+        )
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         let completed: Bool = await waitUntil {
@@ -207,6 +230,77 @@ struct JobListViewModelTests {
         #expect(completed)
         #expect(vm.configurationError == "Configure your S3 secret key in settings.")
         #expect(vm.jobs.isEmpty)
+    }
+
+    @Test func localOnlyConfigurationSkipsCloudChecksWhenLocalModeAvailable() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                audioProviderMode: .localApple,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            )
+        )
+        let storage: MockStorageGateway = MockStorageGateway()
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(
+            savedFileURL: URL(filePath: "/tmp/local-only.md")
+        )
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let localOCR: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions),
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local OCR"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [localAudio, localOCR],
+            delivery: delivery,
+            settings: settings,
+            isLocalModeAvailable: { true }
+        )
+        let vm: JobListViewModel = JobListViewModel(
+            useCase: useCase,
+            settingsGateway: settings,
+            outputFolderGateway: MockOutputFolderGateway(),
+            isLocalModeAvailable: { true }
+        )
+
+        vm.processFiles([URL(filePath: "/tmp/local.mp3")])
+
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == nil)
+        #expect(await storage.recordedUploadAttemptCount() == 0)
+    }
+
+    @Test func localOnlyConfigurationRequiresCloudChecksWhenLocalModeUnavailable() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                audioProviderMode: .localApple,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            )
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(
+            settings: settings,
+            isLocalModeAvailable: { false }
+        )
+
+        vm.processFiles([URL(filePath: "/tmp/local.mp3")])
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == "Configure your S3 storage in settings.")
     }
 
     @Test func invalidSaveFolderPreventsProcessingAndRequestsSettings() async {

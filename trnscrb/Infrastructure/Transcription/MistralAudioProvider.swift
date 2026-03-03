@@ -9,6 +9,11 @@ public struct MistralAudioProvider: TranscriptionGateway {
     /// Mistral audio transcription endpoint URL string.
     private static let endpointString: String = "https://api.mistral.ai/v1/audio/transcriptions"
 
+    /// This provider is selected when mode is Mistral.
+    public let providerMode: ProviderMode = .mistral
+    /// Mistral expects a remotely reachable URL.
+    public let sourceKind: TranscriptionSourceKind = .remoteURL
+
     /// Audio file extensions this provider handles.
     public var supportedExtensions: Set<String> { FileType.audioExtensions }
 

@@ -32,6 +32,8 @@ public final class JobListViewModel: ObservableObject {
     private let outputFolderGateway: any OutputFolderGateway
     /// Posts local user notifications when jobs complete or fail.
     private let notificationUseCase: NotifyUserUseCase?
+    /// Evaluates whether local Apple mode is available on this runtime.
+    private let isLocalModeAvailable: @Sendable () -> Bool
     /// Active processing tasks by job ID so work can be cancelled safely.
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     /// Jobs queued while offline. They resume automatically when connectivity returns.
@@ -57,13 +59,20 @@ public final class JobListViewModel: ObservableObject {
         settingsGateway: any SettingsGateway,
         outputFolderGateway: any OutputFolderGateway,
         notificationUseCase: NotifyUserUseCase? = nil,
-        copyFeedbackDuration: Duration = .seconds(1.5)
+        copyFeedbackDuration: Duration = .seconds(1.5),
+        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) {
         self.useCase = useCase
         self.settingsGateway = settingsGateway
         self.outputFolderGateway = outputFolderGateway
         self.notificationUseCase = notificationUseCase
         self.copyFeedbackDuration = copyFeedbackDuration
+        self.isLocalModeAvailable = isLocalModeAvailable
         startNetworkMonitoring()
     }
 
@@ -249,19 +258,21 @@ public final class JobListViewModel: ObservableObject {
     private func checkConfiguration() async -> Bool {
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
-            guard settings.isS3Configured else {
-                configurationError = "Configure your S3 storage in settings."
-                return false
-            }
-            guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
-                  !s3SecretKey.trimmedCredentialValue.isEmpty else {
-                configurationError = "Configure your S3 secret key in settings."
-                return false
-            }
-            guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
-                  !apiKey.trimmedCredentialValue.isEmpty else {
-                configurationError = "Configure your Mistral API key in settings."
-                return false
+            if requiresCloudCredentials(for: settings) {
+                guard settings.isS3Configured else {
+                    configurationError = "Configure your S3 storage in settings."
+                    return false
+                }
+                guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
+                      !s3SecretKey.trimmedCredentialValue.isEmpty else {
+                    configurationError = "Configure your S3 secret key in settings."
+                    return false
+                }
+                guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
+                      !apiKey.trimmedCredentialValue.isEmpty else {
+                    configurationError = "Configure your Mistral API key in settings."
+                    return false
+                }
             }
             do {
                 _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
@@ -275,6 +286,13 @@ public final class JobListViewModel: ObservableObject {
             configurationError = error.localizedDescription
             return false
         }
+    }
+
+    private func requiresCloudCredentials(for settings: AppSettings) -> Bool {
+        if isLocalModeAvailable() {
+            return settings.requiresCloudCredentials
+        }
+        return true
     }
 
     /// Processes a single job through the pipeline.

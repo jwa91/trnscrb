@@ -27,6 +27,12 @@ struct MistralOCRProviderTests {
         #expect(provider.supportedExtensions == expected)
     }
 
+    @Test func metadataMatchesMistralRemoteRouting() {
+        let (provider, _) = makeProvider()
+        #expect(provider.providerMode == .mistral)
+        #expect(provider.sourceKind == .remoteURL)
+    }
+
     // MARK: - PDF request
 
     @Test func processUsesDocumentURLChunkForPDF() async throws {

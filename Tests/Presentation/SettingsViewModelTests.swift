@@ -52,6 +52,40 @@ struct SettingsViewModelTests {
         #expect(vm.settings.s3BucketName == "bucket")
     }
 
+    @Test func loadPopulatesProviderModesFromGateway() async {
+        let customSettings: AppSettings = AppSettings(
+            audioProviderMode: .localApple,
+            pdfProviderMode: .mistral,
+            imageProviderMode: .localApple
+        )
+        let (vm, _, _, _, _) = makeViewModel(settings: customSettings)
+
+        await vm.load()
+
+        #expect(vm.settings.audioProviderMode == .localApple)
+        #expect(vm.settings.pdfProviderMode == .mistral)
+        #expect(vm.settings.imageProviderMode == .localApple)
+    }
+
+    @Test func loadCoercesLocalModesToMistralWhenUnavailable() async {
+        if #available(macOS 26, *) {
+            return
+        }
+
+        let customSettings: AppSettings = AppSettings(
+            audioProviderMode: .localApple,
+            pdfProviderMode: .localApple,
+            imageProviderMode: .localApple
+        )
+        let (vm, _, _, _, _) = makeViewModel(settings: customSettings)
+
+        await vm.load()
+
+        #expect(vm.settings.audioProviderMode == .mistral)
+        #expect(vm.settings.pdfProviderMode == .mistral)
+        #expect(vm.settings.imageProviderMode == .mistral)
+    }
+
     @Test func loadPopulatesSecretsFromGateway() async {
         let secrets: [SecretKey: String] = [
             .mistralAPIKey: "mk-123",
@@ -81,6 +115,40 @@ struct SettingsViewModelTests {
         let savedSettings: AppSettings = await gateway.snapshotSettings()
         #expect(savedSettings.s3EndpointURL == "https://saved.com")
         #expect(savedSettings.s3BucketName == "saved-bucket")
+    }
+
+    @Test func savePersistsProviderModesToGateway() async {
+        let (vm, gateway, _, _, _) = makeViewModel()
+        vm.settings.audioProviderMode = .localApple
+        vm.settings.pdfProviderMode = .mistral
+        vm.settings.imageProviderMode = .localApple
+
+        let didSave: Bool = await vm.save()
+        let savedSettings: AppSettings = await gateway.snapshotSettings()
+
+        #expect(didSave)
+        #expect(savedSettings.audioProviderMode == .localApple)
+        #expect(savedSettings.pdfProviderMode == .mistral)
+        #expect(savedSettings.imageProviderMode == .localApple)
+    }
+
+    @Test func saveCoercesLocalModesToMistralWhenUnavailable() async {
+        if #available(macOS 26, *) {
+            return
+        }
+
+        let (vm, gateway, _, _, _) = makeViewModel()
+        vm.settings.audioProviderMode = .localApple
+        vm.settings.pdfProviderMode = .localApple
+        vm.settings.imageProviderMode = .localApple
+
+        let didSave: Bool = await vm.save()
+        let savedSettings: AppSettings = await gateway.snapshotSettings()
+
+        #expect(didSave)
+        #expect(savedSettings.audioProviderMode == .mistral)
+        #expect(savedSettings.pdfProviderMode == .mistral)
+        #expect(savedSettings.imageProviderMode == .mistral)
     }
 
     @Test func savePersistsSecretsToKeychain() async {
@@ -203,6 +271,16 @@ struct SettingsViewModelTests {
         #expect((await gateway.snapshotSettings()).launchAtLogin == true)
         #expect(await launchAtLoginGateway.recordedCallCount() == 1)
         #expect(await launchAtLoginGateway.recordedAppliedValues() == [true])
+    }
+
+    @Test func localModeAvailabilityReflectsRuntime() async {
+        let (vm, _, _, _, _) = makeViewModel()
+
+        if #available(macOS 26, *) {
+            #expect(vm.isLocalAppleModeAvailable)
+        } else {
+            #expect(!vm.isLocalAppleModeAvailable)
+        }
     }
 
 }

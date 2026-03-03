@@ -31,6 +31,12 @@ public struct AppSettings: Sendable, Equatable {
     public var fileRetentionHours: Int
     /// Whether to launch at login.
     public var launchAtLogin: Bool
+    /// Provider mode used for audio files.
+    public var audioProviderMode: ProviderMode
+    /// Provider mode used for PDF files.
+    public var pdfProviderMode: ProviderMode
+    /// Provider mode used for image files.
+    public var imageProviderMode: ProviderMode
 
     /// Creates settings with defaults matching SPEC.md.
     public init(
@@ -42,7 +48,10 @@ public struct AppSettings: Sendable, Equatable {
         saveFolderPath: String = "~/Documents/trnscrb/",
         copyToClipboard: Bool = true,
         fileRetentionHours: Int = 24,
-        launchAtLogin: Bool = false
+        launchAtLogin: Bool = false,
+        audioProviderMode: ProviderMode = .mistral,
+        pdfProviderMode: ProviderMode = .mistral,
+        imageProviderMode: ProviderMode = .mistral
     ) {
         self.s3EndpointURL = s3EndpointURL
         self.s3AccessKey = s3AccessKey
@@ -53,10 +62,32 @@ public struct AppSettings: Sendable, Equatable {
         self.copyToClipboard = copyToClipboard
         self.fileRetentionHours = fileRetentionHours
         self.launchAtLogin = launchAtLogin
+        self.audioProviderMode = audioProviderMode
+        self.pdfProviderMode = pdfProviderMode
+        self.imageProviderMode = imageProviderMode
     }
 
     /// Whether the required S3 configuration fields are filled in.
     public var isS3Configured: Bool {
         !s3EndpointURL.isEmpty && !s3AccessKey.isEmpty && !s3BucketName.isEmpty
+    }
+
+    /// Returns the configured provider mode for the given file type.
+    public func mode(for fileType: FileType) -> ProviderMode {
+        switch fileType {
+        case .audio:
+            return audioProviderMode
+        case .pdf:
+            return pdfProviderMode
+        case .image:
+            return imageProviderMode
+        }
+    }
+
+    /// Whether any media type is configured to use the cloud provider.
+    public var requiresCloudCredentials: Bool {
+        audioProviderMode == .mistral
+            || pdfProviderMode == .mistral
+            || imageProviderMode == .mistral
     }
 }
