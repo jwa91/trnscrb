@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 
@@ -356,5 +357,24 @@ struct JobListViewModelTests {
         }
         #expect(message.contains("HTTP 422"))
         #expect(await delivery.recordedDeliveredResults().isEmpty)
+    }
+
+    @Test func publishesCompletedJobSnapshotWhenProcessingFinishes() async {
+        let (vm, _, _, _, _) = makeViewModel()
+        var snapshots: [[JobStatus]] = []
+        let cancellable: AnyCancellable = vm.$jobs.sink { jobs in
+            snapshots.append(jobs.map(\.status))
+        }
+        defer { cancellable.cancel() }
+
+        vm.processFiles([URL(filePath: "/tmp/published.mp3")])
+
+        let publishedCompletion: Bool = await waitUntil(timeout: .seconds(2)) {
+            snapshots.contains { statuses in
+                statuses.contains(.completed)
+            }
+        }
+
+        #expect(publishedCompletion)
     }
 }
