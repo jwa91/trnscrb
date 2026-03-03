@@ -155,6 +155,43 @@ struct JobStateTransitionTests {
         job.fail(error: "second error")  // invalid: already failed
         #expect(job.status == .failed(error: "first error"))
     }
+
+    @Test func requeueResetsFailedJobToPending() {
+        var job: Job = makeJob()
+        job.startUpload()
+        job.startProcessing()
+        job.fail(error: "offline")
+
+        job.requeue()
+
+        #expect(job.status == .pending)
+        #expect(job.markdown == nil)
+        #expect(job.deliveryWarnings.isEmpty)
+        #expect(job.savedFileURL == nil)
+        #expect(job.presignedSourceURL == nil)
+        #expect(job.completedAt == nil)
+    }
+
+    @Test func completedJobDoesNotRequeue() {
+        let savedFileURL: URL = URL(filePath: "/tmp/out.md")
+        var job: Job = makeJob()
+        job.startUpload()
+        job.startProcessing()
+        job.complete(
+            markdown: "# Done",
+            deliveryWarnings: ["warning"],
+            savedFileURL: savedFileURL,
+            presignedSourceURL: URL(string: "https://s3.example.com/source")!
+        )
+
+        job.requeue()
+
+        #expect(job.status == .completed)
+        #expect(job.markdown == "# Done")
+        #expect(job.deliveryWarnings == ["warning"])
+        #expect(job.savedFileURL == savedFileURL)
+        #expect(job.completedAt != nil)
+    }
 }
 
 struct JobIdentityTests {

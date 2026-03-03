@@ -20,18 +20,23 @@ struct JobRowView: View {
     var onToggleExpansion: (() -> Void)?
     /// Called when the user deletes this job.
     var onDelete: (() -> Void)?
+    @State private var isHovered: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 if canExpand {
-                    Button(action: { onToggleExpansion?() }) {
+                    Button(action: {
+                        onSelect?()
+                        onToggleExpansion?()
+                    }) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 10)
                     }
                     .buttonStyle(.plain)
+                    .pointingHandCursor()
                 } else {
                     Color.clear
                         .frame(width: 10, height: 10)
@@ -81,6 +86,7 @@ struct JobRowView: View {
                             }
                             .font(.caption2)
                         }
+                        .pointingHandCursor()
                         .help(savedFileURL.path())
                     }
 
@@ -89,6 +95,7 @@ struct JobRowView: View {
                             Label("Open S3 URL", systemImage: "link")
                                 .font(.caption2)
                         }
+                        .pointingHandCursor()
                         .help(presignedSourceURL.absoluteString)
                     }
                 }
@@ -97,14 +104,19 @@ struct JobRowView: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(rowBackgroundColor)
         .contentShape(Rectangle())
+        .pointingHandCursor()
+        .onHover { isHovered = $0 }
+        .onTapGesture {
+            onSelect?()
+        }
         .contextMenu {
             if case .completed = job.status {
                 Button("Copy Markdown") {
                     onCopy?()
                 }
-                if job.savedFileURL != nil {
+                if onRevealInFinder != nil {
                     Button("Reveal in Finder") {
                         onRevealInFinder?()
                     }
@@ -167,7 +179,6 @@ struct JobRowView: View {
             completionActionButton(
                 systemName: "folder",
                 title: "Reveal in Finder",
-                isEnabled: job.savedFileURL != nil,
                 action: { onRevealInFinder?() }
             )
 
@@ -193,6 +204,16 @@ struct JobRowView: View {
             return .red
         }
         return .orange
+    }
+
+    private var rowBackgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.12)
+        }
+        if isHovered {
+            return Color.primary.opacity(0.04)
+        }
+        return .clear
     }
 
     private var canExpand: Bool {
@@ -237,7 +258,10 @@ struct JobRowView: View {
         isEnabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button(action: {
+            onSelect?()
+            action()
+        }) {
             Image(systemName: systemName)
                 .font(.caption2.weight(.semibold))
                 .frame(width: 12, height: 12)
@@ -248,5 +272,6 @@ struct JobRowView: View {
         .labelStyle(.iconOnly)
         .help(title)
         .disabled(!isEnabled)
+        .pointingHandCursor()
     }
 }

@@ -32,12 +32,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let keychainStore: KeychainStore = KeychainStore()
         let gateway: TOMLConfigManager = TOMLConfigManager(keychainStore: keychainStore)
         settingsGateway = gateway
+        let outputFolderClient: OutputFolderClient = OutputFolderClient()
 
         let s3Client: S3Client = S3Client(settingsGateway: gateway)
         let audioProvider: MistralAudioProvider = MistralAudioProvider(settingsGateway: gateway)
         let ocrProvider: MistralOCRProvider = MistralOCRProvider(settingsGateway: gateway)
+        let localAudioProvider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider()
+        let localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
         let clipboardDelivery: ClipboardDelivery = ClipboardDelivery()
-        let fileDelivery: FileDelivery = FileDelivery(settingsGateway: gateway)
+        let fileDelivery: FileDelivery = FileDelivery(
+            settingsGateway: gateway,
+            outputFolderGateway: outputFolderClient
+        )
         let compositeDelivery: CompositeDelivery = CompositeDelivery(
             clipboard: clipboardDelivery,
             file: fileDelivery,
@@ -56,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.launchAtLoginUseCase = launchAtLoginUseCase
         let saveSettingsUseCase: SaveSettingsUseCase = SaveSettingsUseCase(
             gateway: gateway,
+            outputFolderGateway: outputFolderClient,
             launchAtLoginUseCase: launchAtLoginUseCase
         )
         if NotificationRuntimeSupport.areUserNotificationsSupported() {
@@ -63,11 +70,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Build use case
+        let isLocalModeAvailable: @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
         let useCase: ProcessFileUseCase = ProcessFileUseCase(
             storage: s3Client,
-            transcribers: [audioProvider, ocrProvider],
+            transcribers: [audioProvider, ocrProvider, localAudioProvider, localDocumentProvider],
             delivery: compositeDelivery,
-            settings: gateway
+            settings: gateway,
+            isLocalModeAvailable: isLocalModeAvailable
         )
         cleanupUseCase = CleanupRetentionUseCase(storage: s3Client, settings: gateway)
 
@@ -75,12 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsVM: SettingsViewModel = SettingsViewModel(
             gateway: gateway,
             connectivityUseCase: connectivityUseCase,
+            outputFolderGateway: outputFolderClient,
             saveSettingsUseCase: saveSettingsUseCase
         )
         let jobListVM: JobListViewModel = JobListViewModel(
             useCase: useCase,
             settingsGateway: gateway,
-            notificationUseCase: notificationUseCase
+            outputFolderGateway: outputFolderClient,
+            notificationUseCase: notificationUseCase,
+            isLocalModeAvailable: isLocalModeAvailable
         )
         self.jobListViewModel = jobListVM
 

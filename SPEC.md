@@ -34,9 +34,11 @@ The app detects the file type and routes it to the appropriate processing pipeli
 
 ### S3 Upload Pipeline
 
+This pipeline is used when the selected provider mode for a media type is `Mistral`.
+
 1. User drops file onto menu bar icon
 2. File is uploaded to the user's configured S3-compatible bucket
-3. The S3 object URL (or a presigned URL) is passed to the Mistral API
+3. The S3 object URL (presigned) is passed to the Mistral API
 4. After successful processing, the S3 object is marked for deletion (retained ~24 hours as a safety net for retries, then auto-cleaned)
 
 Mistral's APIs accept external URLs directly: the audio endpoint has a `file_url` parameter, and the OCR endpoint accepts any accessible URL via `DocumentURLChunk` / `ImageURLChunk`. This means the app generates a presigned S3 URL and passes it straight to Mistral — no download-then-reupload zigzag.
@@ -45,9 +47,17 @@ Upload supports any S3-compatible provider: Hetzner Object Storage, Cloudflare R
 
 ### Transcription & OCR Processing
 
-All three media types are processed through **Mistral APIs** using a single API key. This was chosen after benchmarking providers across quality, pricing, speed, API ergonomics, and multilingual support (see `RESEARCH.md` for the full evaluation).
+Each media type has an independent provider mode:
+
+- `Mistral` (cloud path, S3 + API key required)
+- `Local Apple` (on-device path, macOS 26+)
+
+Routing is resolved by `(file type, selected mode, OS availability)`. On macOS <26, local mode is unavailable in settings and processing falls back to Mistral requirements if a local value is forced via manual config edits.
+
+The cloud provider remains Mistral (single key) based on benchmarking across quality, pricing, speed, API ergonomics, and multilingual support (see `RESEARCH.md`).
 
 **Why Mistral for everything:**
+
 - Single API key covers all three media types — simplest possible BYOK experience
 - European provider (Paris) — GDPR-friendly, aligns with preference for European services
 - Competitive pricing across all three types
@@ -91,11 +101,13 @@ Endpoint: `POST /v1/ocr` with `ImageURLChunk`
 Two output modes, configurable in settings (both can be enabled simultaneously):
 
 **1. Clipboard + Notification (default)**
+
 - Markdown is copied to the system clipboard as soon as processing completes
 - A macOS notification appears: "trnscrb: [filename] ready — copied to clipboard"
 - Clicking the notification opens the popover showing the result
 
 **2. Save to folder**
+
 - Markdown is written as a `.md` file to a user-configured output folder
 - Filename follows the pattern: `{original_name}.md` (e.g., `meeting-recording.mp3` → `meeting-recording.md`)
 - If a file with that name exists, append a timestamp suffix: `meeting-recording-20260301-1423.md`
@@ -106,11 +118,13 @@ Two output modes, configurable in settings (both can be enabled simultaneously):
 The entire UI lives in the menu bar popover — no separate windows.
 
 **Menu bar icon states:**
+
 - **Idle:** Static icon (a simple, recognizable glyph — e.g., a minimal transcription/document symbol)
 - **Processing:** Subtle animation (pulse or spinner overlay) indicating active work
 - **Error:** Icon shows a small warning badge until the user acknowledges it
 
 **Popover contents:**
+
 - **Drop zone:** Visible when no jobs are active. "Drop files here or drag onto the icon." Also serves as a click-to-select file picker as a fallback.
 - **Job list:** When files are processing, shows a compact list:
   - File name (truncated if long)
@@ -125,6 +139,7 @@ The entire UI lives in the menu bar popover — no separate windows.
 Settings are accessible via the popover (gear icon). The popover slides to a settings panel — no separate window.
 
 **Settings are persisted to a config file** following the XDG Base Directory Specification:
+
 - Config path: `$XDG_CONFIG_HOME/trnscrb/config.toml` (defaults to `~/.config/trnscrb/config.toml`)
 - The UI reads from and writes to this file
 
@@ -132,21 +147,24 @@ Settings are accessible via the popover (gear icon). The popover slides to a set
 
 **Configurable settings:**
 
-| Setting | Type | Default |
-|---------|------|---------|
-| S3 endpoint URL | string | — (required) |
-| S3 access key | string | — (required) |
-| S3 secret key | string (Keychain) | — (required) |
-| S3 bucket name | string | — (required) |
-| S3 region | string | `auto` |
-| S3 path prefix | string | `trnscrb/` |
-| Mistral API key | string (Keychain) | — (required) |
-| Output mode | enum | `clipboard` |
-| Save folder path | string | `~/Documents/trnscrb/` |
-| File retention hours | int | `24` |
-| Launch at login | bool | `false` |
+| Setting              | Type                     | Default                       |
+| -------------------- | ------------------------ | ----------------------------- |
+| S3 endpoint URL      | string                   | — (required)                  |
+| S3 access key        | string                   | — (required)                  |
+| S3 secret key        | string (Keychain)        | — (required)                  |
+| S3 bucket name       | string                   | — (required)                  |
+| S3 region            | string                   | `auto`                        |
+| S3 path prefix       | string                   | `trnscrb/`                    |
+| Mistral API key      | string (Keychain)        | — (required for Mistral mode) |
+| Audio provider mode  | enum (`mistral`/`local`) | `mistral`                     |
+| PDF provider mode    | enum (`mistral`/`local`) | `mistral`                     |
+| Image provider mode  | enum (`mistral`/`local`) | `mistral`                     |
+| Output mode          | enum                     | `clipboard`                   |
+| Save folder path     | string                   | `~/Documents/trnscrb/`        |
+| File retention hours | int                      | `24`                          |
+| Launch at login      | bool                     | `false`                       |
 
-Note: v1 requires only a single Mistral API key for all processing. The settings UI reflects this — one key field, not three.
+Note: when any media type is configured to `mistral`, one Mistral API key is shared across all cloud processing.
 
 ## Technical Architecture
 
@@ -163,55 +181,72 @@ Note: v1 requires only a single Mistral API key for all processing. The settings
 ### Data Flow
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  Drop file   │────▶│  Upload to   │────▶│  Call Mistral    │────▶│  Deliver     │
-│  on icon     │     │  S3 bucket   │     │  API with S3 URL │     │  markdown    │
-└──────────────┘     └──────────────┘     └──────────────────┘     └──────────────┘
-                           │                       │                       │
-                           ▼                       ▼                       ▼
-                     S3-compatible            Voxtral (audio)        Clipboard copy
-                     storage                  OCR 3 (PDF/images)    and/or .md file
-                     (user's bucket)                                 save
+┌──────────────┐
+│  Drop file   │
+│  on icon     │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│ Resolve mode │─── local + macOS26+ ──▶ Local Apple provider ───┐
+│ per filetype │                                                 │
+└──────┬───────┘                                                 ▼
+       │                                                ┌──────────────┐
+       └─── mistral / local unsupported ─▶ Upload S3 ─▶ │ Call Mistral │
+                                                        └──────┬───────┘
+                                                               ▼
+                                                         Deliver markdown
 ```
 
 ### Key Components
 
-| Component | Responsibility |
-|-----------|---------------|
-| `AppDelegate` / `MenuBarManager` | Menu bar icon lifecycle, drop target registration, popover management |
-| `DropZoneView` | SwiftUI drag-and-drop surface, file type validation |
-| `S3Client` | Generic S3-compatible upload/delete using endpoint + credentials from settings |
-| `JobQueue` | Manages parallel processing jobs, tracks state per file, handles retries |
-| `MistralAudioClient` | Calls Voxtral transcription endpoint, returns markdown |
-| `MistralOCRClient` | Calls OCR 3 endpoint for both PDFs and images, returns markdown |
-| `MarkdownDelivery` | Clipboard copy, file save, notification dispatch |
-| `SettingsManager` | Reads/writes TOML config, interfaces with Keychain for secrets |
-| `RetentionCleaner` | Background task that deletes expired S3 objects after retention period |
+| Component                                     | Responsibility                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------------ |
+| `AppDelegate` / `MenuBarManager`              | Menu bar icon lifecycle, drop target registration, popover management          |
+| `DropZoneView`                                | SwiftUI drag-and-drop surface, file type validation                            |
+| `S3Client`                                    | Generic S3-compatible upload/delete using endpoint + credentials from settings |
+| `ProcessFileUseCase` + `TranscriptionRouting` | Resolves provider by file type + mode + OS availability                        |
+| `MistralAudioProvider`                        | Calls Voxtral transcription endpoint, returns markdown                         |
+| `MistralOCRProvider`                          | Calls OCR 3 endpoint for both PDFs and images, returns markdown                |
+| `AppleSpeechAnalyzerProvider`                 | Local Apple audio transcription provider (macOS 26+)                           |
+| `AppleDocumentOCRProvider`                    | Local Apple OCR provider for PDFs/images (macOS 26+)                           |
+| `CompositeDelivery`                           | Clipboard copy, file save, notification dispatch                               |
+| `TOMLConfigManager`                           | Reads/writes TOML config, interfaces with Keychain for secrets                 |
+| `RetentionCleaner`                            | Background task that deletes expired S3 objects after retention period         |
 
 ### Provider Abstraction
 
-Each file type processor conforms to a `TranscriptionProvider` protocol:
+Each processor conforms to a shared `TranscriptionGateway` protocol:
 
 ```swift
-protocol TranscriptionProvider {
+protocol TranscriptionGateway {
+    var providerMode: ProviderMode { get }
+    var sourceKind: TranscriptionSourceKind { get }
     var supportedExtensions: Set<String> { get }
-    func process(s3URL: URL, apiKey: String) async throws -> String // returns markdown
+    func process(sourceURL: URL) async throws -> String
 }
 ```
 
-In v1, there are two concrete implementations: `MistralAudioProvider` (Voxtral) and `MistralOCRProvider` (OCR 3, handles both PDF and images). The protocol abstraction exists to support future providers (Groq, Apple native, Ollama) without touching the core pipeline.
+Current concrete implementations:
+
+- `MistralAudioProvider`
+- `MistralOCRProvider`
+- `AppleSpeechAnalyzerProvider`
+- `AppleDocumentOCRProvider`
+
+This keeps provider addition additive: new mode + new provider registration + routing tests.
 
 ## Error Handling
 
-| Scenario | Behavior |
-|----------|----------|
-| S3 upload fails | Retry up to 3 times with exponential backoff. If all retries fail, show error in popover and notification. |
-| Mistral API fails | Retry once. On second failure, show error with the API's error message. S3 file is retained for manual retry. |
-| Mistral API timeout | Generous timeout (5 min for audio, 2 min for PDF/image). On timeout, treat as failure and allow retry. |
-| Unsupported file type | Immediate rejection with notification. No upload attempted. |
-| No API key configured | When user drops any file, show inline prompt in popover: "Configure your Mistral API key in settings." |
-| No S3 configured | On first launch / first drop, popover shows setup prompt for S3 credentials. |
-| Network offline | Detect before upload attempt. Queue the file and process when connectivity returns. |
+| Scenario                         | Behavior                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| S3 upload fails                  | Retry up to 3 times with exponential backoff. If all retries fail, show error in popover and notification.    |
+| Mistral API fails                | Retry once. On second failure, show error with the API's error message. S3 file is retained for manual retry. |
+| Mistral API timeout              | Generous timeout (5 min for audio, 2 min for PDF/image). On timeout, treat as failure and allow retry.        |
+| Unsupported file type            | Immediate rejection with notification. No upload attempted.                                                   |
+| Mistral credentials missing      | Prompt only when at least one media mode currently resolves to Mistral.                                       |
+| Local mode selected on macOS <26 | Settings keeps local mode disabled; runtime falls back to Mistral requirements if needed.                     |
+| Network offline                  | Detect before upload attempt. Queue the file and process when connectivity returns.                           |
 
 ## Security & Privacy
 
@@ -226,29 +261,32 @@ In v1, there are two concrete implementations: `MistralAudioProvider` (Voxtral) 
 ## MVP Scope (v1)
 
 - Menu bar app with drag-and-drop onto icon and into popover drop zone
-- S3-compatible upload with configurable endpoint/credentials
-- All processing via Mistral APIs (single API key):
+- Per-media provider selection in settings (`Mistral` or `Local Apple`)
+- S3-compatible upload with configurable endpoint/credentials (for Mistral mode)
+- Mistral processing path (single API key):
   - Audio → Voxtral Mini Transcribe V2 (with diarization)
   - PDF → OCR 3 (scanned and digital)
   - Images → OCR 3 (handwritten and printed)
+- Local Apple processing path (macOS 26+):
+  - Audio → on-device speech transcription
+  - PDF / Images → Apple OCR pipeline
 - Clipboard delivery with macOS notification
 - Save-to-folder delivery with configurable path
 - Per-file progress tracking in popover
 - Parallel batch processing
-- Settings UI in popover (S3 config, Mistral API key, output preferences)
+- Settings UI in popover (S3 config, Mistral API key, per-media provider modes, output preferences)
 - XDG-compliant config file + Keychain for secrets
 - 24-hour S3 retention with auto-cleanup
 - Recent results history in popover (~10 items)
 
 ## Future Concerns
 
-These are not planned or scoped — just directions to explore after v1 is stable and working.
+These are not planned or scoped — just directions to explore after the current baseline is stable.
 
-- **Apple macOS 26 (Tahoe) native provider:** macOS Tahoe introduces `RecognizeDocumentsRequest` (structured paragraphs, tables, lists from images/PDFs) and `SpeechAnalyzer` (Whisper-level local STT, ANE-accelerated). This could become a zero-cost local fallback for all three media types. No Python, no bundled models — Apple manages everything. Requires macOS 26+ and Apple Silicon.
 - **Groq provider:** Groq offers Whisper Turbo ($0.04/hr, fastest inference) and Llama 4 Scout/Maverick (vision, 460 tok/sec). Attractive as a speed-focused or budget alternative. Also uses OpenAI-compatible API format.
 - **Ollama support:** Allow users to point trnscrb at a local Ollama instance for fully local processing with their own models. Lightweight integration — just an HTTP endpoint to configure. No bundled Python or models in trnscrb itself.
 - **Open-source release and public distribution** (Homebrew cask, DMG)
-- **Multiple provider options per file type** selectable in settings
+- **Third provider option per file type** in settings (current model is extensible)
 - **Keyboard shortcut** to trigger file picker
 - **URL input** (paste a URL to a PDF/audio file instead of dropping a local file)
 - **Speaker diarization display** — Voxtral already returns diarization data in v1; a future UI could render speaker-labeled markdown (e.g., `**Speaker 1:** ...`)
@@ -257,6 +295,7 @@ These are not planned or scoped — just directions to explore after v1 is stabl
 
 These were open during the research phase and are now decided. See `RESEARCH.md` for the full evaluation behind each decision.
 
+- **Mode strategy:** per-media provider choice in settings with `mistral` as default and `local` as Tahoe-only option.
 - **Audio provider:** Mistral Voxtral Mini Transcribe V2. Chosen over Groq Whisper ($0.04/hr but requires chunking and lacks diarization), OpenAI GPT-4o Transcribe ($0.36/hr), and Deepgram Nova-3 ($0.46/hr). Key advantage: 3-hour / 1 GB files with no chunking eliminates an entire category of complexity.
 - **PDF provider:** Mistral OCR 3. Chosen over LlamaParse ($0.003/page, good but slower), Google Document AI (no markdown output, heavy GCP setup), and Adobe PDF Extract (opaque pricing, OAuth). Key advantage: native markdown output at $0.002/page with 2,000 pages/min.
 - **Image/OCR provider:** Mistral OCR 3. A pragmatic v1 choice — Claude Haiku 4.5 and Gemini 2.5 Flash produce better structured markdown from handwriting, but using the same API for all three types (one key, one billing dashboard) outweighs the quality delta for v1.

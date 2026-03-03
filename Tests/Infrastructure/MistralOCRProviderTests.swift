@@ -19,14 +19,6 @@ struct MistralOCRProviderTests {
         return (MistralOCRProvider(settingsGateway: gateway, urlSession: session), mock)
     }
 
-    // MARK: - Supported extensions
-
-    @Test func supportedExtensionsCoversPDFAndImages() {
-        let (provider, _) = makeProvider()
-        let expected: Set<String> = FileType.pdfExtensions.union(FileType.imageExtensions)
-        #expect(provider.supportedExtensions == expected)
-    }
-
     // MARK: - PDF request
 
     @Test func processUsesDocumentURLChunkForPDF() async throws {

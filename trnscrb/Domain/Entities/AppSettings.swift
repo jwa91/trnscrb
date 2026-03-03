@@ -27,12 +27,16 @@ public struct AppSettings: Sendable, Equatable {
     public var saveFolderPath: String
     /// Whether to also copy markdown output to the clipboard.
     public var copyToClipboard: Bool
-    /// Whether to save markdown output to a file in the save folder.
-    public var saveToFolder: Bool
     /// Hours to retain files in S3 before cleanup.
     public var fileRetentionHours: Int
     /// Whether to launch at login.
     public var launchAtLogin: Bool
+    /// Provider mode used for audio files.
+    public var audioProviderMode: ProviderMode
+    /// Provider mode used for PDF files.
+    public var pdfProviderMode: ProviderMode
+    /// Provider mode used for image files.
+    public var imageProviderMode: ProviderMode
 
     /// Creates settings with defaults matching SPEC.md.
     public init(
@@ -43,9 +47,11 @@ public struct AppSettings: Sendable, Equatable {
         s3PathPrefix: String = "trnscrb/",
         saveFolderPath: String = "~/Documents/trnscrb/",
         copyToClipboard: Bool = true,
-        saveToFolder: Bool = false,
         fileRetentionHours: Int = 24,
-        launchAtLogin: Bool = false
+        launchAtLogin: Bool = false,
+        audioProviderMode: ProviderMode = .mistral,
+        pdfProviderMode: ProviderMode = .mistral,
+        imageProviderMode: ProviderMode = .mistral
     ) {
         self.s3EndpointURL = s3EndpointURL
         self.s3AccessKey = s3AccessKey
@@ -54,9 +60,11 @@ public struct AppSettings: Sendable, Equatable {
         self.s3PathPrefix = s3PathPrefix
         self.saveFolderPath = saveFolderPath
         self.copyToClipboard = copyToClipboard
-        self.saveToFolder = saveToFolder
         self.fileRetentionHours = fileRetentionHours
         self.launchAtLogin = launchAtLogin
+        self.audioProviderMode = audioProviderMode
+        self.pdfProviderMode = pdfProviderMode
+        self.imageProviderMode = imageProviderMode
     }
 
     /// Whether the required S3 configuration fields are filled in.
@@ -64,8 +72,22 @@ public struct AppSettings: Sendable, Equatable {
         !s3EndpointURL.isEmpty && !s3AccessKey.isEmpty && !s3BucketName.isEmpty
     }
 
-    /// Whether at least one output destination is enabled.
-    public var hasEnabledOutputDestination: Bool {
-        copyToClipboard || saveToFolder
+    /// Returns the configured provider mode for the given file type.
+    public func mode(for fileType: FileType) -> ProviderMode {
+        switch fileType {
+        case .audio:
+            return audioProviderMode
+        case .pdf:
+            return pdfProviderMode
+        case .image:
+            return imageProviderMode
+        }
+    }
+
+    /// Whether any media type is configured to use the cloud provider.
+    public var requiresCloudCredentials: Bool {
+        audioProviderMode == .mistral
+            || pdfProviderMode == .mistral
+            || imageProviderMode == .mistral
     }
 }

@@ -3,6 +3,8 @@ import Foundation
 @testable import trnscrb
 
 actor MockTranscriptionGateway: TranscriptionGateway {
+    let providerMode: ProviderMode
+    let sourceKind: TranscriptionSourceKind
     let supportedExtensions: Set<String>
     /// Markdown returned by process.
     private var processResult: String
@@ -19,10 +21,14 @@ actor MockTranscriptionGateway: TranscriptionGateway {
 
     init(
         supportedExtensions: Set<String>,
+        providerMode: ProviderMode = .mistral,
+        sourceKind: TranscriptionSourceKind = .remoteURL,
         processResult: String = "# Transcribed",
         processError: (any Error & Sendable)? = nil,
         processingDelay: Duration? = nil
     ) {
+        self.providerMode = providerMode
+        self.sourceKind = sourceKind
         self.supportedExtensions = supportedExtensions
         self.processResult = processResult
         self.processError = processError

@@ -1,27 +1,18 @@
 import Foundation
 
-/// Validation and transaction errors that can occur while saving settings.
-public enum SettingsSaveError: Error, LocalizedError, Sendable {
-    case noOutputDestination
-
-    public var errorDescription: String? {
-        switch self {
-        case .noOutputDestination:
-            return "Enable clipboard or folder output before saving."
-        }
-    }
-}
-
 /// Persists settings, secrets, and launch-at-login as one rollbackable operation.
 public struct SaveSettingsUseCase: Sendable {
     private let gateway: any SettingsGateway
+    private let outputFolderGateway: any OutputFolderGateway
     private let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
 
     public init(
         gateway: any SettingsGateway,
+        outputFolderGateway: any OutputFolderGateway,
         launchAtLoginUseCase: ApplyLaunchAtLoginUseCase? = nil
     ) {
         self.gateway = gateway
+        self.outputFolderGateway = outputFolderGateway
         self.launchAtLoginUseCase = launchAtLoginUseCase
     }
 
@@ -34,9 +25,7 @@ public struct SaveSettingsUseCase: Sendable {
         let normalizedMistralAPIKey: String = mistralAPIKey.trimmedCredentialValue
         let normalizedS3SecretKey: String = s3SecretKey.trimmedCredentialValue
 
-        guard normalizedSettings.hasEnabledOutputDestination else {
-            throw SettingsSaveError.noOutputDestination
-        }
+        _ = try outputFolderGateway.prepareOutputFolder(path: normalizedSettings.saveFolderPath)
 
         let snapshot: SettingsSnapshot = try await loadSnapshot()
         var didPersistSettings: Bool = false

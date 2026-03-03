@@ -17,11 +17,18 @@ struct DropZoneView: View {
     var mode: Mode = .full
     /// Tracks whether a drag is hovering over the zone.
     @State private var isTargeted: Bool = false
+    /// Tracks whether the pointer is hovering over the zone.
+    @State private var isHovered: Bool = false
 
     var body: some View {
         content
         .frame(maxWidth: .infinity, maxHeight: mode == .full ? .infinity : nil)
         .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(backgroundColor)
+                .padding(8)
+        )
+        .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(
                     isTargeted ? Color.accentColor : Color.clear,
@@ -29,6 +36,7 @@ struct DropZoneView: View {
                 )
                 .padding(8)
         )
+        .onHover { isHovered = $0 }
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers)
         }
@@ -42,7 +50,7 @@ struct DropZoneView: View {
                 Spacer()
                 Image(systemName: "arrow.down.doc")
                     .font(.system(size: 32))
-                    .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.secondary)
                 Text("Drop files here")
                     .font(.headline)
                 Text("or drag onto the menu bar icon")
@@ -57,7 +65,7 @@ struct DropZoneView: View {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.down.doc")
                     .font(.system(size: 18))
-                    .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.secondary)
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -78,11 +86,10 @@ struct DropZoneView: View {
     }
 
     private var chooseFilesButton: some View {
-        Button(mode == .full ? "Choose Files\u{2026}" : "Choose\u{2026}") {
-            openFilePicker()
-        }
-        .buttonStyle(.borderless)
-        .font(.caption)
+        DropZoneChooseFilesButton(
+            title: mode == .full ? "Choose Files\u{2026}" : "Choose\u{2026}",
+            action: openFilePicker
+        )
     }
 
     /// Compact listing of supported file types grouped by category.
@@ -94,6 +101,16 @@ struct DropZoneView: View {
         .font(.caption2)
         .foregroundStyle(.tertiary)
         .padding(.top, 8)
+    }
+
+    private var backgroundColor: Color {
+        if isTargeted {
+            return Color.accentColor.opacity(0.12)
+        }
+        if isHovered {
+            return Color.primary.opacity(0.04)
+        }
+        return .clear
     }
 
     /// Extracts file URLs from drop providers and calls onDrop.
@@ -126,18 +143,28 @@ struct DropZoneView: View {
 
     /// Opens a macOS file picker dialog for selecting files.
     private func openFilePicker() {
-        NSApp.activate(ignoringOtherApps: true)
-        let panel: NSOpenPanel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        let extensions: [UTType] = FileType.allSupported.compactMap { ext in
-            UTType(filenameExtension: ext)
+        let urls: [URL] = SupportedFilePicker.pickFiles()
+        guard !urls.isEmpty else { return }
+        onDrop(urls)
+    }
+}
+
+private struct DropZoneChooseFilesButton: View {
+    let title: String
+    let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(isHovered ? Color.accentColor : Color.accentColor.opacity(0.88))
+                .underline(isHovered)
         }
-        panel.allowedContentTypes = extensions
-        let response: NSApplication.ModalResponse = panel.runModal()
-        if response == .OK {
-            onDrop(panel.urls)
-        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { isHovered = $0 }
     }
 }
 
