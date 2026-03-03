@@ -84,6 +84,22 @@ struct JobStateTransitionTests {
         #expect(job.warningMessage == "Copied markdown to the clipboard, but saving the file failed.")
     }
 
+    @Test func processingToCompletedStoresDeliveryMetadata() {
+        let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
+        let presignedSourceURL: URL = URL(string: "https://s3.example.com/presigned")!
+        var job: Job = makeJob()
+        job.startUpload()
+        job.startProcessing()
+        job.complete(
+            markdown: "# Hello",
+            savedFileURL: savedFileURL,
+            presignedSourceURL: presignedSourceURL
+        )
+
+        #expect(job.savedFileURL == savedFileURL)
+        #expect(job.presignedSourceURL == presignedSourceURL)
+    }
+
     // MARK: - Failure transitions
 
     @Test func pendingToFailed() {

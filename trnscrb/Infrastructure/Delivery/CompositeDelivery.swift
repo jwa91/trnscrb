@@ -40,6 +40,7 @@ public struct CompositeDelivery: DeliveryGateway {
         var firstError: (any Error)?
         var clipboardFailed: Bool = false
         var fileFailed: Bool = false
+        var savedFileURL: URL?
 
         if settings.copyToClipboard {
             do {
@@ -55,7 +56,8 @@ public struct CompositeDelivery: DeliveryGateway {
 
         if settings.saveToFolder {
             do {
-                _ = try await file.deliver(result: result)
+                let fileReport: DeliveryReport = try await file.deliver(result: result)
+                savedFileURL = fileReport.savedFileURL
                 successfulDeliveries += 1
             } catch {
                 fileFailed = true
@@ -86,6 +88,6 @@ public struct CompositeDelivery: DeliveryGateway {
             }
         }
 
-        return DeliveryReport(warnings: warnings)
+        return DeliveryReport(warnings: warnings, savedFileURL: savedFileURL)
     }
 }

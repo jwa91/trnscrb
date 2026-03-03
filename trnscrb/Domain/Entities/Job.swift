@@ -33,6 +33,10 @@ public struct Job: Sendable, Identifiable, Equatable {
     public private(set) var markdown: String?
     /// Non-fatal warnings surfaced after successful completion.
     public private(set) var deliveryWarnings: [String]
+    /// Local file URL when the markdown was saved to disk.
+    public private(set) var savedFileURL: URL?
+    /// Presigned source URL used for remote processing.
+    public private(set) var presignedSourceURL: URL?
     /// When the job was created.
     public let createdAt: Date
     /// When the job completed or failed.
@@ -51,6 +55,8 @@ public struct Job: Sendable, Identifiable, Equatable {
         self.status = .pending
         self.markdown = nil
         self.deliveryWarnings = []
+        self.savedFileURL = nil
+        self.presignedSourceURL = nil
         self.createdAt = createdAt
         self.completedAt = nil
     }
@@ -74,10 +80,17 @@ public struct Job: Sendable, Identifiable, Equatable {
     }
 
     /// Transitions from `processing` to `completed` with markdown output.
-    public mutating func complete(markdown: String, deliveryWarnings: [String] = []) {
+    public mutating func complete(
+        markdown: String,
+        deliveryWarnings: [String] = [],
+        savedFileURL: URL? = nil,
+        presignedSourceURL: URL? = nil
+    ) {
         guard case .processing = status else { return }
         self.markdown = markdown
         self.deliveryWarnings = deliveryWarnings
+        self.savedFileURL = savedFileURL
+        self.presignedSourceURL = presignedSourceURL
         self.status = .completed
         self.completedAt = Date()
     }
@@ -87,7 +100,10 @@ public struct Job: Sendable, Identifiable, Equatable {
         switch status {
         case .pending, .uploading, .processing:
             self.status = .failed(error: error)
+            self.markdown = nil
             self.deliveryWarnings = []
+            self.savedFileURL = nil
+            self.presignedSourceURL = nil
             self.completedAt = Date()
         case .completed, .failed:
             break
@@ -99,7 +115,10 @@ public struct Job: Sendable, Identifiable, Equatable {
         switch status {
         case .pending, .uploading, .processing, .failed:
             status = .pending
+            markdown = nil
             deliveryWarnings = []
+            savedFileURL = nil
+            presignedSourceURL = nil
             completedAt = nil
         case .completed:
             break

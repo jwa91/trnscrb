@@ -64,6 +64,8 @@ struct ProcessFileUseCaseTests {
         #expect(result.sourceFileName == "meeting.mp3")
         #expect(result.sourceFileType == .audio)
         #expect(result.deliveryWarnings.isEmpty)
+        #expect(result.presignedSourceURL == presignedURL)
+        #expect(result.savedFileURL == nil)
         let uploadedKeys: [String] = await storage.recordedUploadedKeys()
         #expect(uploadedKeys.count == 1)
         #expect(uploadedKeys[0].hasPrefix("trnscrb/"))
@@ -72,6 +74,21 @@ struct ProcessFileUseCaseTests {
         #expect(processedURLs == [presignedURL])
         let deliveredResults: [TranscriptionResult] = await delivery.recordedDeliveredResults()
         #expect(deliveredResults.count == 1)
+    }
+
+    @Test func processFileReturnsSavedFileMetadata() async throws {
+        let presignedURL: URL = URL(string: "https://s3.example.com/presigned")!
+        let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
+        let storage: MockStorageGateway = MockStorageGateway(uploadResult: presignedURL)
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(savedFileURL: savedFileURL)
+        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage, delivery: delivery)
+
+        let result: TranscriptionResult = try await useCase.execute(
+            fileURL: URL(filePath: "/tmp/meeting.mp3")
+        )
+
+        #expect(result.presignedSourceURL == presignedURL)
+        #expect(result.savedFileURL == savedFileURL)
     }
 
     @Test func processPDFFile() async throws {

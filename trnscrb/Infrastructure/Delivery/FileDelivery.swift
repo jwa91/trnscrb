@@ -34,7 +34,7 @@ public struct FileDelivery: DeliveryGateway {
 
         try result.markdown.write(to: fileURL, atomically: true, encoding: .utf8)
         AppLog.delivery.info("Saved markdown to \(fileURL.path(), privacy: .public)")
-        return DeliveryReport()
+        return DeliveryReport(savedFileURL: fileURL)
     }
 
     /// Determines the output file URL, appending a timestamp if the file already exists.

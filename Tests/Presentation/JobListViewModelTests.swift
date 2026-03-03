@@ -22,7 +22,8 @@ struct JobListViewModelTests {
         storage: MockStorageGateway = MockStorageGateway(),
         delivery: MockDeliveryGateway = MockDeliveryGateway(),
         settings: MockSettingsGateway,
-        notificationGateway: MockNotificationGateway = MockNotificationGateway()
+        notificationGateway: MockNotificationGateway = MockNotificationGateway(),
+        copyFeedbackDuration: Duration = .seconds(1.5)
     ) -> (JobListViewModel, MockStorageGateway, MockDeliveryGateway, MockSettingsGateway, MockNotificationGateway) {
         let audio: MockTranscriptionGateway = MockTranscriptionGateway(
             supportedExtensions: FileType.audioExtensions
@@ -39,16 +40,23 @@ struct JobListViewModelTests {
         let vm: JobListViewModel = JobListViewModel(
             useCase: useCase,
             settingsGateway: settings,
-            notificationUseCase: NotifyUserUseCase(gateway: notificationGateway)
+            notificationUseCase: NotifyUserUseCase(gateway: notificationGateway),
+            copyFeedbackDuration: copyFeedbackDuration
         )
         return (vm, storage, delivery, settings, notificationGateway)
     }
 
     private func makeViewModel(
         storage: MockStorageGateway = MockStorageGateway(),
-        delivery: MockDeliveryGateway = MockDeliveryGateway()
+        delivery: MockDeliveryGateway = MockDeliveryGateway(),
+        copyFeedbackDuration: Duration = .seconds(1.5)
     ) -> (JobListViewModel, MockStorageGateway, MockDeliveryGateway, MockSettingsGateway, MockNotificationGateway) {
-        makeViewModel(storage: storage, delivery: delivery, settings: configuredSettingsGateway())
+        makeViewModel(
+            storage: storage,
+            delivery: delivery,
+            settings: configuredSettingsGateway(),
+            copyFeedbackDuration: copyFeedbackDuration
+        )
     }
 
     private func waitUntil(
@@ -320,6 +328,46 @@ struct JobListViewModelTests {
         #expect(notified)
         let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
         #expect(notifications[0].body.contains("saving the file failed"))
+    }
+
+    @Test func successfulProcessingStoresRevealAndSourceMetadata() async {
+        let sourceURL: URL = URL(string: "https://s3.example.com/presigned")!
+        let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
+        let storage: MockStorageGateway = MockStorageGateway(uploadResult: sourceURL)
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(savedFileURL: savedFileURL)
+        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let (vm, _, _, _, _) = makeViewModel(
+            storage: storage,
+            delivery: delivery,
+            settings: settings
+        )
+
+        vm.processFiles([URL(filePath: "/tmp/meeting.mp3")])
+
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+
+        #expect(completed)
+        #expect(vm.completedJobs.first?.savedFileURL == savedFileURL)
+        #expect(vm.completedJobs.first?.presignedSourceURL == sourceURL)
+    }
+
+    @Test func copyToClipboardSetsTransientCopiedFeedback() async {
+        let (vm, _, _, _, _) = makeViewModel(copyFeedbackDuration: .milliseconds(20))
+        var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied.mp3"))
+        job.startUpload()
+        job.startProcessing()
+        job.complete(markdown: "# Copied")
+        vm.jobs = [job]
+
+        vm.copyToClipboard(jobID: job.id)
+
+        #expect(vm.copiedJobID == job.id)
+        let cleared: Bool = await waitUntil(timeout: .seconds(1)) {
+            vm.copiedJobID == nil
+        }
+        #expect(cleared)
     }
 
     @Test func failedProcessingMarksJobAsFailedInsteadOfLeavingItActive() async {
