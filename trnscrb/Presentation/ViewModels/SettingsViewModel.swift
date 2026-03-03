@@ -35,8 +35,12 @@ public final class SettingsViewModel: ObservableObject {
     private let gateway: any SettingsGateway
     /// Domain use case for connectivity testing.
     private let connectivityUseCase: TestConnectivityUseCase
+    /// Validates and resolves the output folder before settings are saved.
+    private let outputFolderGateway: any OutputFolderGateway
     /// Persists settings, secrets, and launch-at-login atomically.
     private let saveSettingsUseCase: SaveSettingsUseCase
+    /// Evaluates whether local Apple providers are available on this runtime.
+    private let isLocalAppleModeAvailableProvider: @Sendable () -> Bool
 
     /// Creates a view model backed by the given settings gateway.
     /// - Parameters:
@@ -46,17 +50,27 @@ public final class SettingsViewModel: ObservableObject {
     public init(
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
-        saveSettingsUseCase: SaveSettingsUseCase
+        outputFolderGateway: any OutputFolderGateway,
+        saveSettingsUseCase: SaveSettingsUseCase,
+        isLocalAppleModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
+        self.outputFolderGateway = outputFolderGateway
         self.saveSettingsUseCase = saveSettingsUseCase
+        self.isLocalAppleModeAvailableProvider = isLocalAppleModeAvailable
     }
 
     /// Loads settings and secrets from persistent storage.
     public func load() async {
         do {
-            settings = try await gateway.loadSettings()
+            let loadedSettings: AppSettings = try await gateway.loadSettings()
+            settings = normalizedProviderModesForCurrentRuntime(loadedSettings)
             mistralAPIKey = try await gateway.getSecret(for: .mistralAPIKey) ?? ""
             s3SecretKey = try await gateway.getSecret(for: .s3SecretKey) ?? ""
             error = nil
@@ -69,9 +83,10 @@ public final class SettingsViewModel: ObservableObject {
     @discardableResult
     public func save() async -> Bool {
         do {
-            settings = settings.normalizedForUse
+            settings = normalizedProviderModesForCurrentRuntime(settings.normalizedForUse)
             mistralAPIKey = mistralAPIKey.trimmedCredentialValue
             s3SecretKey = s3SecretKey.trimmedCredentialValue
+            _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
 
             try await saveSettingsUseCase.save(
                 settings: settings,
@@ -85,6 +100,34 @@ public final class SettingsViewModel: ObservableObject {
             self.error = error.localizedDescription
             return false
         }
+    }
+
+    public var resolvedSaveFolderPath: String {
+        let trimmedPath: String = settings.saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return "" }
+        return URL(filePath: (trimmedPath as NSString).expandingTildeInPath).standardizedFileURL.path()
+    }
+
+    public var isLocalAppleModeAvailable: Bool {
+        isLocalAppleModeAvailableProvider()
+    }
+
+    private func normalizedProviderModesForCurrentRuntime(_ input: AppSettings) -> AppSettings {
+        guard !isLocalAppleModeAvailable else { return input }
+        return AppSettings(
+            s3EndpointURL: input.s3EndpointURL,
+            s3AccessKey: input.s3AccessKey,
+            s3BucketName: input.s3BucketName,
+            s3Region: input.s3Region,
+            s3PathPrefix: input.s3PathPrefix,
+            saveFolderPath: input.saveFolderPath,
+            copyToClipboard: input.copyToClipboard,
+            fileRetentionHours: input.fileRetentionHours,
+            launchAtLogin: input.launchAtLogin,
+            audioProviderMode: .mistral,
+            pdfProviderMode: .mistral,
+            imageProviderMode: .mistral
+        )
     }
 
     /// Tests S3 connectivity by sending a HEAD request to the bucket.

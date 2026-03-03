@@ -10,6 +10,11 @@ import Foundation
 public struct MistralOCRProvider: TranscriptionGateway {
     // swiftlint:disable:next force_unwrapping
     private static let endpoint: URL = URL(string: "https://api.mistral.ai/v1/ocr")!
+    /// This provider is selected when mode is Mistral.
+    public let providerMode: ProviderMode = .mistral
+    /// Mistral expects a remotely reachable URL.
+    public let sourceKind: TranscriptionSourceKind = .remoteURL
+
     /// PDF and image file extensions this provider handles.
     public var supportedExtensions: Set<String> {
         FileType.pdfExtensions.union(FileType.imageExtensions)

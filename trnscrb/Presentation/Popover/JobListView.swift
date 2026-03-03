@@ -5,6 +5,7 @@ struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel
     @State private var expandedJobIDs: Set<UUID> = []
+    @State private var isClearAllHovered: Bool = false
 
     var body: some View {
         ScrollView {
@@ -34,9 +35,14 @@ struct JobListView: View {
                             Button("Clear All") {
                                 viewModel.clearCompleted()
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.plain)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(
+                                isClearAllHovered ? Color.accentColor : Color.secondary
+                            )
+                            .underline(isClearAllHovered)
+                            .pointingHandCursor()
+                            .onHover { isClearAllHovered = $0 }
                         }
                         .padding(.horizontal, 8)
                         .padding(.top, 8)
@@ -45,6 +51,7 @@ struct JobListView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onDeleteCommand(perform: handleDeleteCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
             let currentIDs: Set<UUID> = Set(jobs.map(\.id))
