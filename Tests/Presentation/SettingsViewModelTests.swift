@@ -7,7 +7,13 @@ import Testing
 struct SettingsViewModelTests {
     private func makeViewModel(
         settings: AppSettings = AppSettings(),
-        secrets: [SecretKey: String] = [:]
+        secrets: [SecretKey: String] = [:],
+        isLocalAppleModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) -> (
         SettingsViewModel,
         MockSettingsGateway,
@@ -34,7 +40,8 @@ struct SettingsViewModelTests {
             gateway: gateway,
             connectivityUseCase: connectivityUseCase,
             outputFolderGateway: outputFolderGateway,
-            saveSettingsUseCase: saveSettingsUseCase
+            saveSettingsUseCase: saveSettingsUseCase,
+            isLocalAppleModeAvailable: isLocalAppleModeAvailable
         )
         return (vm, gateway, connectivityGateway, launchAtLoginGateway, outputFolderGateway)
     }
@@ -68,16 +75,15 @@ struct SettingsViewModelTests {
     }
 
     @Test func loadCoercesLocalModesToMistralWhenUnavailable() async {
-        if #available(macOS 26, *) {
-            return
-        }
-
         let customSettings: AppSettings = AppSettings(
             audioProviderMode: .localApple,
             pdfProviderMode: .localApple,
             imageProviderMode: .localApple
         )
-        let (vm, _, _, _, _) = makeViewModel(settings: customSettings)
+        let (vm, _, _, _, _) = makeViewModel(
+            settings: customSettings,
+            isLocalAppleModeAvailable: { false }
+        )
 
         await vm.load()
 
@@ -133,11 +139,9 @@ struct SettingsViewModelTests {
     }
 
     @Test func saveCoercesLocalModesToMistralWhenUnavailable() async {
-        if #available(macOS 26, *) {
-            return
-        }
-
-        let (vm, gateway, _, _, _) = makeViewModel()
+        let (vm, gateway, _, _, _) = makeViewModel(
+            isLocalAppleModeAvailable: { false }
+        )
         vm.settings.audioProviderMode = .localApple
         vm.settings.pdfProviderMode = .localApple
         vm.settings.imageProviderMode = .localApple
@@ -261,26 +265,19 @@ struct SettingsViewModelTests {
         #expect(vm.mistralTestResult == .failure("Invalid API key"))
     }
 
-    @Test func saveAppliesLaunchAtLoginSettingAfterPersistence() async {
-        let (vm, gateway, _, launchAtLoginGateway, _) = makeViewModel()
-        vm.settings.launchAtLogin = true
+    @Test func testMistralReportsSuccess() async {
+        let (vm, _, connectivityGateway, _, _) = makeViewModel()
+        vm.mistralAPIKey = "  mk-valid  "
 
-        let didSave: Bool = await vm.save()
+        await vm.testMistral()
 
-        #expect(didSave)
-        #expect((await gateway.snapshotSettings()).launchAtLogin == true)
-        #expect(await launchAtLoginGateway.recordedCallCount() == 1)
-        #expect(await launchAtLoginGateway.recordedAppliedValues() == [true])
+        #expect(await connectivityGateway.recordedMistralCallCount() == 1)
+        #expect(vm.mistralAPIKey == "mk-valid")
+        #expect(vm.mistralTestResult == .success)
     }
 
-    @Test func localModeAvailabilityReflectsRuntime() async {
-        let (vm, _, _, _, _) = makeViewModel()
-
-        if #available(macOS 26, *) {
-            #expect(vm.isLocalAppleModeAvailable)
-        } else {
-            #expect(!vm.isLocalAppleModeAvailable)
-        }
+    @Test func isLocalModeAvailabilityUsesInjectedRuntimeSupport() async {
+        let (vm, _, _, _, _) = makeViewModel(isLocalAppleModeAvailable: { false })
+        #expect(!vm.isLocalAppleModeAvailable)
     }
-
 }

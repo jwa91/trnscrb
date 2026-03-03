@@ -39,6 +39,8 @@ public final class SettingsViewModel: ObservableObject {
     private let outputFolderGateway: any OutputFolderGateway
     /// Persists settings, secrets, and launch-at-login atomically.
     private let saveSettingsUseCase: SaveSettingsUseCase
+    /// Evaluates whether local Apple providers are available on this runtime.
+    private let isLocalAppleModeAvailableProvider: @Sendable () -> Bool
 
     /// Creates a view model backed by the given settings gateway.
     /// - Parameters:
@@ -49,12 +51,19 @@ public final class SettingsViewModel: ObservableObject {
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
         outputFolderGateway: any OutputFolderGateway,
-        saveSettingsUseCase: SaveSettingsUseCase
+        saveSettingsUseCase: SaveSettingsUseCase,
+        isLocalAppleModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
         self.outputFolderGateway = outputFolderGateway
         self.saveSettingsUseCase = saveSettingsUseCase
+        self.isLocalAppleModeAvailableProvider = isLocalAppleModeAvailable
     }
 
     /// Loads settings and secrets from persistent storage.
@@ -100,10 +109,7 @@ public final class SettingsViewModel: ObservableObject {
     }
 
     public var isLocalAppleModeAvailable: Bool {
-        if #available(macOS 26, *) {
-            return true
-        }
-        return false
+        isLocalAppleModeAvailableProvider()
     }
 
     private func normalizedProviderModesForCurrentRuntime(_ input: AppSettings) -> AppSettings {

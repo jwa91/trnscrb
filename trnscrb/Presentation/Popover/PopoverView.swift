@@ -37,6 +37,7 @@ struct PopoverView: View {
             activeJobCount: jobListViewModel.activeJobs.count,
             completedJobCount: jobListViewModel.completedJobs.count
         )
+        let hasJobs: Bool = !jobListViewModel.activeJobs.isEmpty || !jobListViewModel.completedJobs.isEmpty
 
         return VStack(spacing: 0) {
             header
@@ -71,11 +72,12 @@ struct PopoverView: View {
                 EmptyView()
             }
 
-            if !jobListViewModel.activeJobs.isEmpty || !jobListViewModel.completedJobs.isEmpty {
+            if hasJobs {
                 JobListView(viewModel: jobListViewModel)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                Spacer(minLength: 0)
             }
-
-            Spacer(minLength: 0)
         }
         .frame(width: 320, height: 480)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in

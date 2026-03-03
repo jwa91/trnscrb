@@ -11,16 +11,26 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
     public var supportedExtensions: Set<String> { FileType.audioExtensions }
 
     private let locale: Locale
+    private let isLocalModeAvailable: @Sendable () -> Bool
 
-    public init(locale: Locale = Locale(identifier: "en-US")) {
+    public init(
+        locale: Locale = Locale(identifier: "en-US"),
+        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
+    ) {
         self.locale = locale
+        self.isLocalModeAvailable = isLocalModeAvailable
     }
 
     public func process(sourceURL: URL) async throws -> String {
         guard sourceURL.isFileURL else {
             throw LocalProviderError.localFileRequired
         }
-        guard #available(macOS 26, *) else {
+        guard isLocalModeAvailable() else {
             throw LocalProviderError.localModeUnavailable
         }
 

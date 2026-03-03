@@ -3,15 +3,20 @@ import Testing
 
 @testable import trnscrb
 
-private actor ProgressCollector {
+private final class LockedProgressRecorder: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
     private var values: [Double] = []
 
     func append(_ value: Double) {
+        lock.lock()
         values.append(value)
+        lock.unlock()
     }
 
     func snapshot() -> [Double] {
-        values
+        lock.lock()
+        defer { lock.unlock() }
+        return values
     }
 }
 
@@ -225,21 +230,16 @@ struct S3ClientTests {
             return (response, Data())
         }
 
-        let collector: ProgressCollector = ProgressCollector()
+        let recorder: LockedProgressRecorder = LockedProgressRecorder()
         _ = try await client.upload(
             fileURL: tempFile,
             key: "trnscrb/progress.mp3",
             onProgress: { value in
-                Task {
-                    await collector.append(value)
-                }
+                recorder.append(value)
             }
         )
 
-        for _ in 0..<10 {
-            await Task.yield()
-        }
-        let progressValues: [Double] = await collector.snapshot()
+        let progressValues: [Double] = recorder.snapshot()
         #expect(progressValues.first == 0)
         #expect(progressValues.last == 1)
     }

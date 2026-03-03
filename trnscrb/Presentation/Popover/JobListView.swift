@@ -51,6 +51,7 @@ struct JobListView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onDeleteCommand(perform: handleDeleteCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
             let currentIDs: Set<UUID> = Set(jobs.map(\.id))

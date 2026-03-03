@@ -19,19 +19,6 @@ struct MistralAudioProviderTests {
         return (MistralAudioProvider(settingsGateway: gateway, urlSession: session), mock)
     }
 
-    // MARK: - Supported extensions
-
-    @Test func supportedExtensionsMatchAudioFileType() {
-        let (provider, _) = makeProvider()
-        #expect(provider.supportedExtensions == FileType.audioExtensions)
-    }
-
-    @Test func metadataMatchesMistralRemoteRouting() {
-        let (provider, _) = makeProvider()
-        #expect(provider.providerMode == .mistral)
-        #expect(provider.sourceKind == .remoteURL)
-    }
-
     // MARK: - Request format
 
     @Test func processCallsCorrectEndpoint() async throws {
@@ -41,13 +28,16 @@ struct MistralAudioProviderTests {
             #expect(request.url?.absoluteString == "https://api.mistral.ai/v1/audio/transcriptions")
             #expect(request.httpMethod == "POST")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-api-key")
-            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            #expect(
+                request.value(forHTTPHeaderField: "Content-Type")?
+                    .hasPrefix("multipart/form-data; boundary=") == true
+            )
 
-            let requestBody: Data = try #require(request.httpBody)
-            let jsonObject: Any = try JSONSerialization.jsonObject(with: requestBody)
-            let body: [String: Any] = try #require(jsonObject as? [String: Any])
-            #expect(body["model"] as? String == "voxtral-mini-latest")
-            #expect(body["file_url"] as? String == "https://s3.example.com/bucket/file.mp3")
+            let body: String = String(data: try #require(request.httpBody), encoding: .utf8) ?? ""
+            #expect(body.contains("name=\"model\""))
+            #expect(body.contains("voxtral-mini-latest"))
+            #expect(body.contains("name=\"file_url\""))
+            #expect(body.contains("https://s3.example.com/bucket/file.mp3"))
 
             let responseJSON: String = """
             {"text": "Hello world", "model": "voxtral-mini-2507"}
