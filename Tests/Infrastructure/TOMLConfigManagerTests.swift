@@ -102,6 +102,23 @@ struct TOMLConfigManagerTests {
         #expect(loaded == defaults)
     }
 
+    @Test func roundTripPreservesProviderModes() async throws {
+        let (manager, tempDir) = try makeManager()
+        defer { cleanupDir(tempDir) }
+        let original: AppSettings = AppSettings(
+            audioProviderMode: .localApple,
+            pdfProviderMode: .mistral,
+            imageProviderMode: .localApple
+        )
+
+        try await manager.saveSettings(original)
+        let loaded: AppSettings = try await manager.loadSettings()
+
+        #expect(loaded.audioProviderMode == .localApple)
+        #expect(loaded.pdfProviderMode == .mistral)
+        #expect(loaded.imageProviderMode == .localApple)
+    }
+
     // MARK: - TOML format
 
     @Test func savedFileIsTOMLFormat() async throws {
@@ -112,7 +129,10 @@ struct TOMLConfigManagerTests {
             s3BucketName: "bucket",
             copyToClipboard: false,
             fileRetentionHours: 12,
-            launchAtLogin: true
+            launchAtLogin: true,
+            audioProviderMode: .localApple,
+            pdfProviderMode: .mistral,
+            imageProviderMode: .localApple
         )
         try await manager.saveSettings(settings)
         let fileURL: URL = tempDir.appending(path: "config.toml")
@@ -123,7 +143,39 @@ struct TOMLConfigManagerTests {
         #expect(content.contains("copy_to_clipboard = false"))
         #expect(content.contains("file_retention_hours = 12"))
         #expect(content.contains("launch_at_login = true"))
+        #expect(content.contains("audio_provider_mode = \"local\""))
+        #expect(content.contains("pdf_provider_mode = \"mistral\""))
+        #expect(content.contains("image_provider_mode = \"local\""))
         #expect(!content.contains("save_to_folder"))
+    }
+
+    @Test func saveRewritesSchemaToIncludeProviderModeKeys() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let oldSchema: String = """
+        s3_endpoint_url = "https://legacy.example.com"
+        s3_access_key = "AKID"
+        s3_bucket_name = "bucket"
+        """
+        try oldSchema.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let keychainStore: KeychainStore = KeychainStore(service: "com.trnscrb.test.toml.\(UUID().uuidString)")
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            keychainStore: keychainStore
+        )
+
+        let loaded: AppSettings = try await manager.loadSettings()
+        try await manager.saveSettings(loaded)
+
+        let rewritten: String = try String(contentsOf: fileURL, encoding: .utf8)
+        #expect(rewritten.contains("audio_provider_mode = \"mistral\""))
+        #expect(rewritten.contains("pdf_provider_mode = \"mistral\""))
+        #expect(rewritten.contains("image_provider_mode = \"mistral\""))
     }
 
     // MARK: - Edge cases

@@ -4,6 +4,15 @@
 
 ---
 
+## Implementation Status (Current App)
+
+- Per-media provider mode is implemented in settings (`mistral` or `local` for audio/PDF/image).
+- Mistral remains the default mode for all media types.
+- Local Apple processing path is enabled for macOS 26+ with on-device providers.
+- On macOS <26, local mode is not available in settings and processing resolves to Mistral requirements.
+
+---
+
 ## Cloud Track — Recommendations
 
 ### Audio: Mistral Voxtral Mini Transcribe V2

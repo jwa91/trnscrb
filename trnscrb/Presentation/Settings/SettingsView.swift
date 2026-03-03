@@ -56,6 +56,7 @@ struct SettingsView: View {
         Form {
             s3Section
             mistralSection
+            providerSection
             outputSection
             generalSection
         }
@@ -103,6 +104,20 @@ struct SettingsView: View {
                     Task { await viewModel.testMistral() }
                 }
                 testResultView(viewModel.mistralTestResult)
+            }
+        }
+    }
+
+    /// Per-media provider mode preferences.
+    private var providerSection: some View {
+        Section("Processing Providers") {
+            providerModePicker("Audio", selection: $viewModel.settings.audioProviderMode)
+            providerModePicker("PDF", selection: $viewModel.settings.pdfProviderMode)
+            providerModePicker("Image", selection: $viewModel.settings.imageProviderMode)
+            if !viewModel.isLocalAppleModeAvailable {
+                Text("Local Apple mode requires macOS 26 or newer.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -212,6 +227,18 @@ struct SettingsView: View {
             }
             .buttonStyle(.borderless)
             .help(isVisible.wrappedValue ? "Hide value" : "Show value")
+        }
+    }
+
+    private func providerModePicker(
+        _ title: String,
+        selection: Binding<ProviderMode>
+    ) -> some View {
+        Picker(title, selection: selection) {
+            Text("Mistral").tag(ProviderMode.mistral)
+            Text("Local Apple (macOS 26+)")
+                .tag(ProviderMode.localApple)
+                .disabled(!viewModel.isLocalAppleModeAvailable)
         }
     }
 

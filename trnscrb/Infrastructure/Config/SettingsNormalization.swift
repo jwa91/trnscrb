@@ -11,7 +11,10 @@ extension AppSettings {
             saveFolderPath: saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines),
             copyToClipboard: copyToClipboard,
             fileRetentionHours: fileRetentionHours,
-            launchAtLogin: launchAtLogin
+            launchAtLogin: launchAtLogin,
+            audioProviderMode: audioProviderMode,
+            pdfProviderMode: pdfProviderMode,
+            imageProviderMode: imageProviderMode
         )
     }
 }

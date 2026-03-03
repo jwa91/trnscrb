@@ -40,18 +40,27 @@ public final class ProcessFileUseCase: Sendable {
     private let delivery: any DeliveryGateway
     /// Settings for S3 path prefix and other config.
     private let settings: any SettingsGateway
+    /// Evaluates whether local Apple mode is available at runtime.
+    private let isLocalModeAvailable: @Sendable () -> Bool
 
     /// Creates the use case with injected dependencies.
     public init(
         storage: any StorageGateway,
         transcribers: [any TranscriptionGateway],
         delivery: any DeliveryGateway,
-        settings: any SettingsGateway
+        settings: any SettingsGateway,
+        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        }
     ) {
         self.storage = storage
         self.transcribers = transcribers
         self.delivery = delivery
         self.settings = settings
+        self.isLocalModeAvailable = isLocalModeAvailable
     }
 
     /// Processes a dropped file end-to-end.
@@ -73,36 +82,54 @@ public final class ProcessFileUseCase: Sendable {
             throw ProcessFileError.unsupportedFileType(ext)
         }
 
-        guard let transcriber = transcribers.first(
-            where: { $0.supportedExtensions.contains(ext) }
-        ) else {
+        let appSettings: AppSettings = try await settings.loadSettings().normalizedForUse
+        let route: TranscriptionRoute
+        do {
+            route = try TranscriptionRouting.resolve(
+                fileType: fileType,
+                fileExtension: ext,
+                settings: appSettings,
+                transcribers: transcribers,
+                isLocalModeAvailable: isLocalModeAvailable()
+            )
+        } catch is TranscriptionRoutingError {
             throw ProcessFileError.unsupportedFileType(ext)
         }
 
-        let appSettings: AppSettings = try await settings.loadSettings().normalizedForUse
-        let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
-
-        onStageChange?(.uploading)
-        AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
-        let presignedURL: URL = try await retry(
-            maxAttempts: 3,
-            initialBackoffNanoseconds: 250_000_000
-        ) {
-            try await storage.upload(
-                fileURL: fileURL,
-                key: key,
-                onProgress: onUploadProgress
-            )
+        let sourceURL: URL
+        let presignedURL: URL?
+        switch route.transcriber.sourceKind {
+        case .remoteURL:
+            let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
+            onStageChange?(.uploading)
+            AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
+            let uploadedURL: URL = try await retry(
+                maxAttempts: 3,
+                initialBackoffNanoseconds: 250_000_000
+            ) {
+                try await storage.upload(
+                    fileURL: fileURL,
+                    key: key,
+                    onProgress: onUploadProgress
+                )
+            }
+            AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public)")
+            sourceURL = uploadedURL
+            presignedURL = uploadedURL
+        case .localFile:
+            sourceURL = fileURL
+            presignedURL = nil
         }
-        AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public)")
 
         onStageChange?(.processing)
-        AppLog.pipeline.info("Calling transcriber for \(fileURL.lastPathComponent, privacy: .public) as \(String(describing: fileType), privacy: .public)")
+        AppLog.pipeline.info(
+            "Calling transcriber for \(fileURL.lastPathComponent, privacy: .public) as \(String(describing: fileType), privacy: .public) in \(route.effectiveMode.rawValue, privacy: .public) mode"
+        )
         let markdown: String = try await retry(
             maxAttempts: 2,
             initialBackoffNanoseconds: 500_000_000
         ) {
-            try await transcriber.process(sourceURL: presignedURL)
+            try await route.transcriber.process(sourceURL: sourceURL)
         }
         AppLog.pipeline.info("Transcriber completed for \(fileURL.lastPathComponent, privacy: .public)")
 

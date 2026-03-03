@@ -303,4 +303,76 @@ struct ProcessFileUseCaseTests {
 
         #expect(result.sourceFileType == .image)
     }
+
+    @Test func usesLocalProviderForConfiguredMediaWithoutUploading() async throws {
+        let storage: MockStorageGateway = MockStorageGateway()
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(audioProviderMode: .localApple)
+        )
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let mistralAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .mistral,
+            sourceKind: .remoteURL,
+            processResult: "# Cloud Audio"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [mistralAudio, localAudio],
+            delivery: MockDeliveryGateway(),
+            settings: settings,
+            isLocalModeAvailable: { true }
+        )
+
+        let fileURL: URL = URL(filePath: "/tmp/local-source.mp3")
+        let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
+
+        #expect(result.markdown == "# Local Audio")
+        #expect(result.presignedSourceURL == nil)
+        #expect(await storage.recordedUploadAttemptCount() == 0)
+        #expect(await localAudio.recordedProcessedURLs() == [fileURL])
+        #expect(await mistralAudio.recordedProcessedURLs().isEmpty)
+    }
+
+    @Test func fallsBackToMistralWhenLocalModeUnavailable() async throws {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadResult: URL(string: "https://s3.example.com/presigned")!
+        )
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(audioProviderMode: .localApple)
+        )
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let mistralAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .mistral,
+            sourceKind: .remoteURL,
+            processResult: "# Cloud Audio"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [mistralAudio, localAudio],
+            delivery: MockDeliveryGateway(),
+            settings: settings,
+            isLocalModeAvailable: { false }
+        )
+
+        let result: TranscriptionResult = try await useCase.execute(
+            fileURL: URL(filePath: "/tmp/fallback.mp3")
+        )
+
+        #expect(result.markdown == "# Cloud Audio")
+        #expect(await storage.recordedUploadAttemptCount() == 1)
+        #expect(await localAudio.recordedProcessedURLs().isEmpty)
+        #expect(await mistralAudio.recordedProcessedURLs() == [URL(string: "https://s3.example.com/presigned")!])
+    }
 }
