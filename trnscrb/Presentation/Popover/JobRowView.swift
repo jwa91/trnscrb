@@ -82,19 +82,33 @@ struct JobRowView: View {
             ProgressView()
                 .controlSize(.small)
         case .completed:
-            if job.deliveryWarnings.isEmpty {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.caption)
-            } else {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.caption)
-            }
+            completionStatusView
         case .failed:
-            Image(systemName: "exclamation.triangle.fill")
-                .foregroundStyle(.red)
-                .font(.caption)
+            HStack(spacing: 4) {
+                Image(systemName: "exclamation.triangle.fill")
+                Text("Failed")
+            }
+            .foregroundStyle(.red)
+            .font(.caption2)
+        }
+    }
+
+    @ViewBuilder
+    private var completionStatusView: some View {
+        if job.deliveryWarnings.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                Text("Done")
+            }
+            .foregroundStyle(.green)
+            .font(.caption2)
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle.fill")
+                Text("Done")
+            }
+            .foregroundStyle(.orange)
+            .font(.caption2)
         }
     }
 
