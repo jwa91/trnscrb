@@ -126,17 +126,19 @@ public final class JobListViewModel: ObservableObject {
 
         // Create jobs synchronously so callers can inspect them immediately.
         var pendingJobs: [(id: UUID, fileURL: URL)] = []
+        var newJobs: [Job] = []
         for (url, fileType) in validURLs {
             let job: Job = Job(fileType: fileType, fileURL: url)
-            jobs.append(job)
+            newJobs.append(job)
             pendingJobs.append((id: job.id, fileURL: url))
         }
+        jobs = jobs + newJobs
 
         Task {
             guard await checkConfiguration() else {
                 // Remove the jobs we just added — config is invalid.
                 let idsToRemove: Set<UUID> = Set(pendingJobs.map(\.id))
-                jobs.removeAll { idsToRemove.contains($0.id) }
+                jobs = jobs.filter { !idsToRemove.contains($0.id) }
                 return
             }
             configurationError = nil
@@ -163,17 +165,17 @@ public final class JobListViewModel: ObservableObject {
         if selectedJobID == jobID {
             selectedJobID = nil
         }
-        jobs.removeAll { $0.id == jobID }
+        jobs = jobs.filter { $0.id != jobID }
     }
 
     /// Removes all completed and failed jobs.
     public func clearCompleted() {
-        jobs.removeAll { job in
+        jobs = jobs.filter { job in
             switch job.status {
             case .completed, .failed:
-                return true
-            case .pending, .uploading, .processing:
                 return false
+            case .pending, .uploading, .processing:
+                return true
             }
         }
     }
@@ -329,7 +331,9 @@ public final class JobListViewModel: ObservableObject {
     /// Applies a mutation to the job with the given ID.
     private func updateJob(id: UUID, _ mutation: (inout Job) -> Void) {
         guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return }
-        mutation(&jobs[index])
+        var updatedJobs: [Job] = jobs
+        mutation(&updatedJobs[index])
+        jobs = updatedJobs
     }
 
     /// Finalizes a successfully processed job even if async stage callbacks arrive late.
@@ -343,13 +347,14 @@ public final class JobListViewModel: ObservableObject {
         deliveryWarnings: [String]
     ) -> Bool {
         guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return false }
+        var updatedJobs: [Job] = jobs
 
-        switch jobs[index].status {
+        switch updatedJobs[index].status {
         case .pending:
-            jobs[index].startUpload()
-            jobs[index].startProcessing()
+            updatedJobs[index].startUpload()
+            updatedJobs[index].startProcessing()
         case .uploading:
-            jobs[index].startProcessing()
+            updatedJobs[index].startProcessing()
         case .processing:
             break
         case .completed:
@@ -358,12 +363,13 @@ public final class JobListViewModel: ObservableObject {
             return false
         }
 
-        jobs[index].complete(
+        updatedJobs[index].complete(
             markdown: markdown,
             deliveryWarnings: deliveryWarnings
         )
+        jobs = updatedJobs
 
-        if case .completed = jobs[index].status {
+        if case .completed = updatedJobs[index].status {
             return true
         }
         return false
@@ -379,7 +385,7 @@ public final class JobListViewModel: ObservableObject {
                 .prefix(toRemove)
                 .map(\.id)
         )
-        jobs.removeAll { idsToRemove.contains($0.id) }
+        jobs = jobs.filter { !idsToRemove.contains($0.id) }
     }
 
     /// Formats a consistent unsupported-file error for the UI.
