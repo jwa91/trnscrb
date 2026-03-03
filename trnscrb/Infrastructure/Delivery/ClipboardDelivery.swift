@@ -10,6 +10,6 @@ public struct ClipboardDelivery: DeliveryGateway {
         let pasteboard: NSPasteboard = .general
         pasteboard.clearContents()
         pasteboard.setString(result.markdown, forType: .string)
-        return .success
+        return DeliveryReport()
     }
 }

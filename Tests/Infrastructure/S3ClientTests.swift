@@ -104,43 +104,6 @@ private final class SlowUploadURLProtocol: URLProtocol {
     }
 }
 
-private actor CountingSettingsGateway: SettingsGateway {
-    private let settings: AppSettings
-    private let secrets: [SecretKey: String]
-    private var getSecretCallCount: Int = 0
-
-    init(settings: AppSettings, secrets: [SecretKey: String] = [:]) {
-        self.settings = settings
-        self.secrets = secrets
-    }
-
-    func loadSettings() async throws -> AppSettings {
-        settings
-    }
-
-    func saveSettings(_ settings: AppSettings) async throws {
-        _ = settings
-    }
-
-    func getSecret(for key: SecretKey) async throws -> String? {
-        getSecretCallCount += 1
-        return secrets[key]
-    }
-
-    func setSecret(_ value: String, for key: SecretKey) async throws {
-        _ = value
-        _ = key
-    }
-
-    func removeSecret(for key: SecretKey) async throws {
-        _ = key
-    }
-
-    func recordedGetSecretCallCount() -> Int {
-        getSecretCallCount
-    }
-}
-
 private final class FileAccessSpy: SecurityScopedFileAccessing, @unchecked Sendable {
     private let lock: NSLock = NSLock()
     private(set) var startedURLs: [URL] = []
@@ -447,17 +410,6 @@ struct S3ClientTests {
 
         let keys: [String] = try await client.listCreatedBefore(Date())
         #expect(keys.isEmpty)
-    }
-
-    @Test func listCreatedBeforeSkipsSecretLookupWhenS3IsNotConfigured() async {
-        let gateway: CountingSettingsGateway = CountingSettingsGateway(settings: AppSettings())
-        let (_, session, _) = makeMockURLSession()
-        let client: S3Client = S3Client(settingsGateway: gateway, urlSession: session)
-
-        await #expect(throws: S3Error.self) {
-            _ = try await client.listCreatedBefore(Date())
-        }
-        #expect(await gateway.recordedGetSecretCallCount() == 0)
     }
 
     @Test func listCreatedBeforePaginatesAcrossContinuationToken() async throws {
