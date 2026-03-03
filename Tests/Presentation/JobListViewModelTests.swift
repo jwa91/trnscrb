@@ -544,9 +544,37 @@ struct JobListViewModelTests {
 
         vm.copyToClipboard(jobID: job.id)
 
-        #expect(vm.copiedJobID == job.id)
+        #expect(
+            vm.copyFeedback == JobListViewModel.CopyFeedback(
+                jobID: job.id,
+                target: .markdown
+            )
+        )
         let cleared: Bool = await waitUntil(timeout: .seconds(1)) {
-            vm.copiedJobID == nil
+            vm.copyFeedback == nil
+        }
+        #expect(cleared)
+    }
+
+    @Test func copySourceURLToClipboardSetsTransientCopiedFeedback() async {
+        let (vm, _, _, _, _, _) = makeViewModel(copyFeedbackDuration: .milliseconds(20))
+        let sourceURL: URL = URL(string: "https://s3.example.com/transcript-source")!
+        var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied-source.mp3"))
+        job.startUpload()
+        job.startProcessing()
+        job.complete(markdown: "# Copied Source", presignedSourceURL: sourceURL)
+        vm.jobs = [job]
+
+        vm.copySourceURLToClipboard(jobID: job.id)
+
+        #expect(
+            vm.copyFeedback == JobListViewModel.CopyFeedback(
+                jobID: job.id,
+                target: .sourceURL
+            )
+        )
+        let cleared: Bool = await waitUntil(timeout: .seconds(1)) {
+            vm.copyFeedback == nil
         }
         #expect(cleared)
     }

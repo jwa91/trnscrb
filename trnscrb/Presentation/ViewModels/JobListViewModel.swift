@@ -9,6 +9,21 @@ import Network
 /// recent completed jobs (max 10) and provides copy-to-clipboard for results.
 @MainActor
 public final class JobListViewModel: ObservableObject {
+    public enum CopyFeedbackTarget: Sendable, Equatable {
+        case markdown
+        case sourceURL
+    }
+
+    public struct CopyFeedback: Sendable, Equatable {
+        public let jobID: UUID
+        public let target: CopyFeedbackTarget
+
+        public init(jobID: UUID, target: CopyFeedbackTarget) {
+            self.jobID = jobID
+            self.target = target
+        }
+    }
+
     /// All jobs, both active and completed.
     @Published public var jobs: [Job] = []
     /// Currently selected job, used for keyboard actions and notification re-entry.
@@ -19,8 +34,8 @@ public final class JobListViewModel: ObservableObject {
     @Published public private(set) var shouldOpenSettings: Bool = false
     /// Last user-facing drop error (for unsupported file types).
     @Published public var dropError: String?
-    /// Job that is currently showing the copied confirmation.
-    @Published public private(set) var copiedJobID: UUID?
+    /// Job copy feedback currently shown in the UI.
+    @Published public private(set) var copyFeedback: CopyFeedback?
 
     /// Maximum number of completed jobs to retain.
     private let maxCompletedJobs: Int = 10
@@ -189,8 +204,8 @@ public final class JobListViewModel: ObservableObject {
         if selectedJobID == jobID {
             selectedJobID = nil
         }
-        if copiedJobID == jobID {
-            copiedJobID = nil
+        if copyFeedback?.jobID == jobID {
+            copyFeedback = nil
         }
         jobs = jobs.filter { $0.id != jobID }
     }
@@ -198,8 +213,8 @@ public final class JobListViewModel: ObservableObject {
     /// Removes all completed and failed jobs.
     public func clearCompleted() {
         let clearedIDs: Set<UUID> = Set(completedJobs.map(\.id))
-        if let copiedJobID, clearedIDs.contains(copiedJobID) {
-            self.copiedJobID = nil
+        if let copyFeedback, clearedIDs.contains(copyFeedback.jobID) {
+            self.copyFeedback = nil
         }
         jobs = jobs.filter { job in
             switch job.status {
@@ -231,16 +246,28 @@ public final class JobListViewModel: ObservableObject {
     public func copyToClipboard(jobID: UUID) {
         guard let job = jobs.first(where: { $0.id == jobID }),
               let markdown: String = job.markdown else { return }
+        writeToPasteboard(markdown, jobID: jobID, target: .markdown)
+    }
+
+    /// Copies the source URL from a completed cloud job to the clipboard.
+    /// - Parameter jobID: ID of the completed job.
+    public func copySourceURLToClipboard(jobID: UUID) {
+        guard let sourceURL: URL = jobs.first(where: { $0.id == jobID })?.presignedSourceURL else { return }
+        writeToPasteboard(sourceURL.absoluteString, jobID: jobID, target: .sourceURL)
+    }
+
+    private func writeToPasteboard(_ value: String, jobID: UUID, target: CopyFeedbackTarget) {
         let pasteboard: NSPasteboard = .general
         pasteboard.clearContents()
-        pasteboard.setString(markdown, forType: .string)
-        copiedJobID = jobID
+        pasteboard.setString(value, forType: .string)
+        copyFeedback = CopyFeedback(jobID: jobID, target: target)
         copyFeedbackTask?.cancel()
         let feedbackDuration: Duration = copyFeedbackDuration
         copyFeedbackTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: feedbackDuration)
-            guard let self, self.copiedJobID == jobID else { return }
-            self.copiedJobID = nil
+            guard let self,
+                  self.copyFeedback == CopyFeedback(jobID: jobID, target: target) else { return }
+            self.copyFeedback = nil
         }
     }
 

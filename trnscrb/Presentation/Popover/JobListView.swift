@@ -71,14 +71,22 @@ struct JobListView: View {
             }
             return false
         }()
+        let copyFeedback: JobListViewModel.CopyFeedback? = viewModel.copyFeedback
+        let showsMarkdownCopyConfirmation: Bool = copyFeedback?.jobID == job.id
+            && copyFeedback?.target == .markdown
+        let showsSourceCopyConfirmation: Bool = copyFeedback?.jobID == job.id
+            && copyFeedback?.target == .sourceURL
         JobRowView(
             job: job,
             isSelected: viewModel.selectedJobID == job.id,
             isExpanded: expandedJobIDs.contains(job.id),
-            showsCopyConfirmation: viewModel.copiedJobID == job.id,
+            showsMarkdownCopyConfirmation: showsMarkdownCopyConfirmation,
+            showsSourceCopyConfirmation: showsSourceCopyConfirmation,
             onSelect: { viewModel.selectJob(id: job.id) },
-            onCopy: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
-            onRevealInFinder: allowsCopy ? { viewModel.revealInFinder(jobID: job.id) } : nil,
+            onCopyMarkdown: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
+            onCopySourceURL: allowsCopy && job.presignedSourceURL != nil
+                ? { viewModel.copySourceURLToClipboard(jobID: job.id) }
+                : nil,
             onToggleExpansion: isCompleted ? { toggleExpansion(for: job.id) } : nil,
             onDelete: { viewModel.removeJob(id: job.id) }
         )
