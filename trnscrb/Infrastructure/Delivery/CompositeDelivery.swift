@@ -31,63 +31,20 @@ public struct CompositeDelivery: DeliveryGateway {
     public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         let settings: AppSettings = try await settingsGateway.loadSettings()
         AppLog.delivery.info("Starting delivery for \(result.sourceFileName, privacy: .public)")
-        guard settings.hasEnabledOutputDestination else {
-            // Never drop successful output on the floor; clipboard is the spec default.
-            return try await clipboard.deliver(result: result)
-        }
 
-        var successfulDeliveries: Int = 0
-        var firstError: (any Error)?
-        var clipboardFailed: Bool = false
-        var fileFailed: Bool = false
-        var savedFileURL: URL?
+        let fileReport: DeliveryReport = try await file.deliver(result: result)
+        var warnings: [String] = []
 
         if settings.copyToClipboard {
             do {
                 _ = try await clipboard.deliver(result: result)
-                successfulDeliveries += 1
             } catch {
-                clipboardFailed = true
-                if firstError == nil {
-                    firstError = error
-                }
-            }
-        }
-
-        if settings.saveToFolder {
-            do {
-                let fileReport: DeliveryReport = try await file.deliver(result: result)
-                savedFileURL = fileReport.savedFileURL
-                successfulDeliveries += 1
-            } catch {
-                fileFailed = true
-                if firstError == nil {
-                    firstError = error
-                }
-            }
-        }
-
-        if successfulDeliveries == 0, let firstError {
-            AppLog.delivery.error(
-                "All delivery targets failed for \(result.sourceFileName, privacy: .public): \(firstError.localizedDescription, privacy: .public)"
-            )
-            throw firstError
-        }
-
-        var warnings: [String] = []
-        if successfulDeliveries > 0 && settings.copyToClipboard && settings.saveToFolder {
-            if clipboardFailed {
                 warnings.append(
                     "Saved markdown to the output folder, but copying to the clipboard failed."
                 )
             }
-            if fileFailed {
-                warnings.append(
-                    "Copied markdown to the clipboard, but saving the file failed."
-                )
-            }
         }
 
-        return DeliveryReport(warnings: warnings, savedFileURL: savedFileURL)
+        return DeliveryReport(warnings: warnings, savedFileURL: fileReport.savedFileURL)
     }
 }

@@ -10,7 +10,6 @@ extension AppSettings {
             s3PathPrefix: s3PathPrefix.trimmedPathPrefix,
             saveFolderPath: saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines),
             copyToClipboard: copyToClipboard,
-            saveToFolder: saveToFolder,
             fileRetentionHours: fileRetentionHours,
             launchAtLogin: launchAtLogin
         )

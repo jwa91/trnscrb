@@ -15,6 +15,8 @@ public final class JobListViewModel: ObservableObject {
     @Published public var selectedJobID: UUID?
     /// Error message when S3 or API key is not configured.
     @Published public var configurationError: String?
+    /// One-shot routing signal used to open settings after a configuration failure.
+    @Published public private(set) var shouldOpenSettings: Bool = false
     /// Last user-facing drop error (for unsupported file types).
     @Published public var dropError: String?
     /// Job that is currently showing the copied confirmation.
@@ -26,6 +28,8 @@ public final class JobListViewModel: ObservableObject {
     private let useCase: ProcessFileUseCase
     /// Settings gateway for configuration checks.
     private let settingsGateway: any SettingsGateway
+    /// Validates and prepares the configured output folder before processing starts.
+    private let outputFolderGateway: any OutputFolderGateway
     /// Posts local user notifications when jobs complete or fail.
     private let notificationUseCase: NotifyUserUseCase?
     /// Active processing tasks by job ID so work can be cancelled safely.
@@ -51,11 +55,13 @@ public final class JobListViewModel: ObservableObject {
     public init(
         useCase: ProcessFileUseCase,
         settingsGateway: any SettingsGateway,
+        outputFolderGateway: any OutputFolderGateway,
         notificationUseCase: NotifyUserUseCase? = nil,
         copyFeedbackDuration: Duration = .seconds(1.5)
     ) {
         self.useCase = useCase
         self.settingsGateway = settingsGateway
+        self.outputFolderGateway = outputFolderGateway
         self.notificationUseCase = notificationUseCase
         self.copyFeedbackDuration = copyFeedbackDuration
         startNetworkMonitoring()
@@ -201,6 +207,11 @@ public final class JobListViewModel: ObservableObject {
         configurationError = nil
     }
 
+    /// Consumes the one-shot request to route the popover into settings.
+    public func consumeSettingsNavigation() {
+        shouldOpenSettings = false
+    }
+
     /// Clears the current drop error banner.
     public func clearDropError() {
         dropError = nil
@@ -252,6 +263,13 @@ public final class JobListViewModel: ObservableObject {
                 configurationError = "Configure your Mistral API key in settings."
                 return false
             }
+            do {
+                _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
+            } catch {
+                configurationError = error.localizedDescription
+                shouldOpenSettings = true
+                return false
+            }
             return true
         } catch {
             configurationError = error.localizedDescription
@@ -299,11 +317,15 @@ public final class JobListViewModel: ObservableObject {
             }
 
             guard runningTasks[id] != nil else { return }
+            guard let savedFileURL: URL = result.savedFileURL else {
+                throw FileDeliveryError.writeFailed("Markdown file was not saved.")
+            }
+            let copyToClipboard: Bool = try await settingsGateway.loadSettings().normalizedForUse.copyToClipboard
             guard completeJob(
                 id: id,
                 markdown: result.markdown,
                 deliveryWarnings: result.deliveryWarnings,
-                savedFileURL: result.savedFileURL,
+                savedFileURL: savedFileURL,
                 presignedSourceURL: result.presignedSourceURL
             ) else {
                 AppLog.ui.error("Job \(id.uuidString, privacy: .public) finished, but UI state could not be finalized")
@@ -314,6 +336,8 @@ public final class JobListViewModel: ObservableObject {
             await postSuccessNotification(
                 for: result.sourceFileName,
                 jobID: id,
+                savedFileURL: savedFileURL,
+                copyToClipboard: copyToClipboard,
                 warningMessage: result.deliveryWarnings.joined(separator: " ")
             )
         } catch is CancellationError {
@@ -476,13 +500,22 @@ public final class JobListViewModel: ObservableObject {
     private func postSuccessNotification(
         for fileName: String,
         jobID: UUID,
+        savedFileURL: URL,
+        copyToClipboard: Bool,
         warningMessage: String
     ) async {
         let body: String
+        let savedPath: String = savedFileURL.path()
         if warningMessage.isEmpty {
-            body = "\(fileName) ready — copied or saved based on your settings."
+            if copyToClipboard {
+                body = "\(fileName) saved to \(savedPath) and copied to clipboard."
+            } else {
+                body = "\(fileName) saved to \(savedPath)."
+            }
+        } else if copyToClipboard {
+            body = "\(fileName) saved to \(savedPath), but copying to the clipboard failed."
         } else {
-            body = "\(fileName) ready — \(warningMessage)"
+            body = "\(fileName) saved to \(savedPath). \(warningMessage)"
         }
         await postNotification(
             identifier: jobID.uuidString,

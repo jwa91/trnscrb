@@ -79,20 +79,22 @@ private actor FailingOnceLaunchAtLoginGateway: LaunchAtLoginGateway {
 }
 
 struct SaveSettingsUseCaseTests {
-    @Test func saveRejectsWhenAllOutputsAreDisabled() async {
+    @Test func saveRejectsBlankSaveFolder() async {
         let gateway: RecordingSettingsGateway = RecordingSettingsGateway()
         let launchGateway: MockLaunchAtLoginGateway = MockLaunchAtLoginGateway()
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway()
+        outputFolderGateway.setError(OutputFolderError.missingPath)
         let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
             gateway: gateway,
+            outputFolderGateway: outputFolderGateway,
             launchAtLoginUseCase: ApplyLaunchAtLoginUseCase(gateway: launchGateway)
         )
 
         let invalidSettings: AppSettings = AppSettings(
-            copyToClipboard: false,
-            saveToFolder: false
+            saveFolderPath: "   "
         )
 
-        await #expect(throws: SettingsSaveError.self) {
+        await #expect(throws: Error.self) {
             try await useCase.save(
                 settings: invalidSettings,
                 mistralAPIKey: "mk-test",
@@ -101,13 +103,39 @@ struct SaveSettingsUseCaseTests {
         }
     }
 
+    @Test func saveAllowsClipboardDisabledWhenFolderIsConfigured() async throws {
+        let gateway: RecordingSettingsGateway = RecordingSettingsGateway()
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(
+            preparedURL: URL(filePath: "/tmp/trnscrb-output")
+        )
+        let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
+            gateway: gateway,
+            outputFolderGateway: outputFolderGateway
+        )
+
+        let settings: AppSettings = AppSettings(
+            saveFolderPath: "/tmp/trnscrb-output",
+            copyToClipboard: false
+        )
+
+        try await useCase.save(
+            settings: settings,
+            mistralAPIKey: "mk-test",
+            s3SecretKey: "sk-test"
+        )
+
+        #expect((await gateway.snapshotSettings()).copyToClipboard == false)
+        #expect((await gateway.snapshotSettings()).saveFolderPath == "/tmp/trnscrb-output")
+        #expect(outputFolderGateway.recordedPreparedPaths() == ["/tmp/trnscrb-output"])
+    }
+
     @Test func saveDoesNotApplyLaunchAtLoginWhenValueIsUnchanged() async throws {
         let originalSettings: AppSettings = AppSettings(
             s3EndpointURL: "https://old.example.com",
             s3AccessKey: "OLDKEY",
             s3BucketName: "old-bucket",
+            saveFolderPath: "/tmp/original-output",
             copyToClipboard: true,
-            saveToFolder: true,
             launchAtLogin: false
         )
         let gateway: RecordingSettingsGateway = RecordingSettingsGateway(
@@ -118,8 +146,10 @@ struct SaveSettingsUseCaseTests {
             ]
         )
         let launchGateway: MockLaunchAtLoginGateway = MockLaunchAtLoginGateway()
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway()
         let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
             gateway: gateway,
+            outputFolderGateway: outputFolderGateway,
             launchAtLoginUseCase: ApplyLaunchAtLoginUseCase(gateway: launchGateway)
         )
 
@@ -140,8 +170,8 @@ struct SaveSettingsUseCaseTests {
             s3EndpointURL: "https://old.example.com",
             s3AccessKey: "OLDKEY",
             s3BucketName: "old-bucket",
-            copyToClipboard: true,
-            saveToFolder: false
+            saveFolderPath: "/tmp/original-output",
+            copyToClipboard: true
         )
         let gateway: RecordingSettingsGateway = RecordingSettingsGateway(
             settings: originalSettings,
@@ -152,8 +182,10 @@ struct SaveSettingsUseCaseTests {
         )
         await gateway.setSetSecretError(SaveSettingsTestError.setSecretFailed, for: .s3SecretKey)
         let launchGateway: MockLaunchAtLoginGateway = MockLaunchAtLoginGateway()
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway()
         let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
             gateway: gateway,
+            outputFolderGateway: outputFolderGateway,
             launchAtLoginUseCase: ApplyLaunchAtLoginUseCase(gateway: launchGateway)
         )
 
@@ -161,8 +193,8 @@ struct SaveSettingsUseCaseTests {
             s3EndpointURL: "https://new.example.com",
             s3AccessKey: "NEWKEY",
             s3BucketName: "new-bucket",
+            saveFolderPath: "/tmp/new-output",
             copyToClipboard: true,
-            saveToFolder: true,
             launchAtLogin: true
         )
 
@@ -186,8 +218,8 @@ struct SaveSettingsUseCaseTests {
             s3EndpointURL: "https://old.example.com",
             s3AccessKey: "OLDKEY",
             s3BucketName: "old-bucket",
+            saveFolderPath: "/tmp/original-output",
             copyToClipboard: true,
-            saveToFolder: false,
             launchAtLogin: false
         )
         let gateway: RecordingSettingsGateway = RecordingSettingsGateway(
@@ -198,8 +230,10 @@ struct SaveSettingsUseCaseTests {
             ]
         )
         let launchGateway: FailingOnceLaunchAtLoginGateway = FailingOnceLaunchAtLoginGateway()
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway()
         let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
             gateway: gateway,
+            outputFolderGateway: outputFolderGateway,
             launchAtLoginUseCase: ApplyLaunchAtLoginUseCase(gateway: launchGateway)
         )
 
@@ -207,8 +241,8 @@ struct SaveSettingsUseCaseTests {
             s3EndpointURL: "https://new.example.com",
             s3AccessKey: "NEWKEY",
             s3BucketName: "new-bucket",
+            saveFolderPath: "/tmp/new-output",
             copyToClipboard: true,
-            saveToFolder: true,
             launchAtLogin: true
         )
 

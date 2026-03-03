@@ -6,6 +6,15 @@ public enum FileDeliveryError: Error, Sendable {
     case writeFailed(String)
 }
 
+extension FileDeliveryError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .writeFailed(let message):
+            return message
+        }
+    }
+}
+
 /// Delivers transcription results by saving markdown as a `.md` file.
 ///
 /// File is saved to the folder configured in `AppSettings.saveFolderPath`.
@@ -13,21 +22,26 @@ public enum FileDeliveryError: Error, Sendable {
 public struct FileDelivery: DeliveryGateway {
     /// Gateway for reading the save folder path from settings.
     private let settingsGateway: any SettingsGateway
+    /// Validates and resolves the output folder before writing files.
+    private let outputFolderGateway: any OutputFolderGateway
 
     /// Creates a file delivery handler.
-    /// - Parameter settingsGateway: Provides the configured save folder path.
-    public init(settingsGateway: any SettingsGateway) {
+    /// - Parameters:
+    ///   - settingsGateway: Provides the configured save folder path.
+    ///   - outputFolderGateway: Validates and resolves the output folder.
+    public init(
+        settingsGateway: any SettingsGateway,
+        outputFolderGateway: any OutputFolderGateway
+    ) {
         self.settingsGateway = settingsGateway
+        self.outputFolderGateway = outputFolderGateway
     }
 
     /// Saves the markdown content as a `.md` file in the configured folder.
     public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
         let settings: AppSettings = try await settingsGateway.loadSettings()
-        let folderPath: String = (settings.saveFolderPath as NSString).expandingTildeInPath
-        let folderURL: URL = URL(filePath: folderPath)
-        AppLog.delivery.info("Saving markdown for \(result.sourceFileName, privacy: .public) to \(folderPath, privacy: .public)")
-
-        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        let folderURL: URL = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
+        AppLog.delivery.info("Saving markdown for \(result.sourceFileName, privacy: .public) to \(folderURL.path(), privacy: .public)")
 
         let baseName: String = (result.sourceFileName as NSString).deletingPathExtension
         let fileURL: URL = outputFileURL(folder: folderURL, baseName: baseName)

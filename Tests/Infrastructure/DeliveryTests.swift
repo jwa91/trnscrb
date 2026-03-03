@@ -43,11 +43,16 @@ struct FileDeliveryTests {
             .appending(path: "trnscrb-test-\(UUID().uuidString)")
     }
 
-    private func makeDelivery(saveFolderPath: String) -> (FileDelivery, MockSettingsGateway) {
+    private func makeDelivery(
+        saveFolderPath: String
+    ) -> (FileDelivery, MockSettingsGateway) {
         let gateway: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(saveFolderPath: saveFolderPath)
         )
-        let delivery: FileDelivery = FileDelivery(settingsGateway: gateway)
+        let delivery: FileDelivery = FileDelivery(
+            settingsGateway: gateway,
+            outputFolderGateway: OutputFolderClient()
+        )
         return (delivery, gateway)
     }
 

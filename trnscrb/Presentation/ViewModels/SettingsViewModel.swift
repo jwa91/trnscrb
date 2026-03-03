@@ -35,6 +35,8 @@ public final class SettingsViewModel: ObservableObject {
     private let gateway: any SettingsGateway
     /// Domain use case for connectivity testing.
     private let connectivityUseCase: TestConnectivityUseCase
+    /// Validates and resolves the output folder before settings are saved.
+    private let outputFolderGateway: any OutputFolderGateway
     /// Persists settings, secrets, and launch-at-login atomically.
     private let saveSettingsUseCase: SaveSettingsUseCase
 
@@ -46,10 +48,12 @@ public final class SettingsViewModel: ObservableObject {
     public init(
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
+        outputFolderGateway: any OutputFolderGateway,
         saveSettingsUseCase: SaveSettingsUseCase
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
+        self.outputFolderGateway = outputFolderGateway
         self.saveSettingsUseCase = saveSettingsUseCase
     }
 
@@ -72,6 +76,7 @@ public final class SettingsViewModel: ObservableObject {
             settings = settings.normalizedForUse
             mistralAPIKey = mistralAPIKey.trimmedCredentialValue
             s3SecretKey = s3SecretKey.trimmedCredentialValue
+            _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
 
             try await saveSettingsUseCase.save(
                 settings: settings,
@@ -85,6 +90,12 @@ public final class SettingsViewModel: ObservableObject {
             self.error = error.localizedDescription
             return false
         }
+    }
+
+    public var resolvedSaveFolderPath: String {
+        let trimmedPath: String = settings.saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return "" }
+        return URL(filePath: (trimmedPath as NSString).expandingTildeInPath).standardizedFileURL.path()
     }
 
     /// Tests S3 connectivity by sending a HEAD request to the bucket.

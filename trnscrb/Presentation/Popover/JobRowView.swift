@@ -104,7 +104,7 @@ struct JobRowView: View {
                 Button("Copy Markdown") {
                     onCopy?()
                 }
-                if job.savedFileURL != nil {
+                if onRevealInFinder != nil {
                     Button("Reveal in Finder") {
                         onRevealInFinder?()
                     }
@@ -167,7 +167,6 @@ struct JobRowView: View {
             completionActionButton(
                 systemName: "folder",
                 title: "Reveal in Finder",
-                isEnabled: job.savedFileURL != nil,
                 action: { onRevealInFinder?() }
             )
 
