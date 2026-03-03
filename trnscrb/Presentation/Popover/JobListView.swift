@@ -7,17 +7,11 @@ struct JobListView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            VStack(spacing: 0) {
                 if !viewModel.activeJobs.isEmpty {
                     Section {
                         ForEach(viewModel.activeJobs) { job in
-                            JobRowView(
-                                job: job,
-                                isSelected: viewModel.selectedJobID == job.id,
-                                onSelect: { viewModel.selectJob(id: job.id) },
-                                onDelete: { viewModel.removeJob(id: job.id) }
-                            )
-                            Divider()
+                            row(for: job, allowsCopy: false)
                         }
                     } header: {
                         sectionHeader("Active")
@@ -27,14 +21,7 @@ struct JobListView: View {
                 if !viewModel.completedJobs.isEmpty {
                     Section {
                         ForEach(viewModel.completedJobs) { job in
-                            JobRowView(
-                                job: job,
-                                isSelected: viewModel.selectedJobID == job.id,
-                                onSelect: { viewModel.selectJob(id: job.id) },
-                                onCopy: { viewModel.copyToClipboard(jobID: job.id) },
-                                onDelete: { viewModel.removeJob(id: job.id) }
-                            )
-                            Divider()
+                            row(for: job, allowsCopy: true)
                         }
                     } header: {
                         HStack {
@@ -63,6 +50,38 @@ struct JobListView: View {
                !jobs.contains(where: { $0.id == selectedJobID }) {
                 viewModel.selectJob(id: nil)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func row(for job: Job, allowsCopy: Bool) -> some View {
+        JobRowView(
+            job: job,
+            isSelected: viewModel.selectedJobID == job.id,
+            onSelect: { viewModel.selectJob(id: job.id) },
+            onCopy: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
+            onDelete: { viewModel.removeJob(id: job.id) }
+        )
+        .id(rowID(for: job))
+        Divider()
+    }
+
+    private func rowID(for job: Job) -> String {
+        "\(job.id.uuidString)-\(statusToken(for: job.status))"
+    }
+
+    private func statusToken(for status: JobStatus) -> String {
+        switch status {
+        case .pending:
+            return "pending"
+        case .uploading:
+            return "uploading"
+        case .processing:
+            return "processing"
+        case .completed:
+            return "completed"
+        case .failed:
+            return "failed"
         }
     }
 
