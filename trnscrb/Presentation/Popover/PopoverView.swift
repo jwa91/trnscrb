@@ -14,13 +14,20 @@ struct PopoverView: View {
     @ObservedObject var jobListViewModel: JobListViewModel
 
     var body: some View {
-        if showSettings {
-            SettingsView(
-                viewModel: settingsViewModel,
-                onBack: { showSettings = false }
-            )
-        } else {
-            mainContent
+        Group {
+            if showSettings {
+                SettingsView(
+                    viewModel: settingsViewModel,
+                    onBack: { showSettings = false }
+                )
+            } else {
+                mainContent
+            }
+        }
+        .onChange(of: jobListViewModel.shouldOpenSettings) { _, shouldOpenSettings in
+            guard shouldOpenSettings else { return }
+            showSettings = true
+            jobListViewModel.consumeSettingsNavigation()
         }
     }
 

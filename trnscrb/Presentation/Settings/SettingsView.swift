@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Settings panel displayed inside the popover.
@@ -109,9 +110,25 @@ struct SettingsView: View {
     /// Output folder and clipboard configuration.
     private var outputSection: some View {
         Section("Output") {
-            TextField("Save Folder", text: $viewModel.settings.saveFolderPath)
-                .textFieldStyle(.roundedBorder)
-            Toggle("Save markdown to folder", isOn: $viewModel.settings.saveToFolder)
+            HStack(spacing: 8) {
+                TextField("Save Folder", text: $viewModel.settings.saveFolderPath)
+                    .textFieldStyle(.roundedBorder)
+                Button("Browse…") {
+                    browseForSaveFolder()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            Text("Markdown files are always saved to this folder.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if !viewModel.resolvedSaveFolderPath.isEmpty {
+                Text(viewModel.resolvedSaveFolderPath)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
         }
     }
@@ -195,6 +212,22 @@ struct SettingsView: View {
             }
             .buttonStyle(.borderless)
             .help(isVisible.wrappedValue ? "Hide value" : "Show value")
+        }
+    }
+
+    private func browseForSaveFolder() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel: NSOpenPanel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = URL(
+            fileURLWithPath: (viewModel.settings.saveFolderPath as NSString).expandingTildeInPath
+        ).deletingLastPathComponent()
+
+        if panel.runModal() == .OK, let selectedURL: URL = panel.url {
+            viewModel.settings.saveFolderPath = selectedURL.standardizedFileURL.path()
         }
     }
 }

@@ -31,26 +31,11 @@ private enum CompositeDeliveryTestError: Error, Sendable {
 }
 
 struct CompositeDeliveryTests {
-    @Test func deliversToClipboardWhenEnabled() async throws {
+    @Test func alwaysDeliversToFile() async throws {
         let clipboard: SpyDelivery = SpyDelivery()
         let file: SpyDelivery = SpyDelivery()
         let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: true, saveToFolder: false)
-        )
-        let delivery: CompositeDelivery = CompositeDelivery(
-            clipboard: clipboard, file: file, settingsGateway: gateway
-        )
-        let report: DeliveryReport = try await delivery.deliver(result: makeResult())
-        #expect(await clipboard.deliveredCount() == 1)
-        #expect(await file.deliveredCount() == 0)
-        #expect(report.warnings.isEmpty)
-    }
-
-    @Test func deliversToFileWhenEnabled() async throws {
-        let clipboard: SpyDelivery = SpyDelivery()
-        let file: SpyDelivery = SpyDelivery()
-        let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: false, saveToFolder: true)
+            settings: AppSettings(copyToClipboard: false)
         )
         let delivery: CompositeDelivery = CompositeDelivery(
             clipboard: clipboard, file: file, settingsGateway: gateway
@@ -61,11 +46,11 @@ struct CompositeDeliveryTests {
         #expect(report.warnings.isEmpty)
     }
 
-    @Test func deliversToBothWhenBothEnabled() async throws {
+    @Test func deliversToClipboardAndFileWhenClipboardEnabled() async throws {
         let clipboard: SpyDelivery = SpyDelivery()
         let file: SpyDelivery = SpyDelivery()
         let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: true, saveToFolder: true)
+            settings: AppSettings(copyToClipboard: true)
         )
         let delivery: CompositeDelivery = CompositeDelivery(
             clipboard: clipboard, file: file, settingsGateway: gateway
@@ -76,38 +61,21 @@ struct CompositeDeliveryTests {
         #expect(report.warnings.isEmpty)
     }
 
-    @Test func fallsBackToClipboardWhenBothOutputsAreDisabled() async throws {
-        let clipboard: SpyDelivery = SpyDelivery()
-        let file: SpyDelivery = SpyDelivery()
-        let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: false, saveToFolder: false)
-        )
-        let delivery: CompositeDelivery = CompositeDelivery(
-            clipboard: clipboard, file: file, settingsGateway: gateway
-        )
-        let report: DeliveryReport = try await delivery.deliver(result: makeResult())
-        #expect(await clipboard.deliveredCount() == 1)
-        #expect(await file.deliveredCount() == 0)
-        #expect(report.warnings.isEmpty)
-    }
-
-    @Test func succeedsWhenClipboardSucceedsAndFileSaveFails() async throws {
+    @Test func fileFailureIsFatalEvenWhenClipboardSucceeds() async {
         let clipboard: SpyDelivery = SpyDelivery()
         let file: MockDeliveryGateway = MockDeliveryGateway(
             deliverError: CompositeDeliveryTestError.failedDestination
         )
         let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: true, saveToFolder: true)
+            settings: AppSettings(copyToClipboard: true)
         )
         let delivery: CompositeDelivery = CompositeDelivery(
             clipboard: clipboard, file: file, settingsGateway: gateway
         )
 
-        let report: DeliveryReport = try await delivery.deliver(result: makeResult())
-
-        #expect(await clipboard.deliveredCount() == 1)
-        #expect(await file.recordedDeliveredResults().isEmpty)
-        #expect(report.warnings == ["Copied markdown to the clipboard, but saving the file failed."])
+        await #expect(throws: CompositeDeliveryTestError.self) {
+            _ = try await delivery.deliver(result: makeResult())
+        }
     }
 
     @Test func succeedsWhenFileSaveSucceedsAndClipboardFails() async throws {
@@ -116,7 +84,7 @@ struct CompositeDeliveryTests {
         )
         let file: SpyDelivery = SpyDelivery()
         let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: true, saveToFolder: true)
+            settings: AppSettings(copyToClipboard: true)
         )
         let delivery: CompositeDelivery = CompositeDelivery(
             clipboard: clipboard, file: file, settingsGateway: gateway
@@ -136,7 +104,7 @@ struct CompositeDeliveryTests {
             report: DeliveryReport(savedFileURL: savedFileURL)
         )
         let gateway: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(copyToClipboard: true, saveToFolder: true)
+            settings: AppSettings(copyToClipboard: true)
         )
         let delivery: CompositeDelivery = CompositeDelivery(
             clipboard: clipboard, file: file, settingsGateway: gateway

@@ -85,7 +85,6 @@ struct TOMLConfigManagerTests {
             s3PathPrefix: "uploads/",
             saveFolderPath: "~/Desktop/output/",
             copyToClipboard: false,
-            saveToFolder: true,
             fileRetentionHours: 48,
             launchAtLogin: true
         )
@@ -124,6 +123,7 @@ struct TOMLConfigManagerTests {
         #expect(content.contains("copy_to_clipboard = false"))
         #expect(content.contains("file_retention_hours = 12"))
         #expect(content.contains("launch_at_login = true"))
+        #expect(!content.contains("save_to_folder"))
     }
 
     // MARK: - Edge cases
@@ -167,6 +167,30 @@ struct TOMLConfigManagerTests {
         #expect(loaded.fileRetentionHours == 72)
         // Fields not in file should be defaults
         #expect(loaded.s3Region == "auto")
+        #expect(loaded.copyToClipboard == true)
+    }
+
+    @Test func loadIgnoresLegacySaveToFolderLine() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = """
+        save_folder_path = "~/Documents/trnscrb/"
+        copy_to_clipboard = true
+        save_to_folder = false
+        """
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let keychainStore: KeychainStore = KeychainStore(service: "com.trnscrb.test.toml.\(UUID().uuidString)")
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            keychainStore: keychainStore
+        )
+        let loaded: AppSettings = try await manager.loadSettings()
+
+        #expect(loaded.saveFolderPath == "~/Documents/trnscrb/")
         #expect(loaded.copyToClipboard == true)
     }
 
