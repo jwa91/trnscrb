@@ -9,13 +9,17 @@ actor MockDeliveryGateway: DeliveryGateway {
     private var deliverError: (any Error & Sendable)?
     /// Optional warnings returned after a successful delivery.
     private var deliverWarnings: [String]
+    /// Optional saved file URL returned after a successful delivery.
+    private var savedFileURL: URL?
 
     init(
         deliverError: (any Error & Sendable)? = nil,
-        deliverWarnings: [String] = []
+        deliverWarnings: [String] = [],
+        savedFileURL: URL? = nil
     ) {
         self.deliverError = deliverError
         self.deliverWarnings = deliverWarnings
+        self.savedFileURL = savedFileURL
         self.deliveredResults = []
     }
 
@@ -32,6 +36,6 @@ actor MockDeliveryGateway: DeliveryGateway {
             throw deliverError
         }
         deliveredResults.append(result)
-        return DeliveryReport(warnings: deliverWarnings)
+        return DeliveryReport(warnings: deliverWarnings, savedFileURL: savedFileURL)
     }
 }

@@ -35,13 +35,13 @@ struct MistralAudioProviderTests {
             #expect(request.url?.absoluteString == "https://api.mistral.ai/v1/audio/transcriptions")
             #expect(request.httpMethod == "POST")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-api-key")
-            #expect(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
 
-            let body: String = String(data: request.httpBody!, encoding: .utf8) ?? ""
-            #expect(body.contains("name=\"model\""))
-            #expect(body.contains("voxtral-mini-latest"))
-            #expect(body.contains("name=\"file_url\""))
-            #expect(body.contains("https://s3.example.com/bucket/file.mp3"))
+            let requestBody: Data = try #require(request.httpBody)
+            let jsonObject: Any = try JSONSerialization.jsonObject(with: requestBody)
+            let body: [String: Any] = try #require(jsonObject as? [String: Any])
+            #expect(body["model"] as? String == "voxtral-mini-latest")
+            #expect(body["file_url"] as? String == "https://s3.example.com/bucket/file.mp3")
 
             let responseJSON: String = """
             {"text": "Hello world", "model": "voxtral-mini-2507"}

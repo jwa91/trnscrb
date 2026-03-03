@@ -63,6 +63,18 @@ struct FileDeliveryTests {
         #expect(content == "# Notes")
     }
 
+    @Test func deliverReturnsSavedFileURL() async throws {
+        let tempDir: URL = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let (delivery, _) = makeDelivery(saveFolderPath: tempDir.path())
+
+        let report: DeliveryReport = try await delivery.deliver(
+            result: makeResult(markdown: "# Notes", fileName: "meeting.mp3")
+        )
+
+        #expect(report.savedFileURL == tempDir.appending(path: "meeting.md"))
+    }
+
     @Test func deliverCreatesFolderIfMissing() async throws {
         let tempDir: URL = makeTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }

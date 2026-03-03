@@ -17,6 +17,8 @@ public final class JobListViewModel: ObservableObject {
     @Published public var configurationError: String?
     /// Last user-facing drop error (for unsupported file types).
     @Published public var dropError: String?
+    /// Job that is currently showing the copied confirmation.
+    @Published public private(set) var copiedJobID: UUID?
 
     /// Maximum number of completed jobs to retain.
     private let maxCompletedJobs: Int = 10
@@ -30,6 +32,10 @@ public final class JobListViewModel: ObservableObject {
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     /// Jobs queued while offline. They resume automatically when connectivity returns.
     private var queuedOfflineJobs: [UUID: URL] = [:]
+    /// Short-lived feedback timer for the copied confirmation.
+    private var copyFeedbackTask: Task<Void, Never>?
+    /// Duration that the copied confirmation remains visible.
+    private let copyFeedbackDuration: Duration
     /// Network reachability monitor used for offline queuing.
     private let pathMonitor: NWPathMonitor = NWPathMonitor()
     private let pathMonitorQueue: DispatchQueue = DispatchQueue(
@@ -45,15 +51,18 @@ public final class JobListViewModel: ObservableObject {
     public init(
         useCase: ProcessFileUseCase,
         settingsGateway: any SettingsGateway,
-        notificationUseCase: NotifyUserUseCase? = nil
+        notificationUseCase: NotifyUserUseCase? = nil,
+        copyFeedbackDuration: Duration = .seconds(1.5)
     ) {
         self.useCase = useCase
         self.settingsGateway = settingsGateway
         self.notificationUseCase = notificationUseCase
+        self.copyFeedbackDuration = copyFeedbackDuration
         startNetworkMonitoring()
     }
 
     deinit {
+        copyFeedbackTask?.cancel()
         pathMonitor.cancel()
     }
 
@@ -165,11 +174,18 @@ public final class JobListViewModel: ObservableObject {
         if selectedJobID == jobID {
             selectedJobID = nil
         }
+        if copiedJobID == jobID {
+            copiedJobID = nil
+        }
         jobs = jobs.filter { $0.id != jobID }
     }
 
     /// Removes all completed and failed jobs.
     public func clearCompleted() {
+        let clearedIDs: Set<UUID> = Set(completedJobs.map(\.id))
+        if let copiedJobID, clearedIDs.contains(copiedJobID) {
+            self.copiedJobID = nil
+        }
         jobs = jobs.filter { job in
             switch job.status {
             case .completed, .failed:
@@ -198,6 +214,21 @@ public final class JobListViewModel: ObservableObject {
         let pasteboard: NSPasteboard = .general
         pasteboard.clearContents()
         pasteboard.setString(markdown, forType: .string)
+        copiedJobID = jobID
+        copyFeedbackTask?.cancel()
+        let feedbackDuration: Duration = copyFeedbackDuration
+        copyFeedbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: feedbackDuration)
+            guard let self, self.copiedJobID == jobID else { return }
+            self.copiedJobID = nil
+        }
+    }
+
+    /// Reveals the saved markdown file for a completed job in Finder.
+    /// - Parameter jobID: ID of the completed job.
+    public func revealInFinder(jobID: UUID) {
+        guard let fileURL: URL = jobs.first(where: { $0.id == jobID })?.savedFileURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
     }
 
     // MARK: - Private
@@ -271,7 +302,9 @@ public final class JobListViewModel: ObservableObject {
             guard completeJob(
                 id: id,
                 markdown: result.markdown,
-                deliveryWarnings: result.deliveryWarnings
+                deliveryWarnings: result.deliveryWarnings,
+                savedFileURL: result.savedFileURL,
+                presignedSourceURL: result.presignedSourceURL
             ) else {
                 AppLog.ui.error("Job \(id.uuidString, privacy: .public) finished, but UI state could not be finalized")
                 return
@@ -344,7 +377,9 @@ public final class JobListViewModel: ObservableObject {
     private func completeJob(
         id: UUID,
         markdown: String,
-        deliveryWarnings: [String]
+        deliveryWarnings: [String],
+        savedFileURL: URL?,
+        presignedSourceURL: URL?
     ) -> Bool {
         guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return false }
         var updatedJobs: [Job] = jobs
@@ -365,7 +400,9 @@ public final class JobListViewModel: ObservableObject {
 
         updatedJobs[index].complete(
             markdown: markdown,
-            deliveryWarnings: deliveryWarnings
+            deliveryWarnings: deliveryWarnings,
+            savedFileURL: savedFileURL,
+            presignedSourceURL: presignedSourceURL
         )
         jobs = updatedJobs
 

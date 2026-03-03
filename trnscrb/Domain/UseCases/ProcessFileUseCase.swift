@@ -119,7 +119,9 @@ public final class ProcessFileUseCase: Sendable {
             markdown: result.markdown,
             sourceFileName: result.sourceFileName,
             sourceFileType: result.sourceFileType,
-            deliveryWarnings: deliveryReport.warnings
+            deliveryWarnings: deliveryReport.warnings,
+            savedFileURL: deliveryReport.savedFileURL,
+            presignedSourceURL: presignedURL
         )
     }
 

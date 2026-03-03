@@ -10,17 +10,25 @@ public struct TranscriptionResult: Sendable, Equatable {
     public let sourceFileType: FileType
     /// Non-fatal delivery warnings produced after transcription succeeded.
     public let deliveryWarnings: [String]
+    /// Local file URL when markdown was saved to disk.
+    public let savedFileURL: URL?
+    /// Presigned source URL used to process the file remotely.
+    public let presignedSourceURL: URL?
 
     /// Creates a transcription result.
     public init(
         markdown: String,
         sourceFileName: String,
         sourceFileType: FileType,
-        deliveryWarnings: [String] = []
+        deliveryWarnings: [String] = [],
+        savedFileURL: URL? = nil,
+        presignedSourceURL: URL? = nil
     ) {
         self.markdown = markdown
         self.sourceFileName = sourceFileName
         self.sourceFileType = sourceFileType
         self.deliveryWarnings = deliveryWarnings
+        self.savedFileURL = savedFileURL
+        self.presignedSourceURL = presignedSourceURL
     }
 }

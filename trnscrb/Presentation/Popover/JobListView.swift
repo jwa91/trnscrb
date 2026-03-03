@@ -4,6 +4,7 @@ import SwiftUI
 struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel
+    @State private var expandedJobIDs: Set<UUID> = []
 
     var body: some View {
         ScrollView {
@@ -46,6 +47,8 @@ struct JobListView: View {
         }
         .onDeleteCommand(perform: handleDeleteCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
+            let currentIDs: Set<UUID> = Set(jobs.map(\.id))
+            expandedJobIDs = expandedJobIDs.intersection(currentIDs)
             if let selectedJobID = viewModel.selectedJobID,
                !jobs.contains(where: { $0.id == selectedJobID }) {
                 viewModel.selectJob(id: nil)
@@ -55,15 +58,33 @@ struct JobListView: View {
 
     @ViewBuilder
     private func row(for job: Job, allowsCopy: Bool) -> some View {
+        let isCompleted: Bool = {
+            if case .completed = job.status {
+                return true
+            }
+            return false
+        }()
         JobRowView(
             job: job,
             isSelected: viewModel.selectedJobID == job.id,
+            isExpanded: expandedJobIDs.contains(job.id),
+            showsCopyConfirmation: viewModel.copiedJobID == job.id,
             onSelect: { viewModel.selectJob(id: job.id) },
             onCopy: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
+            onRevealInFinder: allowsCopy ? { viewModel.revealInFinder(jobID: job.id) } : nil,
+            onToggleExpansion: isCompleted ? { toggleExpansion(for: job.id) } : nil,
             onDelete: { viewModel.removeJob(id: job.id) }
         )
         .id(rowID(for: job))
         Divider()
+    }
+
+    private func toggleExpansion(for jobID: UUID) {
+        if expandedJobIDs.contains(jobID) {
+            expandedJobIDs.remove(jobID)
+        } else {
+            expandedJobIDs.insert(jobID)
+        }
     }
 
     private func rowID(for job: Job) -> String {
