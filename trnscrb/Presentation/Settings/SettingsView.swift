@@ -23,19 +23,17 @@ struct SettingsView: View {
 
     /// Navigation header with back button and save button.
     private var header: some View {
-        HStack {
-            Button(action: onBack) {
-                Label("Settings", systemImage: "chevron.left")
-                    .font(.headline)
-            }
-            .buttonStyle(.borderless)
-            Spacer()
+        PopoverChromeBar {
+            SettingsBackButton(action: onBack)
+        } center: {
             if let error = viewModel.error {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
+        } trailing: {
             Button("Save") {
                 Task {
                     let didSave: Bool = await viewModel.save()
@@ -46,9 +44,8 @@ struct SettingsView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .pointingHandCursor()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     /// Form containing all settings sections.
@@ -133,6 +130,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .pointingHandCursor()
             }
             Text("Markdown files are always saved to this folder.")
                 .font(.caption2)
@@ -175,10 +173,11 @@ struct SettingsView: View {
         result: TestResult,
         action: @escaping () -> Void
     ) -> some View {
-        Button(title) { action() }
-            .buttonStyle(.borderless)
-            .font(.caption)
-            .disabled(result == .testing)
+        InlineTextActionButton(
+            title: title,
+            isEnabled: result != .testing,
+            action: action
+        )
     }
 
     @ViewBuilder
@@ -225,7 +224,9 @@ struct SettingsView: View {
             } label: {
                 Image(systemName: isVisible.wrappedValue ? "eye.slash" : "eye")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .pointingHandCursor()
             .help(isVisible.wrappedValue ? "Hide value" : "Show value")
         }
     }
@@ -256,5 +257,51 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let selectedURL: URL = panel.url {
             viewModel.settings.saveFolderPath = selectedURL.standardizedFileURL.path()
         }
+    }
+}
+
+private struct SettingsBackButton: View {
+    let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            Label("Settings", systemImage: "chevron.left")
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { isHovered = $0 }
+    }
+}
+
+private struct InlineTextActionButton: View {
+    let title: String
+    let isEnabled: Bool
+    let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(
+                    isHovered && isEnabled ? Color.accentColor : Color.secondary
+                )
+                .underline(isHovered && isEnabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .pointingHandCursor()
+        .onHover { isHovered = $0 }
     }
 }

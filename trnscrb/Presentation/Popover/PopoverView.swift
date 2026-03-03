@@ -39,12 +39,13 @@ struct PopoverView: View {
         )
 
         return VStack(spacing: 0) {
+            header
+
             if let error: String = jobListViewModel.configurationError {
                 banner(
                     error,
                     icon: "exclamationmark.triangle",
                     color: .orange,
-                    showSettingsButton: true,
                     onDismiss: jobListViewModel.clearConfigurationError
                 )
             }
@@ -54,7 +55,6 @@ struct PopoverView: View {
                     dropError,
                     icon: "xmark.circle",
                     color: .red,
-                    showSettingsButton: false,
                     onDismiss: jobListViewModel.clearDropError
                 )
             }
@@ -76,12 +76,30 @@ struct PopoverView: View {
             }
 
             Spacer(minLength: 0)
-            Divider()
-            footer
         }
         .frame(width: 320, height: 480)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
+        }
+    }
+
+    private var header: some View {
+        PopoverChromeBar {
+            Text("trnscrb")
+                .font(.headline)
+        } trailing: {
+            HStack(spacing: 6) {
+                ChromeIconButton(
+                    systemName: "plus",
+                    title: "Add Files",
+                    action: openFilePicker
+                )
+                ChromeIconButton(
+                    systemName: "gearshape",
+                    title: "Settings",
+                    action: { showSettings = true }
+                )
+            }
         }
     }
 
@@ -90,7 +108,6 @@ struct PopoverView: View {
         _ message: String,
         icon: String,
         color: Color,
-        showSettingsButton: Bool,
         onDismiss: @escaping () -> Void
     ) -> some View {
         HStack {
@@ -100,40 +117,25 @@ struct PopoverView: View {
                 .font(.caption)
                 .lineLimit(2)
             Spacer()
-            if showSettingsButton {
-                Button("Settings") {
-                    showSettings = true
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-            }
             Button {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption2)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             .font(.caption)
+            .pointingHandCursor()
         }
         .padding(8)
         .background(color.opacity(0.1))
     }
 
-    /// Footer with gear icon.
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gear")
-                    .font(.system(size: 14))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-        }
+    private func openFilePicker() {
+        let urls: [URL] = SupportedFilePicker.pickFiles()
+        guard !urls.isEmpty else { return }
+        jobListViewModel.processFiles(urls)
     }
 
     /// Handles drops on the entire popover surface.
@@ -162,6 +164,33 @@ struct PopoverView: View {
             }
         }
         return true
+    }
+}
+
+private struct ChromeIconButton: View {
+    let systemName: String
+    let title: String
+    let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .foregroundStyle(isHovered ? Color.primary : Color.secondary)
+                .background(
+                    Circle()
+                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { isHovered = $0 }
+        .help(title)
+        .accessibilityLabel(title)
     }
 }
 
