@@ -12,13 +12,16 @@ struct PopoverView: View {
     @ObservedObject var settingsViewModel: SettingsViewModel
     /// View model for the job queue and processing.
     @ObservedObject var jobListViewModel: JobListViewModel
+    /// Called when the popover should close.
+    var onClose: () -> Void
 
     var body: some View {
         Group {
             if showSettings {
                 SettingsView(
                     viewModel: settingsViewModel,
-                    onBack: { showSettings = false }
+                    onBack: { showSettings = false },
+                    onClose: onClose
                 )
             } else {
                 mainContent
@@ -94,15 +97,9 @@ struct PopoverView: View {
 
     private var header: some View {
         PopoverChromeBar {
-            Text("trnscrb")
-                .font(.system(size: 14, weight: .semibold))
+            AppBrandView()
         } trailing: {
             HStack(spacing: 6) {
-                ChromeIconButton(
-                    systemName: "plus",
-                    title: "Add Files",
-                    action: openFilePicker
-                )
                 ChromeIconButton(
                     systemName: "folder",
                     title: "Open Save Folder",
@@ -116,6 +113,11 @@ struct PopoverView: View {
                     systemName: "gearshape",
                     title: "Settings",
                     action: { showSettings = true }
+                )
+                ChromeIconButton(
+                    systemName: "xmark",
+                    title: "Close",
+                    action: onClose
                 )
             }
         }
@@ -162,12 +164,6 @@ struct PopoverView: View {
         )
     }
 
-    private func openFilePicker() {
-        let urls: [URL] = SupportedFilePicker.pickFiles()
-        guard !urls.isEmpty else { return }
-        jobListViewModel.processFiles(urls)
-    }
-
     /// Handles drops on the entire popover surface.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         let collectedURLs: LockedURLStore = LockedURLStore()
@@ -196,34 +192,6 @@ struct PopoverView: View {
         return true
     }
 }
-
-private struct ChromeIconButton: View {
-    let systemName: String
-    let title: String
-    let action: () -> Void
-
-    @State private var isHovered: Bool = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 32, height: 32)
-                .foregroundStyle(isHovered ? Color.primary : Color.secondary)
-                .background(
-                    Circle()
-                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
-                )
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { isHovered = $0 }
-        .help(title)
-        .accessibilityLabel(title)
-    }
-}
-
 /// Thread-safe URL collector for async item-provider callbacks.
 private final class LockedURLStore: @unchecked Sendable {
     private let lock: NSLock = NSLock()

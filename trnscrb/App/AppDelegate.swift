@@ -105,13 +105,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // it stays open for cross-app interactions like Finder drags,
         // but dismisses on appropriate local interactions.
         let popover: NSPopover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 480)
+        popover.contentSize = NSSize(
+            width: PopoverDesign.popoverSize.width,
+            height: PopoverDesign.popoverSize.height
+        )
         popover.behavior = .semitransient
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
                 settingsViewModel: settingsVM,
-                jobListViewModel: jobListVM
+                jobListViewModel: jobListVM,
+                onClose: { [weak self] in
+                    self?.closePopover()
+                }
             )
         )
         self.popover = popover
@@ -121,10 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withLength: NSStatusItem.variableLength
         )
         if let button: NSStatusBarButton = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "doc.text",
-                accessibilityDescription: "trnscrb menu bar item"
-            )
+            button.image = makeStatusItemImage()
             button.setAccessibilityLabel("trnscrb menu bar item")
             button.action = #selector(togglePopover)
             button.target = self
@@ -143,13 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     systemSymbolName: "arrow.down.doc.fill",
                     accessibilityDescription: "Drop files to transcribe"
                 )
+                self?.statusItem?.button?.image?.isTemplate = true
                 self?.statusItem?.button?.setAccessibilityLabel("Drop files to transcribe")
             }
             dropView.onDragExited = { [weak self] in
-                self?.statusItem?.button?.image = NSImage(
-                    systemSymbolName: "doc.text",
-                    accessibilityDescription: "trnscrb menu bar item"
-                )
+                self?.statusItem?.button?.image = self?.makeStatusItemImage()
                 self?.statusItem?.button?.setAccessibilityLabel("trnscrb menu bar item")
             }
             button.addSubview(dropView)
@@ -189,6 +190,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Closes the popover and removes the event monitor.
     private func closePopover() {
         popover?.performClose(nil)
+    }
+
+    private func makeStatusItemImage() -> NSImage? {
+        if let image = AppLogoAsset.templateImage() {
+            return image
+        }
+        let fallback: NSImage? = NSImage(
+            systemSymbolName: "doc.text",
+            accessibilityDescription: "trnscrb menu bar item"
+        )
+        fallback?.isTemplate = true
+        return fallback
     }
 
     private func applyLaunchAtLoginSetting() async {

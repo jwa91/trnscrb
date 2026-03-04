@@ -6,8 +6,6 @@ struct JobRowView: View {
     let job: Job
     /// Whether this row is currently selected for keyboard actions.
     var isSelected: Bool = false
-    /// Whether the inline markdown preview is visible.
-    var isExpanded: Bool = false
     /// Whether markdown copy confirmation is visible.
     var showsMarkdownCopyConfirmation: Bool = false
     /// Whether source URL copy confirmation is visible.
@@ -18,8 +16,6 @@ struct JobRowView: View {
     var onCopyMarkdown: (() -> Void)?
     /// Called when the user requests copying the source URL.
     var onCopySourceURL: (() -> Void)?
-    /// Called when the user toggles preview expansion.
-    var onToggleExpansion: (() -> Void)?
     /// Called when the user deletes this job.
     var onDelete: (() -> Void)?
 
@@ -28,10 +24,10 @@ struct JobRowView: View {
     var body: some View {
         let presentation: JobRowPresentation = JobRowPresentation(job: job)
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                fileTypeBadge(presentation)
+        return HStack(alignment: .top, spacing: 12) {
+            fileTypeBadge(presentation)
 
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(presentation.titleText)
                         .lineLimit(1)
@@ -45,21 +41,6 @@ struct JobRowView: View {
                 Spacer(minLength: 8)
 
                 trailingView(for: presentation)
-            }
-
-            if isExpanded, let markdownPreview {
-                Text(markdownPreview)
-                    .font(.system(.caption, design: .monospaced))
-                    .lineLimit(4)
-                    .allowsHitTesting(false)
-                    .foregroundStyle(.primary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(PopoverDesign.previewBackground)
-                    )
-                    .padding(.leading, previewLeadingInset)
             }
         }
         .padding(.vertical, PopoverDesign.rowVerticalPadding)
@@ -78,11 +59,7 @@ struct JobRowView: View {
                 style: .continuous
             )
         )
-        .pointingHandCursor()
         .onHover { isHovered = $0 }
-        .onTapGesture {
-            handleRowTap()
-        }
         .contextMenu {
             if case .completed = job.status {
                 Button("Copy Markdown") {
@@ -280,29 +257,6 @@ struct JobRowView: View {
         }
     }
 
-    private var canExpand: Bool {
-        if case .completed = job.status {
-            return markdownPreview != nil
-        }
-        return false
-    }
-
-    private var markdownPreview: String? {
-        guard let markdown = job.markdown?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !markdown.isEmpty else {
-            return nil
-        }
-
-        let lines: [Substring] = markdown.split(
-            separator: "\n",
-            maxSplits: 3,
-            omittingEmptySubsequences: false
-        )
-        let preview: String = lines.prefix(4).joined(separator: "\n")
-        return preview
-    }
-
     private func subtitleColor(for kind: JobRowPresentation.SubtitleKind) -> Color {
         switch kind {
         case .metadata:
@@ -374,16 +328,5 @@ struct JobRowView: View {
         .labelStyle(.iconOnly)
         .help("Delete")
         .pointingHandCursor()
-    }
-
-    private var previewLeadingInset: CGFloat {
-        PopoverDesign.rowBadgeSize + 12
-    }
-
-    private func handleRowTap() {
-        onSelect?()
-        if canExpand {
-            onToggleExpansion?()
-        }
     }
 }

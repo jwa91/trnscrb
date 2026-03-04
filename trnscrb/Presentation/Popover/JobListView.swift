@@ -4,7 +4,6 @@ import SwiftUI
 struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel
-    @State private var expandedJobIDs: Set<UUID> = []
     @State private var isClearAllHovered: Bool = false
 
     var body: some View {
@@ -48,8 +47,6 @@ struct JobListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onDeleteCommand(perform: handleDeleteCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
-            let currentIDs: Set<UUID> = Set(jobs.map(\.id))
-            expandedJobIDs = expandedJobIDs.intersection(currentIDs)
             if let selectedJobID = viewModel.selectedJobID,
                !jobs.contains(where: { $0.id == selectedJobID }) {
                 viewModel.selectJob(id: nil)
@@ -59,12 +56,6 @@ struct JobListView: View {
 
     @ViewBuilder
     private func row(for job: Job, allowsCopy: Bool) -> some View {
-        let isCompleted: Bool = {
-            if case .completed = job.status {
-                return true
-            }
-            return false
-        }()
         let copyFeedback: JobListViewModel.CopyFeedback? = viewModel.copyFeedback
         let showsMarkdownCopyConfirmation: Bool = copyFeedback?.jobID == job.id
             && copyFeedback?.target == .markdown
@@ -73,26 +64,15 @@ struct JobListView: View {
         JobRowView(
             job: job,
             isSelected: viewModel.selectedJobID == job.id,
-            isExpanded: expandedJobIDs.contains(job.id),
             showsMarkdownCopyConfirmation: showsMarkdownCopyConfirmation,
             showsSourceCopyConfirmation: showsSourceCopyConfirmation,
-            onSelect: { viewModel.selectJob(id: job.id) },
             onCopyMarkdown: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
             onCopySourceURL: allowsCopy && job.presignedSourceURL != nil
                 ? { viewModel.copySourceURLToClipboard(jobID: job.id) }
                 : nil,
-            onToggleExpansion: isCompleted ? { toggleExpansion(for: job.id) } : nil,
             onDelete: { viewModel.removeJob(id: job.id) }
         )
         .id(rowID(for: job))
-    }
-
-    private func toggleExpansion(for jobID: UUID) {
-        if expandedJobIDs.contains(jobID) {
-            expandedJobIDs.remove(jobID)
-        } else {
-            expandedJobIDs.insert(jobID)
-        }
     }
 
     private func rowID(for job: Job) -> String {
