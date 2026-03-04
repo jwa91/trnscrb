@@ -104,6 +104,15 @@ struct PopoverView: View {
                     action: openFilePicker
                 )
                 ChromeIconButton(
+                    systemName: "folder",
+                    title: "Open Save Folder",
+                    action: {
+                        Task {
+                            await jobListViewModel.openConfiguredSaveFolder()
+                        }
+                    }
+                )
+                ChromeIconButton(
                     systemName: "gearshape",
                     title: "Settings",
                     action: { showSettings = true }

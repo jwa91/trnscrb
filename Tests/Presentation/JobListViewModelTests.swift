@@ -6,6 +6,23 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct JobListViewModelTests {
+    private final class LockedOpenedFolderRecorder: @unchecked Sendable {
+        private let lock: NSLock = NSLock()
+        private var urls: [URL] = []
+
+        func append(_ url: URL) {
+            lock.lock()
+            urls.append(url)
+            lock.unlock()
+        }
+
+        func snapshot() -> [URL] {
+            lock.lock()
+            defer { lock.unlock() }
+            return urls
+        }
+    }
+
     private func configuredSettingsGateway() -> MockSettingsGateway {
         let settings: AppSettings = AppSettings(
             s3EndpointURL: "https://s3.example.com",
@@ -28,6 +45,7 @@ struct JobListViewModelTests {
         notificationGateway: MockNotificationGateway = MockNotificationGateway(),
         outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(),
         copyFeedbackDuration: Duration = .seconds(1.5),
+        openFolder: @escaping @Sendable (URL) -> Void = { _ in },
         isLocalModeAvailable: @escaping @Sendable () -> Bool = {
             if #available(macOS 26, *) {
                 return true
@@ -60,6 +78,7 @@ struct JobListViewModelTests {
             outputFolderGateway: outputFolderGateway,
             notificationUseCase: NotifyUserUseCase(gateway: notificationGateway),
             copyFeedbackDuration: copyFeedbackDuration,
+            openFolder: openFolder,
             isLocalModeAvailable: isLocalModeAvailable
         )
         return (vm, storage, delivery, settings, notificationGateway, outputFolderGateway)
@@ -71,6 +90,7 @@ struct JobListViewModelTests {
             savedFileURL: URL(filePath: "/tmp/trnscrb-output.md")
         ),
         copyFeedbackDuration: Duration = .seconds(1.5),
+        openFolder: @escaping @Sendable (URL) -> Void = { _ in },
         isLocalModeAvailable: @escaping @Sendable () -> Bool = {
             if #available(macOS 26, *) {
                 return true
@@ -90,6 +110,7 @@ struct JobListViewModelTests {
             delivery: delivery,
             settings: configuredSettingsGateway(),
             copyFeedbackDuration: copyFeedbackDuration,
+            openFolder: openFolder,
             isLocalModeAvailable: isLocalModeAvailable
         )
     }
@@ -629,6 +650,27 @@ struct JobListViewModelTests {
             vm.copyFeedback == nil
         }
         #expect(cleared)
+    }
+
+    @Test func openConfiguredSaveFolderUsesPreparedOutputDirectory() async {
+        let recorder: LockedOpenedFolderRecorder = LockedOpenedFolderRecorder()
+        let preparedURL: URL = URL(filePath: "/tmp/prepared-output-folder")
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(
+            preparedURL: preparedURL
+        )
+        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let (vm, _, _, _, _, _) = makeViewModel(
+            settings: settings,
+            outputFolderGateway: outputFolderGateway,
+            openFolder: { url in
+                recorder.append(url)
+            }
+        )
+
+        await vm.openConfiguredSaveFolder()
+
+        #expect(outputFolderGateway.recordedPreparedPaths() == ["~/Documents/trnscrb/"])
+        #expect(recorder.snapshot() == [preparedURL])
     }
 
     @Test func failedProcessingMarksJobAsFailedInsteadOfLeavingItActive() async {

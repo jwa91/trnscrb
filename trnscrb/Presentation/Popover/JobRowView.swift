@@ -124,27 +124,35 @@ struct JobRowView: View {
     private func trailingView(for presentation: JobRowPresentation) -> some View {
         switch job.status {
         case .pending:
-            statusPill("Waiting")
+            trailingStatusWithDelete {
+                statusPill("Waiting")
+            }
         case .uploading:
-            if let uploadActivity = presentation.uploadActivity {
-                uploadActivityView(uploadActivity)
+            trailingStatusWithDelete {
+                if let uploadActivity = presentation.uploadActivity {
+                    uploadActivityView(uploadActivity)
+                }
             }
         case .processing:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Processing")
-                    .font(PopoverDesign.secondaryTextFont)
-                    .foregroundStyle(.secondary)
+            trailingStatusWithDelete {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Processing")
+                        .font(PopoverDesign.secondaryTextFont)
+                        .foregroundStyle(.secondary)
+                }
             }
         case .completed:
             completionTrailingView(for: presentation)
         case .failed:
-            statusPill(
-                "Failed",
-                color: .red,
-                systemImage: "exclamationmark.triangle.fill"
-            )
+            trailingStatusWithDelete {
+                statusPill(
+                    "Failed",
+                    color: .red,
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+            }
         }
     }
 
@@ -174,32 +182,34 @@ struct JobRowView: View {
 
     @ViewBuilder
     private func completionTrailingView(for presentation: JobRowPresentation) -> some View {
-        if presentation.showsCompletionActions {
-            HStack(spacing: PopoverDesign.actionButtonSpacing) {
-                if presentation.showsMarkdownAction, let onCopyMarkdown {
-                    completionActionButton(
-                        systemName: "doc.on.doc",
-                        title: "Copy Markdown",
-                        successTitle: "Copied Markdown",
-                        isConfirmed: showsMarkdownCopyConfirmation,
-                        action: onCopyMarkdown
-                    )
-                }
-
-                if presentation.showsSourceLinkAction, let onCopySourceURL {
-                    completionActionButton(
-                        systemName: "link",
-                        title: "Copy S3 URL",
-                        successTitle: "Copied S3 URL",
-                        isConfirmed: showsSourceCopyConfirmation,
-                        action: onCopySourceURL
-                    )
-                }
+        HStack(spacing: PopoverDesign.actionButtonSpacing) {
+            if presentation.showsMarkdownAction, let onCopyMarkdown {
+                rowActionButton(
+                    systemName: "doc.on.doc",
+                    title: "Copy Markdown",
+                    successTitle: "Copied Markdown",
+                    isConfirmed: showsMarkdownCopyConfirmation,
+                    action: onCopyMarkdown
+                )
             }
-            .frame(width: PopoverDesign.completionActionsWidth, alignment: .trailing)
-            .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
-            .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
+
+            if presentation.showsSourceLinkAction, let onCopySourceURL {
+                rowActionButton(
+                    systemName: "link",
+                    title: "Copy S3 URL",
+                    successTitle: "Copied S3 URL",
+                    isConfirmed: showsSourceCopyConfirmation,
+                    action: onCopySourceURL
+                )
+            }
+
+            if let onDelete {
+                deleteActionButton(action: onDelete)
+            }
         }
+        .frame(width: PopoverDesign.completionActionsWidth, alignment: .trailing)
+        .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
+        .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
     }
 
     private func fileTypeBadge(_ presentation: JobRowPresentation) -> some View {
@@ -304,7 +314,7 @@ struct JobRowView: View {
         }
     }
 
-    private func completionActionButton(
+    private func rowActionButton(
         systemName: String,
         title: String,
         successTitle: String,
@@ -334,6 +344,38 @@ struct JobRowView: View {
         .disabled(!isEnabled)
         .pointingHandCursor()
     }
+
+    @ViewBuilder
+    private func trailingStatusWithDelete<Content: View>(
+        @ViewBuilder _ content: () -> Content
+    ) -> some View {
+        HStack(spacing: 8) {
+            content()
+            if let onDelete {
+                deleteActionButton(action: onDelete)
+            }
+        }
+    }
+
+    private func deleteActionButton(action: @escaping () -> Void) -> some View {
+        Button(action: {
+            onSelect?()
+            action()
+        }) {
+            Image(systemName: "trash")
+                .font(.system(size: PopoverDesign.actionButtonSymbolSize, weight: .semibold))
+                .frame(
+                    width: PopoverDesign.actionButtonSize,
+                    height: PopoverDesign.actionButtonSize
+                )
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .labelStyle(.iconOnly)
+        .help("Delete")
+        .pointingHandCursor()
+    }
+
     private var previewLeadingInset: CGFloat {
         PopoverDesign.rowBadgeSize + 12
     }
