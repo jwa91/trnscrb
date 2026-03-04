@@ -38,6 +38,23 @@ private final class LockedProgressRecorder: @unchecked Sendable {
     }
 }
 
+private final class LockedRetrySleepRecorder: @unchecked Sendable {
+    private let lock: NSLock = NSLock()
+    private var values: [UInt64] = []
+
+    func append(_ value: UInt64) {
+        lock.lock()
+        values.append(value)
+        lock.unlock()
+    }
+
+    func snapshot() -> [UInt64] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
 private func makeUseCase(
     storage: MockStorageGateway = MockStorageGateway(),
     audioTranscriber: MockTranscriptionGateway = MockTranscriptionGateway(
@@ -206,6 +223,58 @@ struct ProcessFileUseCaseTests {
         _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/retry.mp3"))
 
         #expect(await audio.recordedProcessAttemptCount() == 2)
+    }
+
+    @Test func healthyProcessingDoesNotScheduleRetryBackoff() async throws {
+        let recorder: LockedRetrySleepRecorder = LockedRetrySleepRecorder()
+        let storage: MockStorageGateway = MockStorageGateway()
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions
+        )
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(),
+            retrySleep: { nanoseconds in
+                recorder.append(nanoseconds)
+            }
+        )
+
+        _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/healthy.mp3"))
+
+        #expect(recorder.snapshot().isEmpty)
+    }
+
+    @Test func retryableUploadFailuresScheduleConfiguredBackoff() async throws {
+        let recorder: LockedRetrySleepRecorder = LockedRetrySleepRecorder()
+        let storage: MockStorageGateway = MockStorageGateway()
+        await storage.setTransientUploadFailures(
+            count: 2,
+            error: S3Error.requestFailed(statusCode: 503, body: "Temporary")
+        )
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions
+        )
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(),
+            retrySleep: { nanoseconds in
+                recorder.append(nanoseconds)
+            }
+        )
+
+        _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/retry.mp3"))
+
+        #expect(recorder.snapshot() == [250_000_000, 500_000_000])
     }
 
     @Test func stopsAfterConfiguredS3RetryLimit() async throws {

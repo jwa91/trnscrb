@@ -37,6 +37,7 @@ public struct MistralOCRProvider: TranscriptionGateway {
     /// Processes a PDF or image at the given presigned URL and returns markdown.
     public func process(sourceURL: URL) async throws -> String {
         let apiKey: String = try await loadAPIKey()
+        let requestStartedAt: Date = Date()
 
         let body: [String: Any] = [
             "model": "mistral-ocr-latest",
@@ -62,7 +63,10 @@ public struct MistralOCRProvider: TranscriptionGateway {
             throw MistralError.requestFailed(statusCode: http.statusCode, body: responseBody)
         }
 
-        return try parsePages(data)
+        let markdown: String = try parsePages(data)
+        let elapsedMs: Int = Int((Date().timeIntervalSince(requestStartedAt) * 1000).rounded())
+        AppLog.network.info("OCR request finished in \(elapsedMs, privacy: .public) ms")
+        return markdown
     }
 
     // MARK: - Private

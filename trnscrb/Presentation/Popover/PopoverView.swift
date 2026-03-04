@@ -41,45 +41,52 @@ struct PopoverView: View {
 
         return VStack(spacing: 0) {
             header
+            VStack(spacing: PopoverDesign.sectionSpacing) {
+                if let error: String = jobListViewModel.configurationError {
+                    banner(
+                        error,
+                        icon: "exclamationmark.triangle",
+                        color: .orange,
+                        onDismiss: jobListViewModel.clearConfigurationError
+                    )
+                }
 
-            if let error: String = jobListViewModel.configurationError {
-                banner(
-                    error,
-                    icon: "exclamationmark.triangle",
-                    color: .orange,
-                    onDismiss: jobListViewModel.clearConfigurationError
-                )
-            }
+                if let dropError: String = jobListViewModel.dropError {
+                    banner(
+                        dropError,
+                        icon: "xmark.circle",
+                        color: .red,
+                        onDismiss: jobListViewModel.clearDropError
+                    )
+                }
 
-            if let dropError: String = jobListViewModel.dropError {
-                banner(
-                    dropError,
-                    icon: "xmark.circle",
-                    color: .red,
-                    onDismiss: jobListViewModel.clearDropError
-                )
-            }
+                switch layout.dropZoneMode {
+                case .full:
+                    DropZoneView(onDrop: jobListViewModel.processFiles)
+                case .compact:
+                    DropZoneView(
+                        onDrop: jobListViewModel.processFiles,
+                        mode: .compact
+                    )
+                case .hidden:
+                    EmptyView()
+                }
 
-            switch layout.dropZoneMode {
-            case .full:
-                DropZoneView(onDrop: jobListViewModel.processFiles)
-            case .compact:
-                DropZoneView(
-                    onDrop: jobListViewModel.processFiles,
-                    mode: .compact
-                )
-            case .hidden:
-                EmptyView()
+                if hasJobs {
+                    JobListView(viewModel: jobListViewModel)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                } else {
+                    Spacer(minLength: 0)
+                }
             }
-
-            if hasJobs {
-                JobListView(viewModel: jobListViewModel)
-                    .frame(maxHeight: .infinity, alignment: .top)
-            } else {
-                Spacer(minLength: 0)
-            }
+            .padding(PopoverDesign.contentPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 320, height: 480)
+        .frame(
+            width: PopoverDesign.popoverSize.width,
+            height: PopoverDesign.popoverSize.height
+        )
+        .background(PopoverDesign.surfaceBackground)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
@@ -88,7 +95,7 @@ struct PopoverView: View {
     private var header: some View {
         PopoverChromeBar {
             Text("trnscrb")
-                .font(.headline)
+                .font(.system(size: 14, weight: .semibold))
         } trailing: {
             HStack(spacing: 6) {
                 ChromeIconButton(
@@ -116,22 +123,34 @@ struct PopoverView: View {
             Image(systemName: icon)
                 .foregroundStyle(color)
             Text(message)
-                .font(.caption)
+                .font(PopoverDesign.secondaryTextFont)
                 .lineLimit(2)
             Spacer()
             Button {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption2)
+                    .font(.system(size: 11, weight: .semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .font(.caption)
             .pointingHandCursor()
         }
-        .padding(8)
-        .background(color.opacity(0.1))
+        .padding(12)
+        .background(
+            RoundedRectangle(
+                cornerRadius: PopoverDesign.cardCornerRadius,
+                style: .continuous
+            )
+            .fill(color.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: PopoverDesign.cardCornerRadius,
+                style: .continuous
+            )
+            .strokeBorder(color.opacity(0.18), lineWidth: 1)
+        )
     }
 
     private func openFilePicker() {
@@ -179,8 +198,8 @@ private struct ChromeIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 28, height: 28)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 32, height: 32)
                 .foregroundStyle(isHovered ? Color.primary : Color.secondary)
                 .background(
                     Circle()

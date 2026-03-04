@@ -6,6 +6,7 @@ import Foundation
 actor MockSettingsGateway: SettingsGateway {
     private var settings: AppSettings
     private var secrets: [SecretKey: String]
+    private var loadSettingsCallCount: Int = 0
 
     init(
         settings: AppSettings = AppSettings(),
@@ -31,7 +32,14 @@ actor MockSettingsGateway: SettingsGateway {
         secrets
     }
 
-    func loadSettings() async throws -> AppSettings { settings }
+    func recordedLoadSettingsCallCount() -> Int {
+        loadSettingsCallCount
+    }
+
+    func loadSettings() async throws -> AppSettings {
+        loadSettingsCallCount += 1
+        return settings
+    }
     func saveSettings(_ newSettings: AppSettings) async throws { settings = newSettings }
     func getSecret(for key: SecretKey) async throws -> String? { secrets[key] }
     func setSecret(_ value: String, for key: SecretKey) async throws { secrets[key] = value }

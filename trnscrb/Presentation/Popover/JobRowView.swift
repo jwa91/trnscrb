@@ -22,53 +22,62 @@ struct JobRowView: View {
     var onToggleExpansion: (() -> Void)?
     /// Called when the user deletes this job.
     var onDelete: (() -> Void)?
+
     @State private var isHovered: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                leadingIndicatorView
-                Image(systemName: fileTypeIcon)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                Text(job.fileName)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .font(.caption)
-                Spacer()
-                statusView
-            }
+        let presentation: JobRowPresentation = JobRowPresentation(job: job)
 
-            if let detailMessage = detailMessage {
-                Text(detailMessage)
-                    .font(.caption2)
-                    .foregroundStyle(detailColor)
-                    .lineLimit(2)
-                    .padding(.leading, leadingContentPadding)
-                    .help(detailMessage)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                fileTypeBadge(presentation)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(presentation.titleText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .font(PopoverDesign.primaryRowFont)
+
+                    subtitleView(for: presentation)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 8)
+
+                trailingView(for: presentation)
             }
 
             if isExpanded, let markdownPreview {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(markdownPreview)
-                        .font(.system(.caption, design: .monospaced))
-                        .lineLimit(4)
-                        .allowsHitTesting(false)
-                        .foregroundStyle(.primary)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.primary.opacity(0.05))
-                        )
-                }
-                .padding(.leading, leadingContentPadding)
+                Text(markdownPreview)
+                    .font(.system(.caption, design: .monospaced))
+                    .lineLimit(4)
+                    .allowsHitTesting(false)
+                    .foregroundStyle(.primary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(PopoverDesign.previewBackground)
+                    )
+                    .padding(.leading, previewLeadingInset)
             }
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background(rowBackgroundColor)
-        .contentShape(Rectangle())
+        .padding(.vertical, PopoverDesign.rowVerticalPadding)
+        .padding(.horizontal, PopoverDesign.rowHorizontalPadding)
+        .frame(maxWidth: .infinity, minHeight: PopoverDesign.rowMinHeight, alignment: .leading)
+        .background(
+            RoundedRectangle(
+                cornerRadius: PopoverDesign.rowCornerRadius,
+                style: .continuous
+            )
+            .fill(rowBackgroundColor)
+        )
+        .contentShape(
+            RoundedRectangle(
+                cornerRadius: PopoverDesign.rowCornerRadius,
+                style: .continuous
+            )
+        )
         .pointingHandCursor()
         .onHover { isHovered = $0 }
         .onTapGesture {
@@ -91,110 +100,177 @@ struct JobRowView: View {
         }
     }
 
-    /// SF Symbol name for the file type.
-    private var fileTypeIcon: String {
-        switch job.fileType {
-        case .audio: return "waveform"
-        case .pdf: return "doc.richtext"
-        case .image: return "photo"
+    @ViewBuilder
+    private func subtitleView(for presentation: JobRowPresentation) -> some View {
+        if case .completed = job.status, presentation.subtitleKind == .metadata {
+            TimelineView(.periodic(from: .now, by: 5)) { context in
+                let updated: JobRowPresentation = JobRowPresentation(job: job, now: context.date)
+                subtitleText(
+                    updated.subtitleText,
+                    kind: updated.subtitleKind,
+                    tooltip: updated.subtitleTooltip
+                )
+            }
+        } else {
+            subtitleText(
+                presentation.subtitleText,
+                kind: presentation.subtitleKind,
+                tooltip: presentation.subtitleTooltip
+            )
         }
     }
 
-    /// Status indicator view.
     @ViewBuilder
-    private var statusView: some View {
+    private func trailingView(for presentation: JobRowPresentation) -> some View {
         switch job.status {
         case .pending:
-            Text("Waiting")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        case .uploading(let progress):
-            ProgressView(value: progress)
-                .frame(width: 40)
+            statusPill("Waiting")
+        case .uploading:
+            if let uploadActivity = presentation.uploadActivity {
+                uploadActivityView(uploadActivity)
+            }
         case .processing:
-            ProgressView()
-                .controlSize(.small)
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Processing")
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+            }
         case .completed:
-            completionStatusView
+            completionTrailingView(for: presentation)
         case .failed:
-            HStack(spacing: 4) {
-                Image(systemName: "exclamation.triangle.fill")
-                Text("Failed")
-            }
-            .foregroundStyle(.red)
-            .font(.caption2)
+            statusPill(
+                "Failed",
+                color: .red,
+                systemImage: "exclamationmark.triangle.fill"
+            )
         }
     }
 
     @ViewBuilder
-    private var completionStatusView: some View {
-        HStack(spacing: 6) {
-            if let onCopyMarkdown {
-                completionActionButton(
-                    systemName: "doc.on.doc",
-                    title: "Copy Markdown",
-                    successTitle: "Copied Markdown",
-                    isConfirmed: showsMarkdownCopyConfirmation,
-                    action: onCopyMarkdown
-                )
-            }
+    private func uploadActivityView(_ activity: JobRowPresentation.UploadActivity) -> some View {
+        switch activity {
+        case .progress(let percent, let value):
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(percent)%")
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-            if let onCopySourceURL {
-                completionActionButton(
-                    systemName: "link",
-                    title: "Copy S3 URL",
-                    successTitle: "Copied S3 URL",
-                    isConfirmed: showsSourceCopyConfirmation,
-                    action: onCopySourceURL
-                )
+                ProgressView(value: value)
+                    .frame(width: 56)
             }
-
+        case .finalizing:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Finalizing")
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
-        .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
     }
 
     @ViewBuilder
-    private var leadingIndicatorView: some View {
-        if case .completed = job.status {
-            completionTimestampView
-                .frame(width: leadingIndicatorWidth, alignment: .leading)
+    private func completionTrailingView(for presentation: JobRowPresentation) -> some View {
+        if completionActionsAreVisible {
+            HStack(spacing: 8) {
+                if presentation.showsMarkdownAction, let onCopyMarkdown {
+                    completionActionButton(
+                        systemName: "doc.on.doc",
+                        title: "Copy Markdown",
+                        successTitle: "Copied Markdown",
+                        isConfirmed: showsMarkdownCopyConfirmation,
+                        action: onCopyMarkdown
+                    )
+                }
+
+                if presentation.showsSourceLinkAction, let onCopySourceURL {
+                    completionActionButton(
+                        systemName: "link",
+                        title: "Copy S3 URL",
+                        successTitle: "Copied S3 URL",
+                        isConfirmed: showsSourceCopyConfirmation,
+                        action: onCopySourceURL
+                    )
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
+            .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
         } else {
-            Color.clear
-                .frame(width: leadingIndicatorWidth, height: 1)
+            Image(systemName: job.deliveryWarnings.isEmpty ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(job.deliveryWarnings.isEmpty ? Color.green : Color.orange)
         }
     }
 
-    private var detailMessage: String? {
-        if case .failed(let error) = job.status {
-            return error
+    private func fileTypeBadge(_ presentation: JobRowPresentation) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(badgeColor(for: presentation.badgeTint).opacity(0.16))
+
+            Image(systemName: presentation.badgeSymbolName)
+                .font(.system(size: PopoverDesign.rowBadgeSymbolSize, weight: .semibold))
+                .foregroundStyle(badgeColor(for: presentation.badgeTint))
         }
-        return job.warningMessage
+        .frame(width: PopoverDesign.rowBadgeSize, height: PopoverDesign.rowBadgeSize)
     }
 
-    private var detailColor: Color {
-        if case .failed = job.status {
-            return .red
+    private func subtitleText(
+        _ text: String,
+        kind: JobRowPresentation.SubtitleKind,
+        tooltip: String?
+    ) -> some View {
+        Text(text)
+            .font(PopoverDesign.secondaryTextFont)
+            .foregroundStyle(subtitleColor(for: kind))
+            .lineLimit(kind == .metadata ? 1 : 2)
+            .help(tooltip ?? text)
+    }
+
+    private func statusPill(
+        _ title: String,
+        color: Color = .secondary,
+        systemImage: String? = nil
+    ) -> some View {
+        HStack(spacing: 5) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+
+            Text(title)
+                .font(PopoverDesign.secondaryTextFont)
         }
-        return .orange
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(color.opacity(0.1))
+        )
     }
 
     private var rowBackgroundColor: Color {
         if isSelected {
-            return Color.accentColor.opacity(0.12)
+            return PopoverDesign.rowSelectedBackground
         }
         if isHovered {
-            return Color.primary.opacity(0.04)
+            return PopoverDesign.rowHoverBackground
         }
         return .clear
     }
 
-    private var leadingIndicatorWidth: CGFloat {
-        36
-    }
-
-    private var leadingContentPadding: CGFloat {
-        leadingIndicatorWidth + 32
+    private func badgeColor(for tint: JobRowPresentation.BadgeTint) -> Color {
+        switch tint {
+        case .orange:
+            return .orange
+        case .red:
+            return .red
+        case .blue:
+            return .blue
+        }
     }
 
     private var canExpand: Bool {
@@ -220,15 +296,14 @@ struct JobRowView: View {
         return preview
     }
 
-    @ViewBuilder
-    private var completionTimestampView: some View {
-        TimelineView(.periodic(from: .now, by: 5)) { context in
-            let display: CompletionTimestampDisplay = completionTimestampDisplay(at: context.date)
-            Text(display.text)
-                .font(.caption2)
-                .foregroundStyle(display.color)
-                .monospacedDigit()
-                .help(display.tooltip)
+    private func subtitleColor(for kind: JobRowPresentation.SubtitleKind) -> Color {
+        switch kind {
+        case .metadata:
+            return .secondary
+        case .warning:
+            return .orange
+        case .error:
+            return .red
         }
     }
 
@@ -245,17 +320,28 @@ struct JobRowView: View {
             action()
         }) {
             Image(systemName: isConfirmed ? "checkmark" : systemName)
-                .font(.caption2.weight(.semibold))
-                .frame(width: 12, height: 12)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(
+                    width: PopoverDesign.actionButtonSize,
+                    height: PopoverDesign.actionButtonSize
+                )
                 .foregroundStyle(isConfirmed ? Color.green : Color.primary)
         }
         .buttonStyle(.bordered)
         .buttonBorderShape(.capsule)
-        .controlSize(.mini)
+        .controlSize(.regular)
         .labelStyle(.iconOnly)
         .help(isConfirmed ? successTitle : title)
         .disabled(!isEnabled)
         .pointingHandCursor()
+    }
+
+    private var completionActionsAreVisible: Bool {
+        isHovered || isSelected || showsMarkdownCopyConfirmation || showsSourceCopyConfirmation
+    }
+
+    private var previewLeadingInset: CGFloat {
+        PopoverDesign.rowBadgeSize + 12
     }
 
     private func handleRowTap() {
@@ -264,52 +350,4 @@ struct JobRowView: View {
             onToggleExpansion?()
         }
     }
-
-    private func completionTimestampDisplay(at now: Date) -> CompletionTimestampDisplay {
-        let baseColor: Color = job.deliveryWarnings.isEmpty ? .secondary : .orange
-        guard let completedAt: Date = job.completedAt else {
-            return CompletionTimestampDisplay(
-                text: "done",
-                tooltip: "Completed",
-                color: baseColor
-            )
-        }
-
-        let elapsed: TimeInterval = max(0, now.timeIntervalSince(completedAt))
-        let text: String
-        let color: Color
-        if elapsed < 30 {
-            text = "now"
-            color = .green
-        } else {
-            text = Self.completionTimestampFormatter.string(from: completedAt)
-            color = baseColor
-        }
-
-        return CompletionTimestampDisplay(
-            text: text,
-            tooltip: "Completed \(Self.completionTooltipFormatter.string(from: completedAt))",
-            color: color
-        )
-    }
-
-    private struct CompletionTimestampDisplay {
-        let text: String
-        let tooltip: String
-        let color: Color
-    }
-
-    private static let completionTimestampFormatter: DateFormatter = {
-        let formatter: DateFormatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.setLocalizedDateFormatFromTemplate("Hm")
-        return formatter
-    }()
-
-    private static let completionTooltipFormatter: DateFormatter = {
-        let formatter: DateFormatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
 }

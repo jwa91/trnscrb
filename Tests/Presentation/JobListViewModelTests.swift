@@ -3,6 +3,7 @@ import Testing
 
 @testable import trnscrb
 
+@Suite(.serialized)
 @MainActor
 struct JobListViewModelTests {
     private func configuredSettingsGateway() -> MockSettingsGateway {
@@ -374,6 +375,43 @@ struct JobListViewModelTests {
         #expect(vm.activeJobs.count == 1)
     }
 
+    @Test func multiFileBatchStartsAllJobsPromptlyWithoutWaitingForEarlierJobs() async {
+        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let storage: MockStorageGateway = MockStorageGateway()
+        let delivery: MockDeliveryGateway = MockDeliveryGateway()
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions
+        )
+        await audio.setProcessingDelay(.milliseconds(400))
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: delivery,
+            settings: settings
+        )
+        let vm: JobListViewModel = JobListViewModel(
+            useCase: useCase,
+            settingsGateway: settings,
+            outputFolderGateway: MockOutputFolderGateway()
+        )
+
+        vm.processFiles([
+            URL(filePath: "/tmp/first.mp3"),
+            URL(filePath: "/tmp/second.mp3"),
+            URL(filePath: "/tmp/third.mp3")
+        ])
+
+        let startedPromptly: Bool = await waitUntil(timeout: .milliseconds(200)) {
+            let attemptCount: Int = await audio.recordedProcessAttemptCount()
+            return vm.activeJobs.count == 3 && attemptCount == 3
+        }
+
+        #expect(startedPromptly)
+    }
+
     @Test func removingActiveJobCancelsUnderlyingProcessingTask() async {
         let storage: MockStorageGateway = MockStorageGateway()
         let delivery: MockDeliveryGateway = MockDeliveryGateway()
@@ -443,6 +481,20 @@ struct JobListViewModelTests {
         #expect(UUID(uuidString: notifications[0].identifier) == vm.completedJobs.first?.id)
         #expect(notifications[0].title == "trnscrb")
         #expect(notifications[0].body == "success.mp3 saved to /tmp/success.md and copied to clipboard.")
+    }
+
+    @Test func successfulProcessingDoesNotReloadSettingsAfterPipelineCompletes() async {
+        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/no-extra-load.mp3")])
+
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+
+        #expect(completed)
+        #expect(await settings.recordedLoadSettingsCallCount() == 2)
     }
 
     @Test func successfulProcessingWithoutClipboardUsesSavedPathNotification() async {

@@ -63,6 +63,8 @@ public final class JobListViewModel: ObservableObject {
         label: "trnscrb.network-monitor"
     )
     private var isNetworkOnline: Bool = true
+    /// Snapshot of notification formatting options captured at job start.
+    private var jobCopyToClipboardPreferences: [UUID: Bool] = [:]
 
     /// Creates a job list view model.
     /// - Parameters:
@@ -162,6 +164,9 @@ public final class JobListViewModel: ObservableObject {
             return (url, fileType)
         }
         guard !validURLs.isEmpty else { return }
+        AppLog.ui.info(
+            "Accepted batch with \(validURLs.count, privacy: .public) valid file(s) out of \(urls.count, privacy: .public)"
+        )
 
         // Create jobs synchronously so callers can inspect them immediately.
         var pendingJobs: [(id: UUID, fileURL: URL)] = []
@@ -174,13 +179,19 @@ public final class JobListViewModel: ObservableObject {
         jobs = jobs + newJobs
 
         Task {
-            guard await checkConfiguration() else {
+            guard let configuration: ProcessingConfiguration = await checkConfiguration() else {
                 // Remove the jobs we just added — config is invalid.
                 let idsToRemove: Set<UUID> = Set(pendingJobs.map(\.id))
+                for jobID in idsToRemove {
+                    jobCopyToClipboardPreferences[jobID] = nil
+                }
                 jobs = jobs.filter { !idsToRemove.contains($0.id) }
                 return
             }
             configurationError = nil
+            for job in pendingJobs {
+                jobCopyToClipboardPreferences[job.id] = configuration.copyToClipboard
+            }
 
             guard isNetworkOnline else {
                 for job in pendingJobs {
@@ -201,6 +212,7 @@ public final class JobListViewModel: ObservableObject {
     public func removeJob(id jobID: UUID) {
         cancelTask(for: jobID)
         queuedOfflineJobs[jobID] = nil
+        jobCopyToClipboardPreferences[jobID] = nil
         if selectedJobID == jobID {
             selectedJobID = nil
         }
@@ -213,6 +225,9 @@ public final class JobListViewModel: ObservableObject {
     /// Removes all completed and failed jobs.
     public func clearCompleted() {
         let clearedIDs: Set<UUID> = Set(completedJobs.map(\.id))
+        for jobID in clearedIDs {
+            jobCopyToClipboardPreferences[jobID] = nil
+        }
         if let copyFeedback, clearedIDs.contains(copyFeedback.jobID) {
             self.copyFeedback = nil
         }
@@ -281,24 +296,24 @@ public final class JobListViewModel: ObservableObject {
     // MARK: - Private
 
     /// Checks that S3 and Mistral API key are configured.
-    /// - Returns: `true` if configuration is valid, `false` otherwise.
-    private func checkConfiguration() async -> Bool {
+    /// - Returns: Processing configuration if valid, `nil` otherwise.
+    private func checkConfiguration() async -> ProcessingConfiguration? {
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
             if requiresCloudCredentials(for: settings) {
                 guard settings.isS3Configured else {
                     configurationError = "Configure your S3 storage in settings."
-                    return false
+                    return nil
                 }
                 guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
                       !s3SecretKey.trimmedCredentialValue.isEmpty else {
                     configurationError = "Configure your S3 secret key in settings."
-                    return false
+                    return nil
                 }
                 guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
                       !apiKey.trimmedCredentialValue.isEmpty else {
                     configurationError = "Configure your Mistral API key in settings."
-                    return false
+                    return nil
                 }
             }
             do {
@@ -306,12 +321,12 @@ public final class JobListViewModel: ObservableObject {
             } catch {
                 configurationError = error.localizedDescription
                 shouldOpenSettings = true
-                return false
+                return nil
             }
-            return true
+            return ProcessingConfiguration(copyToClipboard: settings.copyToClipboard)
         } catch {
             configurationError = error.localizedDescription
-            return false
+            return nil
         }
     }
 
@@ -365,7 +380,8 @@ public final class JobListViewModel: ObservableObject {
             guard let savedFileURL: URL = result.savedFileURL else {
                 throw FileDeliveryError.writeFailed("Markdown file was not saved.")
             }
-            let copyToClipboard: Bool = try await settingsGateway.loadSettings().normalizedForUse.copyToClipboard
+            let copyToClipboard: Bool = jobCopyToClipboardPreferences[id] ?? false
+            AppLog.ui.info("Finalizing UI completion for job \(id.uuidString, privacy: .public)")
             guard completeJob(
                 id: id,
                 markdown: result.markdown,
@@ -376,6 +392,7 @@ public final class JobListViewModel: ObservableObject {
                 AppLog.ui.error("Job \(id.uuidString, privacy: .public) finished, but UI state could not be finalized")
                 return
             }
+            AppLog.ui.info("UI completion finalized for job \(id.uuidString, privacy: .public)")
             AppLog.ui.info("Job \(id.uuidString, privacy: .public) completed")
             selectJob(id: id)
             await postSuccessNotification(
@@ -385,6 +402,7 @@ public final class JobListViewModel: ObservableObject {
                 copyToClipboard: copyToClipboard,
                 warningMessage: result.deliveryWarnings.joined(separator: " ")
             )
+            jobCopyToClipboardPreferences[id] = nil
         } catch is CancellationError {
             AppLog.ui.info("Job \(id.uuidString, privacy: .public) cancelled")
             return
@@ -407,6 +425,7 @@ public final class JobListViewModel: ObservableObject {
                 jobID: id,
                 errorMessage: error.localizedDescription
             )
+            jobCopyToClipboardPreferences[id] = nil
         }
 
         trimCompletedJobs()
@@ -491,6 +510,9 @@ public final class JobListViewModel: ObservableObject {
                 .prefix(toRemove)
                 .map(\.id)
         )
+        for jobID in idsToRemove {
+            jobCopyToClipboardPreferences[jobID] = nil
+        }
         jobs = jobs.filter { !idsToRemove.contains($0.id) }
     }
 
@@ -580,5 +602,9 @@ public final class JobListViewModel: ObservableObject {
     private func postNotification(identifier: String, title: String, body: String) async {
         guard let notificationUseCase else { return }
         await notificationUseCase.notify(title: title, body: body, identifier: identifier)
+    }
+
+    private struct ProcessingConfiguration {
+        let copyToClipboard: Bool
     }
 }

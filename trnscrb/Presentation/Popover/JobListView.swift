@@ -9,34 +9,26 @@ struct JobListView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: PopoverDesign.sectionSpacing) {
                 if !viewModel.activeJobs.isEmpty {
-                    Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionHeader("ACTIVE")
                         ForEach(viewModel.activeJobs) { job in
                             row(for: job, allowsCopy: false)
                         }
-                    } header: {
-                        sectionHeader("Active")
                     }
                 }
 
                 if !viewModel.completedJobs.isEmpty {
-                    Section {
-                        ForEach(viewModel.completedJobs) { job in
-                            row(for: job, allowsCopy: true)
-                        }
-                    } header: {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("Recent")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
+                            sectionHeader("RECENT")
                             Spacer()
                             Button("Clear All") {
                                 viewModel.clearCompleted()
                             }
                             .buttonStyle(.plain)
-                            .font(.caption2)
+                            .font(PopoverDesign.secondaryTextFont)
                             .foregroundStyle(
                                 isClearAllHovered ? Color.accentColor : Color.secondary
                             )
@@ -44,12 +36,14 @@ struct JobListView: View {
                             .pointingHandCursor()
                             .onHover { isClearAllHovered = $0 }
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.top, 8)
-                        .padding(.bottom, 4)
+
+                        ForEach(viewModel.completedJobs) { job in
+                            row(for: job, allowsCopy: true)
+                        }
                     }
                 }
             }
+            .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onDeleteCommand(perform: handleDeleteCommand)
@@ -91,7 +85,6 @@ struct JobListView: View {
             onDelete: { viewModel.removeJob(id: job.id) }
         )
         .id(rowID(for: job))
-        Divider()
     }
 
     private func toggleExpansion(for jobID: UUID) {
@@ -123,16 +116,10 @@ struct JobListView: View {
 
     /// Section header label.
     private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        Text(title)
+            .font(PopoverDesign.sectionLabelFont)
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
     }
 
     private func handleDeleteCommand() {
