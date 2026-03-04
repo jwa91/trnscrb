@@ -25,6 +25,8 @@ struct JobRowPresentation {
     let subtitleKind: SubtitleKind
     let subtitleTooltip: String?
     let uploadActivity: UploadActivity?
+    let showsCompletionActions: Bool
+    let showsPassiveCompletionState: Bool
     let showsMarkdownAction: Bool
     let showsSourceLinkAction: Bool
 
@@ -46,6 +48,8 @@ struct JobRowPresentation {
             showsMarkdownAction = false
             showsSourceLinkAction = false
         }
+        showsCompletionActions = showsMarkdownAction || showsSourceLinkAction
+        showsPassiveCompletionState = false
     }
 
     private struct Subtitle {

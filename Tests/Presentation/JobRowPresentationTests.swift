@@ -77,8 +77,24 @@ struct JobRowPresentationTests {
 
         #expect(presentation.subtitleKind == .metadata)
         #expect(presentation.subtitleText == "Audio • now")
+        #expect(presentation.showsCompletionActions)
+        #expect(!presentation.showsPassiveCompletionState)
         #expect(presentation.showsMarkdownAction)
         #expect(presentation.showsSourceLinkAction)
+    }
+
+    @Test func completedLocalJobsStillShowVisibleActionsWithoutPassiveStatusFallback() {
+        var job: Job = makePresentationJob()
+        job.startUpload()
+        job.startProcessing()
+        job.complete(markdown: "# Transcript")
+
+        let presentation: JobRowPresentation = JobRowPresentation(job: job)
+
+        #expect(presentation.showsCompletionActions)
+        #expect(!presentation.showsPassiveCompletionState)
+        #expect(presentation.showsMarkdownAction)
+        #expect(!presentation.showsSourceLinkAction)
     }
 
     @Test func completedUploadShowsFinalizingInsteadOfStuck100Percent() {
