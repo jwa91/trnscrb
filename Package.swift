@@ -8,7 +8,10 @@ let package: Package = Package(
     targets: [
         .executableTarget(
             name: "trnscrb",
-            path: "trnscrb"
+            path: "trnscrb",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .testTarget(
             name: "TrnscrbrTests",

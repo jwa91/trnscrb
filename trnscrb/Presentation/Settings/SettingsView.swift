@@ -10,6 +10,8 @@ struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     /// Called when the user taps the back button.
     var onBack: () -> Void
+    /// Called when the user closes the popover.
+    var onClose: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,17 +40,25 @@ struct SettingsView: View {
                     .truncationMode(.tail)
             }
         } trailing: {
-            Button("Save") {
-                Task {
-                    let didSave: Bool = await viewModel.save()
-                    if didSave {
-                        onBack()
+            HStack(spacing: 6) {
+                Button("Save") {
+                    Task {
+                        let didSave: Bool = await viewModel.save()
+                        if didSave {
+                            onBack()
+                        }
                     }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .pointingHandCursor()
+
+                ChromeIconButton(
+                    systemName: "xmark",
+                    title: "Close",
+                    action: onClose
+                )
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .pointingHandCursor()
         }
     }
 
