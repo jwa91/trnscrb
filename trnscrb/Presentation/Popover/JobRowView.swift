@@ -174,7 +174,7 @@ struct JobRowView: View {
 
     @ViewBuilder
     private func completionTrailingView(for presentation: JobRowPresentation) -> some View {
-        if completionActionsAreVisible {
+        if presentation.showsCompletionActions {
             HStack(spacing: 8) {
                 if presentation.showsMarkdownAction, let onCopyMarkdown {
                     completionActionButton(
@@ -198,10 +198,6 @@ struct JobRowView: View {
             }
             .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
             .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
-        } else {
-            Image(systemName: job.deliveryWarnings.isEmpty ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(job.deliveryWarnings.isEmpty ? Color.green : Color.orange)
         }
     }
 
@@ -335,11 +331,6 @@ struct JobRowView: View {
         .disabled(!isEnabled)
         .pointingHandCursor()
     }
-
-    private var completionActionsAreVisible: Bool {
-        isHovered || isSelected || showsMarkdownCopyConfirmation || showsSourceCopyConfirmation
-    }
-
     private var previewLeadingInset: CGFloat {
         PopoverDesign.rowBadgeSize + 12
     }
