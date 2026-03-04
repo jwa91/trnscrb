@@ -175,7 +175,7 @@ struct JobRowView: View {
     @ViewBuilder
     private func completionTrailingView(for presentation: JobRowPresentation) -> some View {
         if presentation.showsCompletionActions {
-            HStack(spacing: 8) {
+            HStack(spacing: PopoverDesign.actionButtonSpacing) {
                 if presentation.showsMarkdownAction, let onCopyMarkdown {
                     completionActionButton(
                         systemName: "doc.on.doc",
@@ -196,6 +196,7 @@ struct JobRowView: View {
                     )
                 }
             }
+            .frame(width: PopoverDesign.completionActionsWidth, alignment: .trailing)
             .animation(.easeOut(duration: 0.18), value: showsMarkdownCopyConfirmation)
             .animation(.easeOut(duration: 0.18), value: showsSourceCopyConfirmation)
         }
@@ -316,16 +317,18 @@ struct JobRowView: View {
             action()
         }) {
             Image(systemName: isConfirmed ? "checkmark" : systemName)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: PopoverDesign.actionButtonSymbolSize, weight: .semibold))
                 .frame(
                     width: PopoverDesign.actionButtonSize,
                     height: PopoverDesign.actionButtonSize
                 )
                 .foregroundStyle(isConfirmed ? Color.green : Color.primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isConfirmed ? Color.green.opacity(0.12) : Color.clear)
+                )
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.regular)
+        .buttonStyle(.plain)
         .labelStyle(.iconOnly)
         .help(isConfirmed ? successTitle : title)
         .disabled(!isEnabled)

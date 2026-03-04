@@ -24,7 +24,10 @@ enum PopoverDesign {
     static let largeIconSymbolSize: CGFloat = 24
     static let compactIconBadgeSize: CGFloat = 36
     static let compactIconSymbolSize: CGFloat = 16
-    static let actionButtonSize: CGFloat = 30
+    static let actionButtonSize: CGFloat = 22
+    static let actionButtonSymbolSize: CGFloat = 11
+    static let actionButtonSpacing: CGFloat = 4
+    static let completionActionsWidth: CGFloat = 48
 
     static let primaryRowFont: Font = .system(size: 14, weight: .medium)
     static let sectionLabelFont: Font = .system(size: 13, weight: .semibold)
