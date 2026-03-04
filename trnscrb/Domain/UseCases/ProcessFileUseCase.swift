@@ -42,6 +42,8 @@ public final class ProcessFileUseCase: Sendable {
     private let settings: any SettingsGateway
     /// Evaluates whether local Apple mode is available at runtime.
     private let isLocalModeAvailable: @Sendable () -> Bool
+    /// Injectable sleep used only for retry backoff scheduling.
+    private let retrySleep: @Sendable (UInt64) async throws -> Void
 
     /// Creates the use case with injected dependencies.
     public init(
@@ -49,6 +51,9 @@ public final class ProcessFileUseCase: Sendable {
         transcribers: [any TranscriptionGateway],
         delivery: any DeliveryGateway,
         settings: any SettingsGateway,
+        retrySleep: @escaping @Sendable (UInt64) async throws -> Void = { nanoseconds in
+            try await Task.sleep(nanoseconds: nanoseconds)
+        },
         isLocalModeAvailable: @escaping @Sendable () -> Bool = {
             if #available(macOS 26, *) {
                 return true
@@ -60,6 +65,7 @@ public final class ProcessFileUseCase: Sendable {
         self.transcribers = transcribers
         self.delivery = delivery
         self.settings = settings
+        self.retrySleep = retrySleep
         self.isLocalModeAvailable = isLocalModeAvailable
     }
 
@@ -103,7 +109,9 @@ public final class ProcessFileUseCase: Sendable {
             let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
             onStageChange?(.uploading)
             AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
+            let uploadStartedAt: Date = Date()
             let uploadedURL: URL = try await retry(
+                operationName: "upload",
                 maxAttempts: 3,
                 initialBackoffNanoseconds: 250_000_000
             ) {
@@ -113,7 +121,8 @@ public final class ProcessFileUseCase: Sendable {
                     onProgress: onUploadProgress
                 )
             }
-            AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public)")
+            let uploadElapsedMs: Int = Int((Date().timeIntervalSince(uploadStartedAt) * 1000).rounded())
+            AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public) in \(uploadElapsedMs, privacy: .public) ms")
             sourceURL = uploadedURL
             presignedURL = uploadedURL
         case .localFile:
@@ -125,13 +134,16 @@ public final class ProcessFileUseCase: Sendable {
         AppLog.pipeline.info(
             "Calling transcriber for \(fileURL.lastPathComponent, privacy: .public) as \(String(describing: fileType), privacy: .public) in \(route.effectiveMode.rawValue, privacy: .public) mode"
         )
+        let transcriptionStartedAt: Date = Date()
         let markdown: String = try await retry(
+            operationName: "transcription",
             maxAttempts: 2,
             initialBackoffNanoseconds: 500_000_000
         ) {
             try await route.transcriber.process(sourceURL: sourceURL)
         }
-        AppLog.pipeline.info("Transcriber completed for \(fileURL.lastPathComponent, privacy: .public)")
+        let transcriptionElapsedMs: Int = Int((Date().timeIntervalSince(transcriptionStartedAt) * 1000).rounded())
+        AppLog.pipeline.info("Transcriber completed for \(fileURL.lastPathComponent, privacy: .public) in \(transcriptionElapsedMs, privacy: .public) ms")
 
         let result: TranscriptionResult = TranscriptionResult(
             markdown: markdown,
@@ -139,8 +151,11 @@ public final class ProcessFileUseCase: Sendable {
             sourceFileType: fileType
         )
 
+        AppLog.pipeline.info("Starting delivery for \(fileURL.lastPathComponent, privacy: .public)")
+        let deliveryStartedAt: Date = Date()
         let deliveryReport: DeliveryReport = try await delivery.deliver(result: result)
-        AppLog.pipeline.info("Delivery completed for \(fileURL.lastPathComponent, privacy: .public)")
+        let deliveryElapsedMs: Int = Int((Date().timeIntervalSince(deliveryStartedAt) * 1000).rounded())
+        AppLog.pipeline.info("Delivery completed for \(fileURL.lastPathComponent, privacy: .public) in \(deliveryElapsedMs, privacy: .public) ms")
 
         return TranscriptionResult(
             markdown: result.markdown,
@@ -154,6 +169,7 @@ public final class ProcessFileUseCase: Sendable {
 
     /// Retries an async operation with exponential backoff.
     private func retry<T>(
+        operationName: String,
         maxAttempts: Int,
         initialBackoffNanoseconds: UInt64,
         operation: @Sendable () async throws -> T
@@ -167,12 +183,16 @@ public final class ProcessFileUseCase: Sendable {
                 return try await operation()
             } catch {
                 AppLog.pipeline.error(
-                    "Attempt \(attempt, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                    "\(operationName, privacy: .public) attempt \(attempt, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
                 )
                 guard attempt < maxAttempts, shouldRetry(error) else {
                     throw error
                 }
-                try await Task.sleep(nanoseconds: backoff)
+                let delayMs: Int = Int(backoff / 1_000_000)
+                AppLog.pipeline.info(
+                    "Retrying \(operationName, privacy: .public) attempt \(attempt + 1, privacy: .public) after \(delayMs, privacy: .public) ms backoff"
+                )
+                try await retrySleep(backoff)
                 attempt += 1
                 backoff = min(backoff * 2, 5_000_000_000)
             }

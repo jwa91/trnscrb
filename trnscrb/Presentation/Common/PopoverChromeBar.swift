@@ -26,8 +26,8 @@ struct PopoverChromeBar<Leading: View, Center: View, Trailing: View>: View {
                     Spacer(minLength: 12)
                     trailing
                 }
-                .padding(.horizontal, 12)
-                .frame(height: 44)
+                .padding(.horizontal, PopoverDesign.chromeHorizontalPadding)
+                .frame(height: PopoverDesign.chromeBarHeight)
 
                 center
                     .padding(.horizontal, 72)

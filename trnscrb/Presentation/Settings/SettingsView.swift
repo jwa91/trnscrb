@@ -15,9 +15,13 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            settingsForm
+            settingsContent
         }
-        .frame(width: 320, height: 480)
+        .frame(
+            width: PopoverDesign.popoverSize.width,
+            height: PopoverDesign.popoverSize.height
+        )
+        .background(PopoverDesign.surfaceBackground)
         .task { await viewModel.load() }
     }
 
@@ -28,7 +32,7 @@ struct SettingsView: View {
         } center: {
             if let error = viewModel.error {
                 Text(error)
-                    .font(.caption)
+                    .font(PopoverDesign.secondaryTextFont)
                     .foregroundStyle(.red)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -48,72 +52,115 @@ struct SettingsView: View {
         }
     }
 
-    /// Form containing all settings sections.
-    private var settingsForm: some View {
-        Form {
-            s3Section
-            mistralSection
-            providerSection
-            outputSection
-            generalSection
+    /// Scrollable settings content with card grouping.
+    private var settingsContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                s3Section
+                mistralSection
+                providerSection
+                outputSection
+                generalSection
+            }
+            .padding(PopoverDesign.contentPadding)
         }
-        .formStyle(.grouped)
     }
 
     /// S3 Storage configuration fields.
     private var s3Section: some View {
-        Section("S3 Storage") {
-            TextField("Endpoint URL", text: $viewModel.settings.s3EndpointURL)
-                .textFieldStyle(.roundedBorder)
-                .help("You can paste either https://host or just host; the app will use HTTPS.")
-            TextField("Access Key", text: $viewModel.settings.s3AccessKey)
-                .textFieldStyle(.roundedBorder)
-            secretField(
-                "Secret Key",
-                text: $viewModel.s3SecretKey,
-                isVisible: $viewModel.isS3SecretKeyVisible
-            )
-            TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
-                .textFieldStyle(.roundedBorder)
-            TextField("Region", text: $viewModel.settings.s3Region)
-                .textFieldStyle(.roundedBorder)
-            TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
-                .textFieldStyle(.roundedBorder)
-            HStack {
+        SettingsSectionCard(title: "S3 Storage") {
+            fieldGroup(
+                "Endpoint URL",
+                help: "You can paste either https://host or just host; the app will use HTTPS."
+            ) {
+                TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+            }
+
+            fieldGroup("Access Key") {
+                TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+            }
+
+            fieldGroup("Secret Key") {
+                secretField(
+                    "Secret Key",
+                    text: $viewModel.s3SecretKey,
+                    isVisible: $viewModel.isS3SecretKeyVisible
+                )
+            }
+
+            fieldGroup("Bucket Name") {
+                TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+            }
+
+            fieldGroup("Region") {
+                TextField("Region", text: $viewModel.settings.s3Region)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+            }
+
+            fieldGroup("Path Prefix") {
+                TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+            }
+
+            HStack(spacing: 10) {
                 testButton("Test", result: viewModel.s3TestResult) {
                     Task { await viewModel.testS3() }
                 }
                 testResultView(viewModel.s3TestResult)
+                Spacer(minLength: 0)
             }
+            .padding(.top, 2)
         }
     }
 
     /// Mistral API key field.
     private var mistralSection: some View {
-        Section("Mistral API") {
-            secretField(
-                "API Key",
-                text: $viewModel.mistralAPIKey,
-                isVisible: $viewModel.isMistralAPIKeyVisible
-            )
-            HStack {
+        SettingsSectionCard(title: "Mistral API") {
+            fieldGroup("API Key") {
+                secretField(
+                    "API Key",
+                    text: $viewModel.mistralAPIKey,
+                    isVisible: $viewModel.isMistralAPIKeyVisible
+                )
+            }
+
+            HStack(spacing: 10) {
                 testButton("Test", result: viewModel.mistralTestResult) {
                     Task { await viewModel.testMistral() }
                 }
                 testResultView(viewModel.mistralTestResult)
+                Spacer(minLength: 0)
             }
+            .padding(.top, 2)
         }
     }
 
     /// Per-media provider mode preferences.
     private var providerSection: some View {
-        Section("Processing Providers") {
-            providerModePicker("Audio", selection: $viewModel.settings.audioProviderMode)
-            providerModePicker("PDF", selection: $viewModel.settings.pdfProviderMode)
-            providerModePicker("Image", selection: $viewModel.settings.imageProviderMode)
+        SettingsSectionCard(title: "Processing Providers") {
+            fieldGroup("Audio") {
+                providerModePicker(selection: $viewModel.settings.audioProviderMode)
+            }
+
+            fieldGroup("PDF") {
+                providerModePicker(selection: $viewModel.settings.pdfProviderMode)
+            }
+
+            fieldGroup("Image") {
+                providerModePicker(selection: $viewModel.settings.imageProviderMode)
+            }
+
             if !viewModel.isLocalAppleModeAvailable {
                 Text("Local Apple mode requires macOS 26 or newer.")
-                    .font(.caption2)
+                    .font(PopoverDesign.secondaryTextFont)
                     .foregroundStyle(.secondary)
             }
         }
@@ -121,49 +168,74 @@ struct SettingsView: View {
 
     /// Output folder and clipboard configuration.
     private var outputSection: some View {
-        Section("Output") {
-            HStack(spacing: 8) {
-                TextField("Save Folder", text: $viewModel.settings.saveFolderPath)
-                    .textFieldStyle(.roundedBorder)
-                Button("Browse…") {
-                    browseForSaveFolder()
+        SettingsSectionCard(title: "Output") {
+            fieldGroup("Save Folder") {
+                HStack(spacing: 8) {
+                    TextField("Folder path", text: $viewModel.settings.saveFolderPath)
+                        .textFieldStyle(.roundedBorder)
+
+                    Button("Browse…") {
+                        browseForSaveFolder()
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .pointingHandCursor()
+                .controlSize(.large)
             }
+
             Text("Markdown files are always saved to this folder.")
-                .font(.caption2)
+                .font(PopoverDesign.secondaryTextFont)
                 .foregroundStyle(.secondary)
-            if !viewModel.resolvedSaveFolderPath.isEmpty {
-                Text(viewModel.resolvedSaveFolderPath)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+
             Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
         }
     }
 
     /// General settings: retention and launch at login.
     private var generalSection: some View {
-        Section("General") {
-            HStack {
-                Text("File Retention")
-                Spacer()
-                TextField(
-                    "Hours",
-                    value: $viewModel.settings.fileRetentionHours,
-                    format: .number
-                )
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 60)
-                Text("hours")
-                    .foregroundStyle(.secondary)
+        SettingsSectionCard(title: "General") {
+            fieldGroup("File Retention") {
+                HStack(spacing: 8) {
+                    TextField(
+                        "Hours",
+                        value: $viewModel.settings.fileRetentionHours,
+                        format: .number
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 88)
+
+                    Text("hours")
+                        .font(PopoverDesign.secondaryTextFont)
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
+                }
+                .controlSize(.large)
             }
+
             Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
         }
+    }
+
+    private func fieldGroup<Content: View>(
+        _ title: String,
+        help: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(PopoverDesign.settingsLabelFont)
+                .foregroundStyle(.primary)
+
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let help {
+                Text(help)
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Test button helpers
@@ -173,11 +245,11 @@ struct SettingsView: View {
         result: TestResult,
         action: @escaping () -> Void
     ) -> some View {
-        InlineTextActionButton(
-            title: title,
-            isEnabled: result != .testing,
-            action: action
-        )
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(result == .testing)
+            .pointingHandCursor()
     }
 
     @ViewBuilder
@@ -190,11 +262,11 @@ struct SettingsView: View {
                 .controlSize(.small)
         case .success:
             Label("Connected", systemImage: "checkmark.circle.fill")
-                .font(.caption2)
+                .font(PopoverDesign.secondaryTextFont)
                 .foregroundStyle(.green)
         case .failure(let message):
             Text(message)
-                .font(.caption2)
+                .font(PopoverDesign.secondaryTextFont)
                 .foregroundStyle(.red)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -218,29 +290,30 @@ struct SettingsView: View {
             .font(.system(.body, design: .monospaced))
             .lineLimit(1)
             .truncationMode(.middle)
+            .controlSize(.large)
 
             Button {
                 isVisible.wrappedValue.toggle()
             } label: {
                 Image(systemName: isVisible.wrappedValue ? "eye.slash" : "eye")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
             .pointingHandCursor()
             .help(isVisible.wrappedValue ? "Hide value" : "Show value")
         }
     }
 
-    private func providerModePicker(
-        _ title: String,
-        selection: Binding<ProviderMode>
-    ) -> some View {
-        Picker(title, selection: selection) {
+    private func providerModePicker(selection: Binding<ProviderMode>) -> some View {
+        Picker("", selection: selection) {
             Text("Mistral").tag(ProviderMode.mistral)
             Text("Local Apple (macOS 26+)")
                 .tag(ProviderMode.localApple)
                 .disabled(!viewModel.isLocalAppleModeAvailable)
         }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.large)
     }
 
     private func browseForSaveFolder() {
@@ -268,7 +341,7 @@ private struct SettingsBackButton: View {
     var body: some View {
         Button(action: action) {
             Label("Settings", systemImage: "chevron.left")
-                .font(.headline)
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -278,29 +351,6 @@ private struct SettingsBackButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { isHovered = $0 }
-    }
-}
-
-private struct InlineTextActionButton: View {
-    let title: String
-    let isEnabled: Bool
-    let action: () -> Void
-
-    @State private var isHovered: Bool = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(
-                    isHovered && isEnabled ? Color.accentColor : Color.secondary
-                )
-                .underline(isHovered && isEnabled)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
         .pointingHandCursor()
         .onHover { isHovered = $0 }
     }

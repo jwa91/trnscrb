@@ -34,7 +34,8 @@ public struct MistralAudioProvider: TranscriptionGateway {
     /// Transcribes audio at the given presigned URL and returns the text.
     public func process(sourceURL: URL) async throws -> String {
         let apiKey: String = try await loadAPIKey()
-        AppLog.network.info("Starting audio transcription for \(sourceURL.absoluteString, privacy: .public)")
+        let requestStartedAt: Date = Date()
+        AppLog.network.info("Starting audio transcription request for \(sourceURL.absoluteString, privacy: .public)")
 
         let request: URLRequest = try makeRequest(apiKey: apiKey, sourceURL: sourceURL)
 
@@ -53,6 +54,9 @@ public struct MistralAudioProvider: TranscriptionGateway {
               let text = json["text"] as? String else {
             throw MistralError.invalidResponse("Missing 'text' field in response")
         }
+
+        let elapsedMs: Int = Int((Date().timeIntervalSince(requestStartedAt) * 1000).rounded())
+        AppLog.network.info("Audio transcription finished in \(elapsedMs, privacy: .public) ms")
 
         return text
     }

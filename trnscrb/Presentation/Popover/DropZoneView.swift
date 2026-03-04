@@ -22,32 +22,35 @@ struct DropZoneView: View {
 
     var body: some View {
         content
-            .padding(innerPadding)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: mode == .full ? PopoverDesign.dropZoneFullHeight : nil,
+                alignment: mode == .full ? .center : .leading
+            )
+            .padding(mode == .full ? 24 : 16)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(innerBackgroundColor)
+                RoundedRectangle(
+                    cornerRadius: PopoverDesign.dropZoneCornerRadius,
+                    style: .continuous
+                )
+                .fill(backgroundColor)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(
-                        borderColor,
-                        style: StrokeStyle(lineWidth: borderLineWidth, dash: [6])
-                    )
+                RoundedRectangle(
+                    cornerRadius: PopoverDesign.dropZoneCornerRadius,
+                    style: .continuous
+                )
+                .strokeBorder(
+                    borderColor,
+                    style: StrokeStyle(lineWidth: borderLineWidth, dash: [8, 6])
+                )
             )
-            .padding(outerPadding)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: mode == .full ? 180 : nil)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(outerBackgroundColor)
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: PopoverDesign.dropZoneCornerRadius,
+                    style: .continuous
+                )
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(outerBorderColor, lineWidth: 1)
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, mode == .full ? 10 : 6)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .pointingHandCursor()
             .onTapGesture {
                 openFilePicker()
@@ -56,98 +59,69 @@ struct DropZoneView: View {
             .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
                 handleDrop(providers)
             }
+            .animation(.easeOut(duration: 0.16), value: isHovered)
+            .animation(.easeOut(duration: 0.16), value: isTargeted)
     }
 
     @ViewBuilder
     private var content: some View {
         switch mode {
         case .full:
-            VStack(spacing: 8) {
-                Image(systemName: "arrow.down.doc")
-                    .font(.system(size: 32))
-                    .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.secondary)
-                Text("Drop files here")
-                    .font(.headline)
-                Text("or click to choose audio, PDFs, and images")
-                    .font(.caption)
+            VStack(spacing: 12) {
+                iconBadge(
+                    size: PopoverDesign.largeIconBadgeSize,
+                    symbolSize: PopoverDesign.largeIconSymbolSize
+                )
+
+                Text("Drop audio, PDFs, and images here")
+                    .font(PopoverDesign.dropZoneTitleFont)
+                    .multilineTextAlignment(.center)
+
+                Text("or click to browse")
+                    .font(PopoverDesign.secondaryTextFont)
                     .foregroundStyle(.secondary)
-                fileTypeHints
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
         case .compact:
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.down.doc")
-                    .font(.system(size: 18))
-                    .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.secondary)
-                    .frame(width: 20)
+            HStack(spacing: 12) {
+                iconBadge(
+                    size: PopoverDesign.compactIconBadgeSize,
+                    symbolSize: PopoverDesign.compactIconSymbolSize
+                )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Add more files")
-                        .font(.caption.weight(.semibold))
-                    Text("Drop here or click to choose audio, PDFs, and images")
-                        .font(.caption2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Add files")
+                        .font(PopoverDesign.sectionLabelFont)
+                    Text("Audio, PDFs, and images")
+                        .font(PopoverDesign.secondaryTextFont)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
         }
     }
 
-    /// Compact listing of supported file types grouped by category.
-    private var fileTypeHints: some View {
-        VStack(spacing: 2) {
-            Text("Audio: \(FileType.audioExtensions.sorted().joined(separator: ", "))")
-            Text("PDF \u{2022} Images: \(FileType.imageExtensions.sorted().joined(separator: ", "))")
+    private func iconBadge(size: CGFloat, symbolSize: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                .fill(Color.accentColor.opacity(isTargeted ? 0.24 : 0.16))
+
+            Image(systemName: "square.and.arrow.down.fill")
+                .font(.system(size: symbolSize, weight: .semibold))
+                .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.primary)
         }
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .padding(.top, 8)
+        .frame(width: size, height: size)
     }
 
-    private var innerPadding: EdgeInsets {
-        switch mode {
-        case .full:
-            return EdgeInsets(top: 14, leading: 12, bottom: 14, trailing: 12)
-        case .compact:
-            return EdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
-        }
-    }
-
-    private var outerPadding: EdgeInsets {
-        switch mode {
-        case .full:
-            return EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
-        case .compact:
-            return EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
-        }
-    }
-
-    private var innerBackgroundColor: Color {
+    private var backgroundColor: Color {
         if isTargeted {
-            return Color.accentColor.opacity(0.1)
+            return PopoverDesign.dropZoneTargetedFill
         }
         if isHovered {
-            return Color.primary.opacity(0.03)
+            return PopoverDesign.dropZoneHoverFill
         }
-        return .clear
-    }
-
-    private var outerBackgroundColor: Color {
-        if isTargeted {
-            return Color.accentColor.opacity(0.05)
-        }
-        return Color.primary.opacity(0.02)
-    }
-
-    private var outerBorderColor: Color {
-        if isTargeted {
-            return Color.accentColor.opacity(0.45)
-        }
-        return Color.secondary.opacity(0.22)
+        return PopoverDesign.dropZoneIdleFill
     }
 
     private var borderColor: Color {
@@ -155,9 +129,9 @@ struct DropZoneView: View {
             return Color.accentColor
         }
         if isHovered {
-            return Color.secondary.opacity(0.6)
+            return Color.secondary.opacity(0.55)
         }
-        return Color.secondary.opacity(0.45)
+        return Color.secondary.opacity(0.35)
     }
 
     private var borderLineWidth: CGFloat {
