@@ -47,6 +47,8 @@ public final class JobListViewModel: ObservableObject {
     private let outputFolderGateway: any OutputFolderGateway
     /// Posts local user notifications when jobs complete or fail.
     private let notificationUseCase: NotifyUserUseCase?
+    /// Opens the configured output folder in Finder.
+    private let openFolder: @Sendable (URL) -> Void
     /// Evaluates whether local Apple mode is available on this runtime.
     private let isLocalModeAvailable: @Sendable () -> Bool
     /// Active processing tasks by job ID so work can be cancelled safely.
@@ -77,6 +79,9 @@ public final class JobListViewModel: ObservableObject {
         outputFolderGateway: any OutputFolderGateway,
         notificationUseCase: NotifyUserUseCase? = nil,
         copyFeedbackDuration: Duration = .seconds(1.5),
+        openFolder: @escaping @Sendable (URL) -> Void = { url in
+            NSWorkspace.shared.open(url)
+        },
         isLocalModeAvailable: @escaping @Sendable () -> Bool = {
             if #available(macOS 26, *) {
                 return true
@@ -89,6 +94,7 @@ public final class JobListViewModel: ObservableObject {
         self.outputFolderGateway = outputFolderGateway
         self.notificationUseCase = notificationUseCase
         self.copyFeedbackDuration = copyFeedbackDuration
+        self.openFolder = openFolder
         self.isLocalModeAvailable = isLocalModeAvailable
         startNetworkMonitoring()
     }
@@ -291,6 +297,18 @@ public final class JobListViewModel: ObservableObject {
     public func revealInFinder(jobID: UUID) {
         guard let fileURL: URL = jobs.first(where: { $0.id == jobID })?.savedFileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    /// Opens the configured markdown output folder in Finder.
+    public func openConfiguredSaveFolder() async {
+        do {
+            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+            let folderURL: URL = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
+            openFolder(folderURL)
+        } catch {
+            configurationError = error.localizedDescription
+            shouldOpenSettings = true
+        }
     }
 
     // MARK: - Private
