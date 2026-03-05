@@ -41,4 +41,4 @@ brew tap jwa91/tap
 brew install --cask trnscrb
 ```
 
-Requires macOS 14 (Sonoma) or later.
+Requires macOS 14 (Sonoma) or later (For Apple OCR and Audio capabilties macOS 26+ is needed).

@@ -79,7 +79,8 @@ struct JobListViewModelTests {
             notificationUseCase: NotifyUserUseCase(gateway: notificationGateway),
             copyFeedbackDuration: copyFeedbackDuration,
             openFolder: openFolder,
-            isLocalModeAvailable: isLocalModeAvailable
+            isLocalModeAvailable: isLocalModeAvailable,
+            shouldStartNetworkMonitoring: false
         )
         return (vm, storage, delivery, settings, notificationGateway, outputFolderGateway)
     }
@@ -180,6 +181,129 @@ struct JobListViewModelTests {
             URL(filePath: "/tmp/good.pdf")
         ])
         #expect(vm.jobs.count == 2)
+        #expect(vm.dropError == "Unsupported file type: .xyz")
+    }
+
+    @Test func mixedOfflineBatchKeepsValidationErrorSeparateFromOfflineStatus() async {
+        let (vm, _, _, _, _, _) = makeViewModel()
+        vm.handleNetworkStatusChange(isOnline: false)
+
+        vm.processFiles([
+            URL(filePath: "/tmp/good.mp3"),
+            URL(filePath: "/tmp/bad.xyz")
+        ])
+
+        let queued: Bool = await waitUntil {
+            vm.jobs.count == 1
+                && vm.offlineStatusMessage == "You're offline. Jobs will resume automatically once connectivity returns."
+        }
+
+        #expect(queued)
+        #expect(vm.dropError == "Unsupported file type: .xyz")
+
+        vm.clearOfflineStatus()
+
+        #expect(vm.offlineStatusMessage == nil)
+        #expect(vm.dropError == "Unsupported file type: .xyz")
+    }
+
+    @Test func resumingQueuedOfflineJobsClearsOnlyOfflineStatus() async {
+        let (vm, _, _, _, _, _) = makeViewModel()
+        vm.handleNetworkStatusChange(isOnline: false)
+
+        vm.processFiles([
+            URL(filePath: "/tmp/good.mp3"),
+            URL(filePath: "/tmp/bad.xyz")
+        ])
+
+        let queued: Bool = await waitUntil {
+            vm.jobs.count == 1
+                && vm.offlineStatusMessage == "You're offline. Jobs will resume automatically once connectivity returns."
+        }
+        #expect(queued)
+
+        vm.handleNetworkStatusChange(isOnline: true)
+
+        let resumed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1 && vm.offlineStatusMessage == nil
+        }
+
+        #expect(resumed)
+        #expect(vm.dropError == "Unsupported file type: .xyz")
+    }
+
+    @Test func mixedOfflineBatchShowsOfflineStatusWithoutLosingValidationError() async {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadError: URLError(.notConnectedToInternet)
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(storage: storage)
+
+        vm.processFiles([
+            URL(filePath: "/tmp/good.mp3"),
+            URL(filePath: "/tmp/bad.xyz")
+        ])
+
+        let queued: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.offlineStatusMessage != nil && vm.jobs.count == 1
+        }
+
+        #expect(queued)
+        #expect(vm.dropError == "Unsupported file type: .xyz")
+        #expect(
+            vm.offlineStatusMessage
+                == "You're offline. Jobs will resume automatically once connectivity returns."
+        )
+    }
+
+    @Test func clearingOfflineStatusDoesNotAffectValidationError() async {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadError: URLError(.notConnectedToInternet)
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(storage: storage)
+
+        vm.processFiles([
+            URL(filePath: "/tmp/good.mp3"),
+            URL(filePath: "/tmp/bad.xyz")
+        ])
+
+        let queued: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.offlineStatusMessage != nil && vm.dropError == "Unsupported file type: .xyz"
+        }
+
+        #expect(queued)
+
+        vm.clearOfflineStatus()
+
+        #expect(vm.offlineStatusMessage == nil)
+        #expect(vm.dropError == "Unsupported file type: .xyz")
+    }
+
+    @Test func resumingQueuedOfflineJobsClearsOnlyOfflineStatusMessage() async {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadError: URLError(.notConnectedToInternet)
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(storage: storage)
+
+        vm.processFiles([
+            URL(filePath: "/tmp/good.mp3"),
+            URL(filePath: "/tmp/bad.xyz")
+        ])
+
+        let queued: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.offlineStatusMessage != nil && vm.jobs.count == 1
+        }
+
+        #expect(queued)
+
+        await storage.setUploadError(nil)
+        vm.handleNetworkStatusChange(isOnline: true)
+
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+
+        #expect(completed)
+        #expect(vm.offlineStatusMessage == nil)
         #expect(vm.dropError == "Unsupported file type: .xyz")
     }
 
@@ -289,7 +413,8 @@ struct JobListViewModelTests {
             useCase: useCase,
             settingsGateway: settings,
             outputFolderGateway: MockOutputFolderGateway(),
-            isLocalModeAvailable: { true }
+            isLocalModeAvailable: { true },
+            shouldStartNetworkMonitoring: false
         )
 
         vm.processFiles([URL(filePath: "/tmp/local.mp3")])
@@ -416,7 +541,8 @@ struct JobListViewModelTests {
         let vm: JobListViewModel = JobListViewModel(
             useCase: useCase,
             settingsGateway: settings,
-            outputFolderGateway: MockOutputFolderGateway()
+            outputFolderGateway: MockOutputFolderGateway(),
+            shouldStartNetworkMonitoring: false
         )
 
         vm.processFiles([
@@ -454,7 +580,8 @@ struct JobListViewModelTests {
         let vm: JobListViewModel = JobListViewModel(
             useCase: useCase,
             settingsGateway: settings,
-            outputFolderGateway: MockOutputFolderGateway()
+            outputFolderGateway: MockOutputFolderGateway(),
+            shouldStartNetworkMonitoring: false
         )
 
         vm.processFiles([URL(filePath: "/tmp/slow.mp3")])
@@ -694,7 +821,8 @@ struct JobListViewModelTests {
         let vm: JobListViewModel = JobListViewModel(
             useCase: useCase,
             settingsGateway: settings,
-            outputFolderGateway: MockOutputFolderGateway()
+            outputFolderGateway: MockOutputFolderGateway(),
+            shouldStartNetworkMonitoring: false
         )
 
         vm.processFiles([URL(filePath: "/tmp/failure.mp3")])

@@ -217,6 +217,23 @@ struct S3ClientTests {
         #expect(presignedURL.absoluteString.contains("X-Amz-Signature"))
     }
 
+    @Test func uploadSetsHostHeaderForCustomPortEndpoint() async throws {
+        let (client, mock) = makeClient(endpoint: "http://localhost:9000")
+        let tempFile: URL = FileManager.default.temporaryDirectory.appending(path: "port.mp3")
+        try Data("audio-content".utf8).write(to: tempFile)
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        mock.handler = { request in
+            #expect(request.value(forHTTPHeaderField: "Host") == "localhost:9000")
+            let response: HTTPURLResponse = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data())
+        }
+
+        _ = try await client.upload(fileURL: tempFile, key: "trnscrb/port.mp3")
+    }
+
     @Test func uploadReportsProgressFromZeroToOne() async throws {
         let (client, mock) = makeClient()
         let tempFile: URL = FileManager.default.temporaryDirectory.appending(path: "progress.mp3")
@@ -459,5 +476,69 @@ struct S3ClientTests {
 
         let keys: [String] = try await client.listCreatedBefore(cutoff)
         #expect(keys == ["trnscrb/old-1.mp3", "trnscrb/old-2.mp3"])
+    }
+
+    @Test func listObjectsParserPreservesFragmentedWhitespaceInKeysAndTokens() {
+        let parser: ListObjectsParser = ListObjectsParser()
+        let xmlParser: XMLParser = XMLParser(data: Data())
+
+        parser.parser(
+            xmlParser,
+            didStartElement: "NextContinuationToken",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+        parser.parser(xmlParser, foundCharacters: "token ")
+        parser.parser(xmlParser, foundCharacters: "with space")
+        parser.parser(
+            xmlParser,
+            didEndElement: "NextContinuationToken",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+
+        parser.parser(
+            xmlParser,
+            didStartElement: "Contents",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+        parser.parser(
+            xmlParser,
+            didStartElement: "Key",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+        parser.parser(xmlParser, foundCharacters: "trnscrb/folder ")
+        parser.parser(xmlParser, foundCharacters: "with space/file.mp3")
+        parser.parser(
+            xmlParser,
+            didEndElement: "Key",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+        parser.parser(
+            xmlParser,
+            didStartElement: "LastModified",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+        parser.parser(xmlParser, foundCharacters: "2026-02-01T00:00:00.")
+        parser.parser(xmlParser, foundCharacters: "000Z")
+        parser.parser(
+            xmlParser,
+            didEndElement: "LastModified",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+        parser.parser(
+            xmlParser,
+            didEndElement: "Contents",
+            namespaceURI: nil,
+            qualifiedName: nil
+        )
+
+        #expect(parser.nextContinuationToken == "token with space")
+        #expect(parser.objects.map(\.key) == ["trnscrb/folder with space/file.mp3"])
     }
 }

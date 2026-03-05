@@ -34,6 +34,8 @@ public final class JobListViewModel: ObservableObject {
     @Published public private(set) var shouldOpenSettings: Bool = false
     /// Last user-facing drop error (for unsupported file types).
     @Published public var dropError: String?
+    /// User-facing status for jobs queued while offline.
+    @Published public var offlineStatusMessage: String?
     /// Job copy feedback currently shown in the UI.
     @Published public private(set) var copyFeedback: CopyFeedback?
 
@@ -73,7 +75,7 @@ public final class JobListViewModel: ObservableObject {
     ///   - useCase: Pipeline orchestrator for processing files.
     ///   - settingsGateway: Settings gateway for pre-flight configuration checks.
     ///   - notificationUseCase: Optional use case for local user notifications.
-    public init(
+    public convenience init(
         useCase: ProcessFileUseCase,
         settingsGateway: any SettingsGateway,
         outputFolderGateway: any OutputFolderGateway,
@@ -89,6 +91,35 @@ public final class JobListViewModel: ObservableObject {
             return false
         }
     ) {
+        self.init(
+            useCase: useCase,
+            settingsGateway: settingsGateway,
+            outputFolderGateway: outputFolderGateway,
+            notificationUseCase: notificationUseCase,
+            copyFeedbackDuration: copyFeedbackDuration,
+            openFolder: openFolder,
+            isLocalModeAvailable: isLocalModeAvailable,
+            shouldStartNetworkMonitoring: true
+        )
+    }
+
+    init(
+        useCase: ProcessFileUseCase,
+        settingsGateway: any SettingsGateway,
+        outputFolderGateway: any OutputFolderGateway,
+        notificationUseCase: NotifyUserUseCase? = nil,
+        copyFeedbackDuration: Duration = .seconds(1.5),
+        openFolder: @escaping @Sendable (URL) -> Void = { url in
+            NSWorkspace.shared.open(url)
+        },
+        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
+            if #available(macOS 26, *) {
+                return true
+            }
+            return false
+        },
+        shouldStartNetworkMonitoring: Bool
+    ) {
         self.useCase = useCase
         self.settingsGateway = settingsGateway
         self.outputFolderGateway = outputFolderGateway
@@ -96,7 +127,9 @@ public final class JobListViewModel: ObservableObject {
         self.copyFeedbackDuration = copyFeedbackDuration
         self.openFolder = openFolder
         self.isLocalModeAvailable = isLocalModeAvailable
-        startNetworkMonitoring()
+        if shouldStartNetworkMonitoring {
+            startNetworkMonitoring()
+        }
     }
 
     deinit {
@@ -203,7 +236,6 @@ public final class JobListViewModel: ObservableObject {
                 for job in pendingJobs {
                     queueOfflineJob(id: job.id, fileURL: job.fileURL)
                 }
-                dropError = "You're offline. Jobs will resume automatically once connectivity returns."
                 return
             }
 
@@ -260,6 +292,11 @@ public final class JobListViewModel: ObservableObject {
     /// Clears the current drop error banner.
     public func clearDropError() {
         dropError = nil
+    }
+
+    /// Clears the current offline-status banner.
+    public func clearOfflineStatus() {
+        offlineStatusMessage = nil
     }
 
     /// Copies the markdown from a completed job to the clipboard.
@@ -430,7 +467,6 @@ public final class JobListViewModel: ObservableObject {
                isOfflineError(error) {
                 updateJob(id: id) { $0.requeue() }
                 queueOfflineJob(id: id, fileURL: fileURL)
-                dropError = "You're offline. Jobs will resume automatically once connectivity returns."
                 return
             }
             AppLog.ui.error(
@@ -547,18 +583,22 @@ public final class JobListViewModel: ObservableObject {
         isNetworkOnline = true
         pathMonitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
-                guard let self else { return }
-                self.isNetworkOnline = path.status == .satisfied
-                if self.isNetworkOnline {
-                    self.resumeQueuedOfflineJobs()
-                }
+                self?.handleNetworkStatusChange(isOnline: path.status == .satisfied)
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
     }
 
+    func handleNetworkStatusChange(isOnline: Bool) {
+        isNetworkOnline = isOnline
+        if isOnline {
+            resumeQueuedOfflineJobs()
+        }
+    }
+
     private func queueOfflineJob(id: UUID, fileURL: URL) {
         queuedOfflineJobs[id] = fileURL
+        offlineStatusMessage = offlineMessage
     }
 
     private func resumeQueuedOfflineJobs() {
@@ -569,7 +609,7 @@ public final class JobListViewModel: ObservableObject {
             guard jobs.contains(where: { $0.id == jobID }) else { continue }
             startProcessing(jobID: jobID, fileURL: fileURL)
         }
-        dropError = nil
+        offlineStatusMessage = nil
     }
 
     private func isOfflineError(_ error: any Error) -> Bool {
@@ -624,5 +664,9 @@ public final class JobListViewModel: ObservableObject {
 
     private struct ProcessingConfiguration {
         let copyToClipboard: Bool
+    }
+
+    private var offlineMessage: String {
+        "You're offline. Jobs will resume automatically once connectivity returns."
     }
 }

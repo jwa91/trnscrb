@@ -7,4 +7,5 @@ enum AppLog {
     static let network: Logger = Logger(subsystem: subsystem, category: "network")
     static let ui: Logger = Logger(subsystem: subsystem, category: "ui")
     static let delivery: Logger = Logger(subsystem: subsystem, category: "delivery")
+    static let config: Logger = Logger(subsystem: subsystem, category: "config")
 }
