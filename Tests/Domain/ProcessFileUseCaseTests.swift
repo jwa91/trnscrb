@@ -249,6 +249,67 @@ struct ProcessFileUseCaseTests {
         #expect(recorder.snapshot().isEmpty)
     }
 
+    @Test func waitsForProviderBackedFileToHydrateBeforeUpload() async throws {
+        let tempDirectory: URL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("process-file-use-case-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let fileURL: URL = tempDirectory.appendingPathComponent("scan.jpeg", isDirectory: false)
+        try Data().write(to: fileURL)
+
+        let sleepRecorder: LockedRetrySleepRecorder = LockedRetrySleepRecorder()
+        let storage: MockStorageGateway = MockStorageGateway()
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions
+        )
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(),
+            retrySleep: { nanoseconds in
+                sleepRecorder.append(nanoseconds)
+                try Data([0x01, 0x02, 0x03]).write(to: fileURL, options: .atomic)
+            }
+        )
+
+        _ = try await useCase.execute(fileURL: fileURL)
+
+        #expect(!sleepRecorder.snapshot().isEmpty)
+        #expect(await storage.recordedUploadAttemptCount() == 1)
+    }
+
+    @Test func throwsClearErrorWhenProviderBackedFileStaysEmpty() async throws {
+        let tempDirectory: URL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("process-file-use-case-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let fileURL: URL = tempDirectory.appendingPathComponent("scan.jpeg", isDirectory: false)
+        try Data().write(to: fileURL)
+
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: MockStorageGateway(),
+            transcribers: [
+                MockTranscriptionGateway(supportedExtensions: FileType.audioExtensions),
+                MockTranscriptionGateway(
+                    supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+                )
+            ],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(),
+            retrySleep: { _ in }
+        )
+
+        await #expect(throws: ProcessFileError.emptyInputFile("scan.jpeg")) {
+            try await useCase.execute(fileURL: fileURL)
+        }
+    }
+
     @Test func retryableUploadFailuresScheduleConfiguredBackoff() async throws {
         let recorder: LockedRetrySleepRecorder = LockedRetrySleepRecorder()
         let storage: MockStorageGateway = MockStorageGateway()

@@ -8,12 +8,16 @@ import UniformTypeIdentifiers
 struct PopoverView: View {
     /// Shared route state for the popover.
     @ObservedObject var navigationModel: PopoverNavigationModel
+    /// Tracks whether a file picker panel is currently open.
+    @ObservedObject var filePickerPresentationModel: FilePickerPresentationModel
     /// View model for the settings panel.
     @ObservedObject var settingsViewModel: SettingsViewModel
     /// View model for the job queue and processing.
     @ObservedObject var jobListViewModel: JobListViewModel
     /// Called when the popover should close.
     var onClose: () -> Void
+    /// Keeps the main popover surface active for keyboard commands.
+    @FocusState private var isMainContentFocused: Bool
 
     var body: some View {
         Group {
@@ -33,6 +37,14 @@ struct PopoverView: View {
             guard shouldOpenSettings else { return }
             navigationModel.showSettings()
             jobListViewModel.consumeSettingsNavigation()
+        }
+        .onChange(of: navigationModel.route) { _, route in
+            guard route == .main else { return }
+            requestMainContentFocus()
+        }
+        .onChange(of: jobListViewModel.selectedJobID) { _, _ in
+            guard navigationModel.route == .main else { return }
+            requestMainContentFocus()
         }
     }
 
@@ -76,11 +88,17 @@ struct PopoverView: View {
 
                 switch layout.dropZoneMode {
                 case .full:
-                    DropZoneView(onDrop: jobListViewModel.processFiles)
+                    DropZoneView(
+                        onDrop: jobListViewModel.processFiles,
+                        onSelectFiles: openFilePicker,
+                        isFilePickerPresented: filePickerPresentationModel.isPresenting
+                    )
                 case .compact:
                     DropZoneView(
                         onDrop: jobListViewModel.processFiles,
-                        mode: .compact
+                        onSelectFiles: openFilePicker,
+                        mode: .compact,
+                        isFilePickerPresented: filePickerPresentationModel.isPresenting
                     )
                 case .hidden:
                     EmptyView()
@@ -101,13 +119,19 @@ struct PopoverView: View {
             height: PopoverDesign.popoverSize.height
         )
         .background(PopoverDesign.surfaceBackground)
+        .focusable()
+        .focused($isMainContentFocused)
+        .defaultFocus($isMainContentFocused, true)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
         .onPasteCommand(of: SupportedFileImport.pasteboardContentTypes) { providers in
             handlePaste(providers)
         }
+        .onDeleteCommand(perform: jobListViewModel.removeSelectedOrMostRecentJob)
+        .onMoveCommand(perform: handleMoveCommand)
         .onExitCommand(perform: onClose)
+        .onAppear(perform: requestMainContentFocus)
     }
 
     private var header: some View {
@@ -184,6 +208,7 @@ struct PopoverView: View {
 
     /// Handles drops on the entire popover surface.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !filePickerPresentationModel.isPresenting else { return false }
         SupportedFileImport.loadFileURLs(from: providers) { urls in
             if !urls.isEmpty {
                 jobListViewModel.processFiles(urls)
@@ -196,6 +221,30 @@ struct PopoverView: View {
         SupportedFileImport.loadFileURLs(from: providers) { urls in
             guard SupportedFileImport.containsSupportedFile(urls) else { return }
             jobListViewModel.processFiles(urls)
+        }
+    }
+
+    private func openFilePicker() {
+        let urls: [URL] = filePickerPresentationModel.pickFiles()
+        guard !urls.isEmpty else { return }
+        jobListViewModel.processFiles(urls)
+    }
+
+    private func handleMoveCommand(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .up:
+            jobListViewModel.selectPreviousVisibleJob()
+        case .down:
+            jobListViewModel.selectNextVisibleJob()
+        default:
+            return
+        }
+    }
+
+    private func requestMainContentFocus() {
+        DispatchQueue.main.async {
+            guard navigationModel.route == .main else { return }
+            isMainContentFocused = true
         }
     }
 }

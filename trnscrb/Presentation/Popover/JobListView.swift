@@ -45,8 +45,6 @@ struct JobListView: View {
             .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onDeleteCommand(perform: viewModel.removeSelectedOrMostRecentJob)
-        .onMoveCommand(perform: handleMoveCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
             if let selectedJobID = viewModel.selectedJobID,
                !jobs.contains(where: { $0.id == selectedJobID }) {
@@ -102,16 +100,5 @@ struct JobListView: View {
             .font(PopoverDesign.sectionLabelFont)
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
-    }
-
-    private func handleMoveCommand(_ direction: MoveCommandDirection) {
-        switch direction {
-        case .up:
-            viewModel.selectPreviousVisibleJob()
-        case .down:
-            viewModel.selectNextVisibleJob()
-        default:
-            return
-        }
     }
 }

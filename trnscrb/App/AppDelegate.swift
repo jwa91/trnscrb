@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover?
     /// Shared route state for the popover's main and settings screens.
     private let popoverNavigationModel: PopoverNavigationModel = PopoverNavigationModel()
+    /// Tracks when the file picker panel is open so drag targets can disable safely.
+    private let filePickerPresentationModel: FilePickerPresentationModel = FilePickerPresentationModel()
     /// Settings gateway for the lifetime of the app.
     private var settingsGateway: (any SettingsGateway)?
     /// Job list view model — retained for status bar drop forwarding.
@@ -118,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
                 navigationModel: popoverNavigationModel,
+                filePickerPresentationModel: filePickerPresentationModel,
                 settingsViewModel: settingsVM,
                 jobListViewModel: jobListVM,
                 onClose: { [weak self] in
@@ -185,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func addFilesFromCommand() {
         showPopover(route: .main)
-        let urls: [URL] = SupportedFilePicker.pickFiles()
+        let urls: [URL] = filePickerPresentationModel.pickFiles()
         guard !urls.isEmpty else { return }
         jobListViewModel?.processFiles(urls)
     }

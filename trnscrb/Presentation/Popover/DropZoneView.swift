@@ -13,8 +13,12 @@ struct DropZoneView: View {
 
     /// Called with the URLs of dropped/selected files.
     var onDrop: ([URL]) -> Void
+    /// Opens the shared file picker flow.
+    var onSelectFiles: () -> Void
     /// Layout variant for the idle or inline uploader state.
     var mode: Mode = .full
+    /// True while the file picker panel is open and panel-origin drags are unsupported.
+    var isFilePickerPresented: Bool = false
     /// Tracks whether a drag is hovering over the zone.
     @State private var isTargeted: Bool = false
     /// Tracks whether the pointer is hovering over the zone.
@@ -51,13 +55,10 @@ struct DropZoneView: View {
                     style: .continuous
                 )
             )
-            .pointingHandCursor()
-            .onTapGesture {
-                openFilePicker()
-            }
             .onHover { isHovered = $0 }
             .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-                handleDrop(providers)
+                guard !isFilePickerPresented else { return false }
+                return handleDrop(providers)
             }
             .animation(.easeOut(duration: 0.16), value: isHovered)
             .animation(.easeOut(duration: 0.16), value: isTargeted)
@@ -73,13 +74,18 @@ struct DropZoneView: View {
                     symbolSize: PopoverDesign.largeIconSymbolSize
                 )
 
-                Text("Drop audio, PDFs, and images here")
+                Text(isFilePickerPresented ? "File picker is open" : "Drop audio, PDFs, and images here")
                     .font(PopoverDesign.dropZoneTitleFont)
                     .multilineTextAlignment(.center)
 
-                Text("or click to browse")
-                    .font(PopoverDesign.secondaryTextFont)
-                    .foregroundStyle(.secondary)
+                if isFilePickerPresented {
+                    Text("Choose files in that window, or drag from Finder after closing it.")
+                        .font(PopoverDesign.secondaryTextFont)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    browseButton
+                }
             }
             .frame(maxWidth: .infinity)
         case .compact:
@@ -90,31 +96,51 @@ struct DropZoneView: View {
                 )
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Add files")
+                    Text(isFilePickerPresented ? "File picker open" : "Add files")
                         .font(PopoverDesign.sectionLabelFont)
-                    Text("Audio, PDFs, and images")
+                    Text(
+                        isFilePickerPresented
+                            ? "Choose there, or drag from Finder after closing it"
+                            : "Audio, PDFs, and images"
+                    )
                         .font(PopoverDesign.secondaryTextFont)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+                if !isFilePickerPresented {
+                    browseButton
                 }
                 Spacer(minLength: 8)
             }
         }
     }
 
+    private var browseButton: some View {
+        Button("Select files…") {
+            onSelectFiles()
+        }
+        .buttonStyle(.plain)
+        .font(PopoverDesign.secondaryTextFont)
+        .foregroundStyle(Color.accentColor)
+        .pointingHandCursor()
+    }
+
     private func iconBadge(size: CGFloat, symbolSize: CGFloat) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                .fill(Color.accentColor.opacity(isTargeted ? 0.24 : 0.16))
+                .fill(iconBackgroundColor)
 
             Image(systemName: "square.and.arrow.down.fill")
                 .font(.system(size: symbolSize, weight: .semibold))
-                .foregroundStyle(isHovered || isTargeted ? Color.accentColor : Color.primary)
+                .foregroundStyle(iconForegroundColor)
         }
         .frame(width: size, height: size)
     }
 
     private var backgroundColor: Color {
+        if isFilePickerPresented {
+            return PopoverDesign.dropZoneIdleFill.opacity(0.55)
+        }
         if isTargeted {
             return PopoverDesign.dropZoneTargetedFill
         }
@@ -125,6 +151,9 @@ struct DropZoneView: View {
     }
 
     private var borderColor: Color {
+        if isFilePickerPresented {
+            return Color.secondary.opacity(0.22)
+        }
         if isTargeted {
             return Color.accentColor
         }
@@ -135,7 +164,24 @@ struct DropZoneView: View {
     }
 
     private var borderLineWidth: CGFloat {
-        isTargeted ? 2 : 1.2
+        if isFilePickerPresented {
+            return 1
+        }
+        return isTargeted ? 2 : 1.2
+    }
+
+    private var iconBackgroundColor: Color {
+        if isFilePickerPresented {
+            return Color.secondary.opacity(0.12)
+        }
+        return Color.accentColor.opacity(isTargeted ? 0.24 : 0.16)
+    }
+
+    private var iconForegroundColor: Color {
+        if isFilePickerPresented {
+            return Color.secondary
+        }
+        return isHovered || isTargeted ? Color.accentColor : Color.primary
     }
 
     /// Extracts file URLs from drop providers and calls onDrop.
@@ -146,12 +192,5 @@ struct DropZoneView: View {
             }
         }
         return true
-    }
-
-    /// Opens a macOS file picker dialog for selecting files.
-    private func openFilePicker() {
-        let urls: [URL] = SupportedFilePicker.pickFiles()
-        guard !urls.isEmpty else { return }
-        onDrop(urls)
     }
 }
