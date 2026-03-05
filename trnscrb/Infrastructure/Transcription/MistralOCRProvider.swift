@@ -43,7 +43,7 @@ public struct MistralOCRProvider: TranscriptionGateway {
             "model": "mistral-ocr-latest",
             "document": documentChunk(for: sourceURL)
         ]
-        AppLog.network.info("Starting OCR request for \(sourceURL.absoluteString, privacy: .public)")
+        AppLog.network.info("Starting OCR request for \(LogRedaction.sourceURLSummary(sourceURL), privacy: .public)")
 
         var request: URLRequest = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"

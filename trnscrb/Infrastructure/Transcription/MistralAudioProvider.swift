@@ -35,7 +35,7 @@ public struct MistralAudioProvider: TranscriptionGateway {
     public func process(sourceURL: URL) async throws -> String {
         let apiKey: String = try await loadAPIKey()
         let requestStartedAt: Date = Date()
-        AppLog.network.info("Starting audio transcription request for \(sourceURL.absoluteString, privacy: .public)")
+        AppLog.network.info("Starting audio transcription request for \(LogRedaction.sourceURLSummary(sourceURL), privacy: .public)")
 
         let request: URLRequest = try makeRequest(apiKey: apiKey, sourceURL: sourceURL)
 
