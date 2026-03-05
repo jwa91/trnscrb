@@ -34,6 +34,11 @@ Drop a file onto the menu bar icon (or into the popover drop zone), and trnscrb 
 - Clean Architecture: domain layer with use cases and gateway protocols, infrastructure layer with concrete implementations (`S3Client`, `MistralAudioProvider`, `MistralOCRProvider`, `AppleSpeechAnalyzerProvider`, `AppleDocumentOCRProvider`, `KeychainStore`, etc.)
 - Native `URLSession` for networking, Swift Concurrency (`async/await`, `TaskGroup`) for parallelism
 
-## TODO
+## Install
 
-- [ ] **Homebrew Tap distribution** — publish a Homebrew tap so users can install and update trnscrb via `brew install --cask trnscrb`
+```bash
+brew tap jwa91/tap
+brew install --cask trnscrb
+```
+
+Requires macOS 14 (Sonoma) or later.
