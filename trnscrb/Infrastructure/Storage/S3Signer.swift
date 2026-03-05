@@ -35,7 +35,8 @@ public struct S3Signer: Sendable {
         date: Date = Date(),
         payloadHash: String
     ) {
-        guard let url = request.url, let host = url.host else { return }
+        guard let url = request.url,
+              let host = Self.hostHeaderValue(for: url) else { return }
 
         let amzDate: String = Self.amzDateString(date)
         let dateStamp: String = Self.dateStampString(date)
@@ -54,7 +55,7 @@ public struct S3Signer: Sendable {
 
         let canonical: String = canonicalRequest(
             method: request.httpMethod ?? "GET",
-            path: url.path.isEmpty ? "/" : url.path,
+            path: Self.canonicalPath(for: url),
             query: Self.canonicalQueryString(from: url),
             headers: headers,
             signedHeaders: signedHeaders,
@@ -81,7 +82,7 @@ public struct S3Signer: Sendable {
         expiration: Int = 3600,
         date: Date = Date()
     ) -> URL {
-        guard let host = url.host else { return url }
+        guard let host = Self.hostHeaderValue(for: url) else { return url }
 
         let amzDate: String = Self.amzDateString(date)
         let dateStamp: String = Self.dateStampString(date)
@@ -109,10 +110,9 @@ public struct S3Signer: Sendable {
                     .joined(separator: "&")
             } ?? ""
 
-        let path: String = url.path.isEmpty ? "/" : url.path
         let canonical: String = canonicalRequest(
             method: "GET",
-            path: path,
+            path: Self.canonicalPath(for: url),
             query: queryString,
             headers: [("host", host)],
             signedHeaders: "host",
@@ -133,6 +133,27 @@ public struct S3Signer: Sendable {
     static func sha256(_ string: String) -> String {
         let hash = CryptoKit.SHA256.hash(data: Data(string.utf8))
         return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func hostHeaderValue(for url: URL) -> String? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = components.host,
+              !host.isEmpty else {
+            return nil
+        }
+        guard let port = components.port,
+              !isDefaultPort(port, for: components.scheme) else {
+            return host
+        }
+        return "\(host):\(port)"
+    }
+
+    static func canonicalPath(for url: URL) -> String {
+        let path: String = URLComponents(
+            url: url,
+            resolvingAgainstBaseURL: false
+        )?.percentEncodedPath ?? ""
+        return path.isEmpty ? "/" : path
     }
 
     // MARK: - Private
@@ -207,5 +228,16 @@ public struct S3Signer: Sendable {
         var allowed: CharacterSet = .alphanumerics
         allowed.insert(charactersIn: "-._~")
         return string.addingPercentEncoding(withAllowedCharacters: allowed) ?? string
+    }
+
+    private static func isDefaultPort(_ port: Int, for scheme: String?) -> Bool {
+        switch scheme?.lowercased() {
+        case "http":
+            return port == 80
+        case "https":
+            return port == 443
+        default:
+            return false
+        }
     }
 }

@@ -62,6 +62,21 @@ struct S3SignerTests {
         #expect(req1.value(forHTTPHeaderField: "Authorization") == req2.value(forHTTPHeaderField: "Authorization"))
     }
 
+    @Test func hostHeaderValueIncludesNonDefaultPort() {
+        let url: URL = URL(string: "http://localhost:9000/bucket/key")!
+        #expect(S3Signer.hostHeaderValue(for: url) == "localhost:9000")
+    }
+
+    @Test func canonicalPathPreservesPercentEncodedSegments() {
+        let url: URL = URL(
+            string: "https://s3.example.com/bucket/folder%20with%20space/name%20with%20space.mp3"
+        )!
+        #expect(
+            S3Signer.canonicalPath(for: url)
+                == "/bucket/folder%20with%20space/name%20with%20space.mp3"
+        )
+    }
+
     // MARK: - presignedURL()
 
     @Test func presignedURLContainsAllRequiredParameters() {
@@ -82,6 +97,16 @@ struct S3SignerTests {
         let baseURL: URL = URL(string: "https://s3.example.com/bucket/trnscrb/file.mp3")!
         let presigned: URL = signer.presignedURL(for: baseURL, expiration: 3600, date: fixedDate)
         #expect(presigned.path == "/bucket/trnscrb/file.mp3")
+    }
+
+    @Test func presignedURLKeepsPercentEncodedPathSegments() {
+        let baseURL: URL = URL(
+            string: "https://s3.example.com/bucket/folder%20with%20space/file%20name.mp3"
+        )!
+        let presigned: URL = signer.presignedURL(for: baseURL, expiration: 3600, date: fixedDate)
+        #expect(
+            presigned.absoluteString.contains("folder%20with%20space/file%20name.mp3")
+        )
     }
 
     @Test func presignedURLUsesCorrectAlgorithm() {

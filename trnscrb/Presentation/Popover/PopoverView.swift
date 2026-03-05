@@ -54,6 +54,15 @@ struct PopoverView: View {
                     )
                 }
 
+                if let offlineStatusMessage: String = jobListViewModel.offlineStatusMessage {
+                    banner(
+                        offlineStatusMessage,
+                        icon: "wifi.slash",
+                        color: .orange,
+                        onDismiss: jobListViewModel.clearOfflineStatus
+                    )
+                }
+
                 if let dropError: String = jobListViewModel.dropError {
                     banner(
                         dropError,
@@ -123,7 +132,7 @@ struct PopoverView: View {
         }
     }
 
-    /// Banner shown when S3 or API key is not configured.
+    /// Banner shown for non-fatal user-facing status and validation messages.
     private func banner(
         _ message: String,
         icon: String,
