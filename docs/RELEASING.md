@@ -60,12 +60,12 @@ The version is read from the `VERSION` file at the project root. The build numbe
    SHA=$(shasum -a 256 build/trnscrb-0.2.0.dmg | awk '{print $1}')
    ```
 
-   Edit `Casks/trnscrb.rb` in the [homebrew-trnscrb](https://github.com/jwa91/homebrew-trnscrb) repo — update `version` and `sha256`.
+   Edit `Casks/trnscrb.rb` in the [homebrew-tap](https://github.com/jwa91/homebrew-tap) repo — update `version` and `sha256`.
 
 ## Install via Homebrew
 
 ```bash
-brew tap jwa91/trnscrb
+brew tap jwa91/tap
 brew install --cask trnscrb
 ```
 

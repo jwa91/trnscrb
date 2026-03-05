@@ -49,6 +49,7 @@ public struct SaveSettingsUseCase: Sendable {
         } catch {
             await rollback(
                 to: snapshot,
+                originalError: error,
                 didPersistSettings: didPersistSettings,
                 didPersistMistralAPIKey: didPersistMistralAPIKey,
                 didPersistS3SecretKey: didPersistS3SecretKey,
@@ -79,23 +80,66 @@ public struct SaveSettingsUseCase: Sendable {
 
     private func rollback(
         to snapshot: SettingsSnapshot,
+        originalError: any Error,
         didPersistSettings: Bool,
         didPersistMistralAPIKey: Bool,
         didPersistS3SecretKey: Bool,
         didAttemptLaunchAtLoginApply: Bool
     ) async {
         if didPersistSettings {
-            try? await gateway.saveSettings(snapshot.settings)
+            do {
+                try await gateway.saveSettings(snapshot.settings)
+            } catch {
+                logRollbackFailure(
+                    step: "settings",
+                    rollbackError: error,
+                    originalError: originalError
+                )
+            }
         }
         if didPersistMistralAPIKey {
-            try? await persistSecret(snapshot.mistralAPIKey, for: .mistralAPIKey)
+            do {
+                try await persistSecret(snapshot.mistralAPIKey, for: .mistralAPIKey)
+            } catch {
+                logRollbackFailure(
+                    step: "mistral API key",
+                    rollbackError: error,
+                    originalError: originalError
+                )
+            }
         }
         if didPersistS3SecretKey {
-            try? await persistSecret(snapshot.s3SecretKey, for: .s3SecretKey)
+            do {
+                try await persistSecret(snapshot.s3SecretKey, for: .s3SecretKey)
+            } catch {
+                logRollbackFailure(
+                    step: "S3 secret key",
+                    rollbackError: error,
+                    originalError: originalError
+                )
+            }
         }
         if didAttemptLaunchAtLoginApply {
-            try? await launchAtLoginUseCase?.apply(enabled: snapshot.settings.launchAtLogin)
+            do {
+                try await launchAtLoginUseCase?.apply(enabled: snapshot.settings.launchAtLogin)
+            } catch {
+                logRollbackFailure(
+                    step: "launch at login",
+                    rollbackError: error,
+                    originalError: originalError
+                )
+            }
         }
+    }
+
+    private func logRollbackFailure(
+        step: String,
+        rollbackError: any Error,
+        originalError: any Error
+    ) {
+        AppLog.config.error(
+            "Rollback step \(step, privacy: .public) failed after save error \(originalError.localizedDescription, privacy: .public): \(rollbackError.localizedDescription, privacy: .public)"
+        )
     }
 }
 

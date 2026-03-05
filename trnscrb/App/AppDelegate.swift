@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
     /// Timer driving periodic retention cleanup.
     private var retentionTimer: Timer?
+    /// Prevents retention cleanup from overlapping across timer ticks.
+    private let retentionCleanupCoordinator: RetentionCleanupCoordinator = RetentionCleanupCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -161,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self?.applyLaunchAtLoginSetting()
         }
         scheduleRetentionCleanup()
+        triggerRetentionCleanup()
     }
 
     /// Toggles the popover visibility when the menu bar icon is clicked.
@@ -217,9 +220,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func scheduleRetentionCleanup() {
         retentionTimer?.invalidate()
         retentionTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                await self?.runRetentionCleanup()
+            Task { @MainActor [weak self] in
+                self?.triggerRetentionCleanup()
             }
+        }
+    }
+
+    private func triggerRetentionCleanup() {
+        retentionCleanupCoordinator.trigger { [weak self] in
+            await self?.runRetentionCleanup()
         }
     }
 

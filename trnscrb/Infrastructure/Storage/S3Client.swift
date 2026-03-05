@@ -264,12 +264,12 @@ public struct S3Client: StorageGateway {
 
     // MARK: - XML parsing for ListObjectsV2
 
-    fileprivate struct S3Object {
+    struct S3Object {
         let key: String
         let lastModified: Date
     }
 
-    private static func parseListResponse(_ data: Data) -> ListObjectsPage {
+    static func parseListResponse(_ data: Data) -> ListObjectsPage {
         let delegate: ListObjectsParser = ListObjectsParser()
         let xmlParser: XMLParser = XMLParser(data: data)
         xmlParser.delegate = delegate
@@ -281,7 +281,7 @@ public struct S3Client: StorageGateway {
         )
     }
 
-    fileprivate struct ListObjectsPage {
+    struct ListObjectsPage {
         let objects: [S3Object]
         let isTruncated: Bool
         let nextContinuationToken: String?
@@ -290,7 +290,7 @@ public struct S3Client: StorageGateway {
 
 // MARK: - ListObjectsV2 XML parser
 
-private final class ListObjectsParser: NSObject, XMLParserDelegate {
+final class ListObjectsParser: NSObject, XMLParserDelegate {
     var objects: [S3Client.S3Object] = []
     var isTruncated: Bool = false
     var nextContinuationToken: String?
@@ -328,13 +328,10 @@ private final class ListObjectsParser: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        let trimmed: String = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
         if insideContents {
             switch currentElement {
-            case "Key": currentKey += trimmed
-            case "LastModified": currentLastModified += trimmed
+            case "Key": currentKey += string
+            case "LastModified": currentLastModified += string
             default: break
             }
             return
@@ -342,9 +339,9 @@ private final class ListObjectsParser: NSObject, XMLParserDelegate {
 
         switch currentElement {
         case "IsTruncated":
-            currentTruncatedFlag += trimmed
+            currentTruncatedFlag += string
         case "NextContinuationToken":
-            currentContinuationToken += trimmed
+            currentContinuationToken += string
         default:
             break
         }
@@ -359,12 +356,18 @@ private final class ListObjectsParser: NSObject, XMLParserDelegate {
         if elementName == "Contents" {
             insideContents = false
             if !currentKey.isEmpty,
-               let date = fractionalFormatter.date(from: currentLastModified)
-                    ?? plainFormatter.date(from: currentLastModified) {
+               let date = fractionalFormatter.date(
+                   from: currentLastModified.trimmingCharacters(in: .whitespacesAndNewlines)
+               )
+                    ?? plainFormatter.date(
+                        from: currentLastModified.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ) {
                 objects.append(S3Client.S3Object(key: currentKey, lastModified: date))
             }
         } else if elementName == "IsTruncated" {
-            isTruncated = currentTruncatedFlag.caseInsensitiveCompare("true") == .orderedSame
+            isTruncated = currentTruncatedFlag
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare("true") == .orderedSame
             currentTruncatedFlag = ""
         } else if elementName == "NextContinuationToken" {
             nextContinuationToken = currentContinuationToken.isEmpty ? nil : currentContinuationToken

@@ -3,8 +3,9 @@ import Testing
 
 @testable import trnscrb
 
-private enum SaveSettingsTestError: Error, Sendable {
+private enum SaveSettingsTestError: Error, Sendable, Equatable {
     case setSecretFailed
+    case saveSettingsFailed
     case launchAtLoginFailed
 }
 
@@ -12,6 +13,8 @@ private actor RecordingSettingsGateway: SettingsGateway {
     private var settings: AppSettings
     private var secrets: [SecretKey: String]
     private var setSecretErrors: [SecretKey: any Error & Sendable] = [:]
+    private var saveSettingsErrorsByCall: [Int: any Error & Sendable] = [:]
+    private var saveSettingsCallCount: Int = 0
 
     init(
         settings: AppSettings = AppSettings(),
@@ -33,11 +36,19 @@ private actor RecordingSettingsGateway: SettingsGateway {
         setSecretErrors[key] = error
     }
 
+    func setSaveSettingsError(_ error: (any Error & Sendable)?, onCall call: Int) {
+        saveSettingsErrorsByCall[call] = error
+    }
+
     func loadSettings() async throws -> AppSettings {
         settings
     }
 
     func saveSettings(_ newSettings: AppSettings) async throws {
+        saveSettingsCallCount += 1
+        if let error = saveSettingsErrorsByCall[saveSettingsCallCount] {
+            throw error
+        }
         settings = newSettings
     }
 
@@ -259,5 +270,55 @@ struct SaveSettingsUseCaseTests {
         #expect(secrets[.mistralAPIKey] == "old-mistral")
         #expect(secrets[.s3SecretKey] == "old-secret")
         #expect(await launchGateway.recordedAppliedValues() == [true, false])
+    }
+
+    @Test func saveThrowsOriginalErrorWhenRollbackSettingsRestoreFails() async {
+        let originalSettings: AppSettings = AppSettings(
+            s3EndpointURL: "https://old.example.com",
+            s3AccessKey: "OLDKEY",
+            s3BucketName: "old-bucket",
+            saveFolderPath: "/tmp/original-output",
+            copyToClipboard: true
+        )
+        let gateway: RecordingSettingsGateway = RecordingSettingsGateway(
+            settings: originalSettings,
+            secrets: [
+                .mistralAPIKey: "old-mistral",
+                .s3SecretKey: "old-secret"
+            ]
+        )
+        await gateway.setSetSecretError(SaveSettingsTestError.setSecretFailed, for: .s3SecretKey)
+        await gateway.setSaveSettingsError(SaveSettingsTestError.saveSettingsFailed, onCall: 2)
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway()
+        let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
+            gateway: gateway,
+            outputFolderGateway: outputFolderGateway
+        )
+
+        let newSettings: AppSettings = AppSettings(
+            s3EndpointURL: "https://new.example.com",
+            s3AccessKey: "NEWKEY",
+            s3BucketName: "new-bucket",
+            saveFolderPath: "/tmp/new-output",
+            copyToClipboard: true
+        )
+
+        do {
+            try await useCase.save(
+                settings: newSettings,
+                mistralAPIKey: "new-mistral",
+                s3SecretKey: "new-secret"
+            )
+            #expect(Bool(false))
+        } catch let error as SaveSettingsTestError {
+            #expect(error == .setSecretFailed)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(await gateway.snapshotSettings() == newSettings)
+        let secrets: [SecretKey: String] = await gateway.snapshotSecrets()
+        #expect(secrets[.mistralAPIKey] == "old-mistral")
+        #expect(secrets[.s3SecretKey] == "old-secret")
     }
 }
