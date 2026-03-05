@@ -17,3 +17,6 @@ Package.resolved
 # SwiftLint
 .swiftlint/
 rule_docs/
+
+# Secrets
+Support/check-notarization.sh
