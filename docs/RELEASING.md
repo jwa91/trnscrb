@@ -48,6 +48,27 @@ The version is read from the `VERSION` file at the project root. The build numbe
    > First-time submissions with a new Developer ID may take significantly longer.
    > Once Apple has processed an initial submission, subsequent ones are typically fast.
 
+   If Apple is backlogged and `--wait` is impractical, submit without `--wait`,
+   publish the signed DMG temporarily, and keep the Homebrew quarantine-removal
+   workaround in place. Once Apple reports `Accepted`, run:
+
+   ```bash
+   scripts/finalize_notarization_release.sh --version 0.2.0 --commit --push
+   ```
+
+   That helper will:
+   - find the latest `trnscrb-0.2.0.dmg` notarization submission (or use `--submission-id`)
+   - staple the local DMG
+   - replace the GitHub Release asset with the stapled DMG
+   - recompute the cask `sha256`
+   - remove the temporary `postflight` quarantine workaround from `homebrew-tap`
+
+   Example cron entry to check every 30 minutes:
+
+   ```cron
+   */30 * * * * cd /Users/jw/developer/trnscrb && scripts/finalize_notarization_release.sh --version 0.2.0 --commit --push >> /tmp/trnscrb-notarization.log 2>&1
+   ```
+
 5. Create a GitHub Release:
 
    ```bash
@@ -61,6 +82,8 @@ The version is read from the `VERSION` file at the project root. The build numbe
    ```
 
    Edit `Casks/trnscrb.rb` in the [homebrew-tap](https://github.com/jwa91/homebrew-tap) repo — update `version` and `sha256`.
+   If notarization is still pending, keep the temporary `postflight` block.
+   After notarization is accepted, the helper above will remove it.
 
 ## Install via Homebrew
 
