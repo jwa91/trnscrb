@@ -60,6 +60,9 @@ struct JobRowView: View {
             )
         )
         .onHover { isHovered = $0 }
+        .onTapGesture {
+            onSelect?()
+        }
         .contextMenu {
             if case .completed = job.status {
                 Button("Copy Markdown") {

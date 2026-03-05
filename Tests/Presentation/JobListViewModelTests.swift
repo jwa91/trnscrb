@@ -840,4 +840,88 @@ struct JobListViewModelTests {
         #expect(message.contains("HTTP 422"))
         #expect(await delivery.recordedDeliveredResults().isEmpty)
     }
+
+    @Test func selectNextVisibleJobFollowsRenderedOrderAndClampsAtEnd() {
+        let (vm, _, _, _, _, _) = makeViewModel()
+        let firstActive: Job = Job(
+            fileType: .audio,
+            fileURL: URL(filePath: "/tmp/first.mp3"),
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        let secondActive: Job = Job(
+            fileType: .pdf,
+            fileURL: URL(filePath: "/tmp/second.pdf"),
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+        var completedJob: Job = Job(
+            fileType: .image,
+            fileURL: URL(filePath: "/tmp/third.png"),
+            createdAt: Date(timeIntervalSince1970: 3)
+        )
+        completedJob.startUpload()
+        completedJob.startProcessing()
+        completedJob.complete(markdown: "# Done")
+        vm.jobs = [firstActive, secondActive, completedJob]
+
+        vm.selectNextVisibleJob()
+        #expect(vm.selectedJobID == firstActive.id)
+
+        vm.selectNextVisibleJob()
+        #expect(vm.selectedJobID == secondActive.id)
+
+        vm.selectNextVisibleJob()
+        #expect(vm.selectedJobID == completedJob.id)
+
+        vm.selectNextVisibleJob()
+        #expect(vm.selectedJobID == completedJob.id)
+    }
+
+    @Test func selectPreviousVisibleJobStartsAtLastVisibleJob() {
+        let (vm, _, _, _, _, _) = makeViewModel()
+        let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
+        var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
+        completedJob.startUpload()
+        completedJob.startProcessing()
+        completedJob.complete(markdown: "# Done")
+        vm.jobs = [activeJob, completedJob]
+
+        vm.selectPreviousVisibleJob()
+        #expect(vm.selectedJobID == completedJob.id)
+
+        vm.selectPreviousVisibleJob()
+        #expect(vm.selectedJobID == activeJob.id)
+
+        vm.selectPreviousVisibleJob()
+        #expect(vm.selectedJobID == activeJob.id)
+    }
+
+    @Test func removeSelectedOrMostRecentJobPrefersSelectedJob() {
+        let (vm, _, _, _, _, _) = makeViewModel()
+        let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
+        var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
+        completedJob.startUpload()
+        completedJob.startProcessing()
+        completedJob.complete(markdown: "# Done")
+        vm.jobs = [activeJob, completedJob]
+        vm.selectJob(id: activeJob.id)
+
+        vm.removeSelectedOrMostRecentJob()
+
+        #expect(vm.jobs.map(\.id) == [completedJob.id])
+        #expect(vm.selectedJobID == nil)
+    }
+
+    @Test func removeSelectedOrMostRecentJobFallsBackToNewestCompletedJob() {
+        let (vm, _, _, _, _, _) = makeViewModel()
+        let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
+        var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
+        completedJob.startUpload()
+        completedJob.startProcessing()
+        completedJob.complete(markdown: "# Done")
+        vm.jobs = [activeJob, completedJob]
+
+        vm.removeSelectedOrMostRecentJob()
+
+        #expect(vm.jobs.map(\.id) == [activeJob.id])
+    }
 }

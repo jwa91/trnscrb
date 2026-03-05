@@ -4,6 +4,7 @@ struct ChromeIconButton: View {
     let systemName: String
     let title: String
     let action: () -> Void
+    var keyboardShortcut: KeyboardShortcut? = nil
 
     @State private var isHovered: Bool = false
 
@@ -20,6 +21,7 @@ struct ChromeIconButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(keyboardShortcut)
         .pointingHandCursor()
         .onHover { isHovered = $0 }
         .help(title)

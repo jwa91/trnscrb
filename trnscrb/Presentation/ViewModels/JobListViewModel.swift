@@ -170,6 +170,11 @@ public final class JobListViewModel: ObservableObject {
             }
     }
 
+    /// Jobs in the same order they are rendered in the popover.
+    public var visibleJobs: [Job] {
+        activeJobs + completedJobs
+    }
+
     /// Selects a job so the UI can reveal it after keyboard actions or notification re-entry.
     public func selectJob(id: UUID?) {
         guard let id else {
@@ -178,6 +183,36 @@ public final class JobListViewModel: ObservableObject {
         }
         guard jobs.contains(where: { $0.id == id }) else { return }
         selectedJobID = id
+    }
+
+    /// Selects the next visible job in keyboard navigation order.
+    public func selectNextVisibleJob() {
+        let orderedIDs: [UUID] = visibleJobs.map(\.id)
+        guard !orderedIDs.isEmpty else {
+            selectedJobID = nil
+            return
+        }
+        guard let selectedJobID,
+              let selectedIndex: Int = orderedIDs.firstIndex(of: selectedJobID) else {
+            self.selectedJobID = orderedIDs.first
+            return
+        }
+        self.selectedJobID = orderedIDs[min(selectedIndex + 1, orderedIDs.count - 1)]
+    }
+
+    /// Selects the previous visible job in keyboard navigation order.
+    public func selectPreviousVisibleJob() {
+        let orderedIDs: [UUID] = visibleJobs.map(\.id)
+        guard !orderedIDs.isEmpty else {
+            selectedJobID = nil
+            return
+        }
+        guard let selectedJobID,
+              let selectedIndex: Int = orderedIDs.firstIndex(of: selectedJobID) else {
+            self.selectedJobID = orderedIDs.last
+            return
+        }
+        self.selectedJobID = orderedIDs[max(selectedIndex - 1, 0)]
     }
 
     /// Validates and queues files for processing.
@@ -258,6 +293,17 @@ public final class JobListViewModel: ObservableObject {
             copyFeedback = nil
         }
         jobs = jobs.filter { $0.id != jobID }
+    }
+
+    /// Removes the selected job or falls back to the default Delete target.
+    public func removeSelectedOrMostRecentJob() {
+        if let selectedJobID {
+            removeJob(id: selectedJobID)
+            return
+        }
+        if let fallbackID: UUID = completedJobs.first?.id ?? activeJobs.first?.id {
+            removeJob(id: fallbackID)
+        }
     }
 
     /// Removes all completed and failed jobs.

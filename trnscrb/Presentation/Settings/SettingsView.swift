@@ -25,6 +25,7 @@ struct SettingsView: View {
         )
         .background(PopoverDesign.surfaceBackground)
         .task { await viewModel.load() }
+        .onExitCommand(perform: onBack)
     }
 
     /// Navigation header with back button and save button.
@@ -51,12 +52,14 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .keyboardShortcut("s", modifiers: .command)
                 .pointingHandCursor()
 
                 ChromeIconButton(
                     systemName: "xmark",
                     title: "Close",
-                    action: onClose
+                    action: onClose,
+                    keyboardShortcut: KeyboardShortcut("w", modifiers: .command)
                 )
             }
         }

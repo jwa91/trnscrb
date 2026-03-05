@@ -14,9 +14,23 @@ struct TrnscrbrApp: App {
             EmptyView()
         }
         .commands {
-            // Settings are handled inside the popover, so disable the
-            // app-level settings command/window entry point.
-            CommandGroup(replacing: .appSettings) {}
+            CommandGroup(replacing: .newItem) {
+                Button("Add Files…") {
+                    Task { @MainActor in
+                        appDelegate.addFilesFromCommand()
+                    }
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    Task { @MainActor in
+                        appDelegate.showSettingsFromCommand()
+                    }
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }

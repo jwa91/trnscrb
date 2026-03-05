@@ -140,25 +140,7 @@ struct DropZoneView: View {
 
     /// Extracts file URLs from drop providers and calls onDrop.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        let collectedURLs: LockedURLStore = LockedURLStore()
-        let group: DispatchGroup = DispatchGroup()
-
-        for provider in providers {
-            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
-                continue
-            }
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
-                defer { group.leave() }
-                if let data = item as? Data,
-                   let url: URL = URL(dataRepresentation: data, relativeTo: nil) {
-                    collectedURLs.append(url)
-                }
-            }
-        }
-
-        group.notify(queue: .main) {
-            let urls: [URL] = collectedURLs.snapshot()
+        SupportedFileImport.loadFileURLs(from: providers) { urls in
             if !urls.isEmpty {
                 onDrop(urls)
             }
@@ -171,23 +153,5 @@ struct DropZoneView: View {
         let urls: [URL] = SupportedFilePicker.pickFiles()
         guard !urls.isEmpty else { return }
         onDrop(urls)
-    }
-}
-
-/// Thread-safe URL collector for async item-provider callbacks.
-private final class LockedURLStore: @unchecked Sendable {
-    private let lock: NSLock = NSLock()
-    private var values: [URL] = []
-
-    func append(_ url: URL) {
-        lock.lock()
-        defer { lock.unlock() }
-        values.append(url)
-    }
-
-    func snapshot() -> [URL] {
-        lock.lock()
-        defer { lock.unlock() }
-        return values
     }
 }

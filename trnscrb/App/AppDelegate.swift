@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     /// The popover displayed when the status item is clicked.
     private var popover: NSPopover?
+    /// Shared route state for the popover's main and settings screens.
+    private let popoverNavigationModel: PopoverNavigationModel = PopoverNavigationModel()
     /// Settings gateway for the lifetime of the app.
     private var settingsGateway: (any SettingsGateway)?
     /// Job list view model — retained for status bar drop forwarding.
@@ -115,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
+                navigationModel: popoverNavigationModel,
                 settingsViewModel: settingsVM,
                 jobListViewModel: jobListVM,
                 onClose: { [weak self] in
@@ -141,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dropView.autoresizingMask = [.width, .height]
             dropView.onDrop = { [weak self, weak jobListVM] urls in
                 jobListVM?.processFiles(urls)
-                self?.showPopover()
+                self?.showPopover(route: .main)
             }
             dropView.onDragEntered = { [weak self] in
                 self?.statusItem?.button?.image = NSImage(
@@ -176,11 +179,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func showSettingsFromCommand() {
+        showPopover(route: .settings)
+    }
+
+    func addFilesFromCommand() {
+        showPopover(route: .main)
+        let urls: [URL] = SupportedFilePicker.pickFiles()
+        guard !urls.isEmpty else { return }
+        jobListViewModel?.processFiles(urls)
+    }
+
+    private func showPopover(route: PopoverRoute) {
+        switch route {
+        case .main:
+            popoverNavigationModel.showMain()
+        case .settings:
+            popoverNavigationModel.showSettings()
+        }
+        showPopover()
+    }
+
     /// Shows the popover and starts the event monitor.
     private func showPopover() {
         guard let popover, let button = statusItem?.button else { return }
-        guard !popover.isShown else { return }
         NSApp.activate(ignoringOtherApps: true)
+        guard !popover.isShown else {
+            popover.contentViewController?.view.window?.makeKey()
+            return
+        }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
         // Must be async — NSStatusBarButton resets highlight on mouse-up.
@@ -263,7 +290,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) async {
         let identifier: String = response.notification.request.identifier
         await MainActor.run {
-            self.showPopover()
+            self.showPopover(route: .main)
             if let jobID: UUID = UUID(uuidString: identifier) {
                 self.jobListViewModel?.selectJob(id: jobID)
             }

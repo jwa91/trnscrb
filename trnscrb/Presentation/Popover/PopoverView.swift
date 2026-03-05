@@ -6,8 +6,8 @@ import UniformTypeIdentifiers
 /// Shows the drop zone when idle, job list when processing, and settings
 /// panel when toggled. The entire view is always a valid drop target.
 struct PopoverView: View {
-    /// Controls whether the settings panel is visible.
-    @State private var showSettings: Bool = false
+    /// Shared route state for the popover.
+    @ObservedObject var navigationModel: PopoverNavigationModel
     /// View model for the settings panel.
     @ObservedObject var settingsViewModel: SettingsViewModel
     /// View model for the job queue and processing.
@@ -17,10 +17,12 @@ struct PopoverView: View {
 
     var body: some View {
         Group {
-            if showSettings {
+            if navigationModel.route == .settings {
                 SettingsView(
                     viewModel: settingsViewModel,
-                    onBack: { showSettings = false },
+                    onBack: {
+                        navigationModel.showMain()
+                    },
                     onClose: onClose
                 )
             } else {
@@ -29,7 +31,7 @@ struct PopoverView: View {
         }
         .onChange(of: jobListViewModel.shouldOpenSettings) { _, shouldOpenSettings in
             guard shouldOpenSettings else { return }
-            showSettings = true
+            navigationModel.showSettings()
             jobListViewModel.consumeSettingsNavigation()
         }
     }
@@ -102,6 +104,10 @@ struct PopoverView: View {
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
+        .onPasteCommand(of: SupportedFileImport.pasteboardContentTypes) { providers in
+            handlePaste(providers)
+        }
+        .onExitCommand(perform: onClose)
     }
 
     private var header: some View {
@@ -121,12 +127,15 @@ struct PopoverView: View {
                 ChromeIconButton(
                     systemName: "gearshape",
                     title: "Settings",
-                    action: { showSettings = true }
+                    action: {
+                        navigationModel.showSettings()
+                    }
                 )
                 ChromeIconButton(
                     systemName: "xmark",
                     title: "Close",
-                    action: onClose
+                    action: onClose,
+                    keyboardShortcut: KeyboardShortcut("w", modifiers: .command)
                 )
             }
         }
@@ -175,46 +184,18 @@ struct PopoverView: View {
 
     /// Handles drops on the entire popover surface.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        let collectedURLs: LockedURLStore = LockedURLStore()
-        let group: DispatchGroup = DispatchGroup()
-
-        for provider in providers {
-            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
-                continue
-            }
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
-                defer { group.leave() }
-                if let data = item as? Data,
-                   let url: URL = URL(dataRepresentation: data, relativeTo: nil) {
-                    collectedURLs.append(url)
-                }
-            }
-        }
-
-        group.notify(queue: .main) {
-            let urls: [URL] = collectedURLs.snapshot()
+        SupportedFileImport.loadFileURLs(from: providers) { urls in
             if !urls.isEmpty {
                 jobListViewModel.processFiles(urls)
             }
         }
         return true
     }
-}
-/// Thread-safe URL collector for async item-provider callbacks.
-private final class LockedURLStore: @unchecked Sendable {
-    private let lock: NSLock = NSLock()
-    private var values: [URL] = []
 
-    func append(_ url: URL) {
-        lock.lock()
-        defer { lock.unlock() }
-        values.append(url)
-    }
-
-    func snapshot() -> [URL] {
-        lock.lock()
-        defer { lock.unlock() }
-        return values
+    private func handlePaste(_ providers: [NSItemProvider]) {
+        SupportedFileImport.loadFileURLs(from: providers) { urls in
+            guard SupportedFileImport.containsSupportedFile(urls) else { return }
+            jobListViewModel.processFiles(urls)
+        }
     }
 }

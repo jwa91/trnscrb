@@ -20,6 +20,11 @@ enum SupportedFilePicker {
 
     @MainActor
     static func pickFiles() -> [URL] {
+        pickFiles(using: configuration)
+    }
+
+    @MainActor
+    static func pickFiles(using configuration: Configuration) -> [URL] {
         NSApp.activate(ignoringOtherApps: true)
 
         let panel: NSOpenPanel = NSOpenPanel()

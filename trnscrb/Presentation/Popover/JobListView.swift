@@ -45,7 +45,8 @@ struct JobListView: View {
             .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onDeleteCommand(perform: handleDeleteCommand)
+        .onDeleteCommand(perform: viewModel.removeSelectedOrMostRecentJob)
+        .onMoveCommand(perform: handleMoveCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
             if let selectedJobID = viewModel.selectedJobID,
                !jobs.contains(where: { $0.id == selectedJobID }) {
@@ -66,6 +67,7 @@ struct JobListView: View {
             isSelected: viewModel.selectedJobID == job.id,
             showsMarkdownCopyConfirmation: showsMarkdownCopyConfirmation,
             showsSourceCopyConfirmation: showsSourceCopyConfirmation,
+            onSelect: { viewModel.selectJob(id: job.id) },
             onCopyMarkdown: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
             onCopySourceURL: allowsCopy && job.presignedSourceURL != nil
                 ? { viewModel.copySourceURLToClipboard(jobID: job.id) }
@@ -102,14 +104,14 @@ struct JobListView: View {
             .textCase(.uppercase)
     }
 
-    private func handleDeleteCommand() {
-        if let selectedJobID = viewModel.selectedJobID {
-            viewModel.removeJob(id: selectedJobID)
-            viewModel.selectJob(id: nil)
+    private func handleMoveCommand(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .up:
+            viewModel.selectPreviousVisibleJob()
+        case .down:
+            viewModel.selectNextVisibleJob()
+        default:
             return
-        }
-        if let fallbackID: UUID = viewModel.completedJobs.first?.id ?? viewModel.activeJobs.first?.id {
-            viewModel.removeJob(id: fallbackID)
         }
     }
 }
