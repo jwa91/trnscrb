@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Main entry point for the trnscrb menu bar app.
@@ -30,6 +31,13 @@ struct TrnscrbrApp: App {
                     }
                 }
                 .keyboardShortcut(",", modifiers: .command)
+            }
+
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit trnscrb") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
             }
         }
     }

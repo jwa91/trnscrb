@@ -84,9 +84,12 @@ struct TOMLConfigManagerTests {
             s3Region: "eu-central-1",
             s3PathPrefix: "uploads/",
             saveFolderPath: "~/Desktop/output/",
+            outputFileNamePrefix: "notes-",
+            outputFileNameTemplate: "{prefix}{fileType}-{timestamp}",
             copyToClipboard: false,
             fileRetentionHours: 48,
-            launchAtLogin: true
+            launchAtLogin: true,
+            appleAudioLocaleIdentifier: "nl-NL"
         )
         try await manager.saveSettings(original)
         let loaded: AppSettings = try await manager.loadSettings()
@@ -127,10 +130,13 @@ struct TOMLConfigManagerTests {
         let settings: AppSettings = AppSettings(
             s3EndpointURL: "https://example.com",
             s3BucketName: "bucket",
+            outputFileNamePrefix: "notes-",
+            outputFileNameTemplate: "{prefix}{fileType}",
             copyToClipboard: false,
             fileRetentionHours: 12,
             launchAtLogin: true,
             audioProviderMode: .localApple,
+            appleAudioLocaleIdentifier: "nl-NL",
             pdfProviderMode: .mistral,
             imageProviderMode: .localApple
         )
@@ -140,10 +146,13 @@ struct TOMLConfigManagerTests {
         // Verify key TOML patterns exist
         #expect(content.contains("s3_endpoint_url = \"https://example.com\""))
         #expect(content.contains("s3_bucket_name = \"bucket\""))
+        #expect(content.contains("output_file_name_prefix = \"notes-\""))
+        #expect(content.contains("output_file_name_template = \"{prefix}{fileType}\""))
         #expect(content.contains("copy_to_clipboard = false"))
         #expect(content.contains("file_retention_hours = 12"))
         #expect(content.contains("launch_at_login = true"))
         #expect(content.contains("audio_provider_mode = \"local\""))
+        #expect(content.contains("apple_audio_locale_identifier = \"nl-NL\""))
         #expect(content.contains("pdf_provider_mode = \"mistral\""))
         #expect(content.contains("image_provider_mode = \"local\""))
         #expect(!content.contains("save_to_folder"))

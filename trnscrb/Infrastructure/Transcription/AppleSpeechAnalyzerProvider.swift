@@ -10,11 +10,13 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
     public let sourceKind: TranscriptionSourceKind = .localFile
     public var supportedExtensions: Set<String> { FileType.audioExtensions }
 
-    private let locale: Locale
+    private let settingsGateway: (any SettingsGateway)?
+    private let fallbackLocaleIdentifier: String
     private let isLocalModeAvailable: @Sendable () -> Bool
 
     public init(
-        locale: Locale = Locale(identifier: "en-US"),
+        settingsGateway: (any SettingsGateway)? = nil,
+        locale: Locale = Locale(identifier: AppSettings.defaultAppleAudioLocaleIdentifier),
         isLocalModeAvailable: @escaping @Sendable () -> Bool = {
             if #available(macOS 26, *) {
                 return true
@@ -22,7 +24,8 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
             return false
         }
     ) {
-        self.locale = locale
+        self.settingsGateway = settingsGateway
+        self.fallbackLocaleIdentifier = locale.identifier
         self.isLocalModeAvailable = isLocalModeAvailable
     }
 
@@ -36,6 +39,7 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
 
         try await ensureSpeechAuthorization()
 
+        let locale: Locale = await loadRecognitionLocale()
         guard let recognizer: SFSpeechRecognizer = SFSpeechRecognizer(locale: locale) else {
             throw LocalProviderError.transcriptionFailed("Speech recognizer unavailable for locale \(locale.identifier).")
         }
@@ -54,6 +58,18 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
             throw LocalProviderError.noRecognizedContent
         }
         return normalizedTranscript
+    }
+
+    private func loadRecognitionLocale() async -> Locale {
+        guard let settingsGateway else {
+            return Locale(identifier: fallbackLocaleIdentifier)
+        }
+        do {
+            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+            return Locale(identifier: settings.appleAudioLocaleIdentifier)
+        } catch {
+            return Locale(identifier: fallbackLocaleIdentifier)
+        }
     }
 
     private func ensureSpeechAuthorization() async throws {

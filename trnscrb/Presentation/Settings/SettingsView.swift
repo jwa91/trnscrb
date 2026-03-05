@@ -1,68 +1,34 @@
 import AppKit
+import Speech
 import SwiftUI
 
-/// Settings panel displayed inside the popover.
-///
-/// Shows all configurable fields from SPEC.md organized into sections.
-/// API keys use `SecureField` and are stored in the Keychain, not the config file.
+enum SettingsWindowDesign {
+    static let defaultSize: CGSize = CGSize(width: 640, height: 760)
+    static let minSize: CGSize = CGSize(width: 580, height: 640)
+    static let contentMaxWidth: CGFloat = 720
+}
+
+/// Settings content displayed inside the dedicated settings window.
 struct SettingsView: View {
     /// View model providing settings data and persistence.
     @ObservedObject var viewModel: SettingsViewModel
-    /// Called when the user taps the back button.
-    var onBack: () -> Void
-    /// Called when the user closes the popover.
+    /// Called when the user closes the settings window.
     var onClose: () -> Void
+    /// Terminates the menu bar app.
+    var onQuitApp: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             settingsContent
+            Divider()
+            footer
         }
         .frame(
-            width: PopoverDesign.popoverSize.width,
-            height: PopoverDesign.popoverSize.height
+            minWidth: SettingsWindowDesign.minSize.width,
+            minHeight: SettingsWindowDesign.minSize.height
         )
         .background(PopoverDesign.surfaceBackground)
         .task { await viewModel.load() }
-        .onExitCommand(perform: onBack)
-    }
-
-    /// Navigation header with back button and save button.
-    private var header: some View {
-        PopoverChromeBar {
-            SettingsBackButton(action: onBack)
-        } center: {
-            if let error = viewModel.error {
-                Text(error)
-                    .font(PopoverDesign.secondaryTextFont)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-        } trailing: {
-            HStack(spacing: 6) {
-                Button("Save") {
-                    Task {
-                        let didSave: Bool = await viewModel.save()
-                        if didSave {
-                            onBack()
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .keyboardShortcut("s", modifiers: .command)
-                .pointingHandCursor()
-
-                ChromeIconButton(
-                    systemName: "xmark",
-                    title: "Close",
-                    action: onClose,
-                    keyboardShortcut: KeyboardShortcut("w", modifiers: .command)
-                )
-            }
-        }
     }
 
     /// Scrollable settings content with card grouping.
@@ -75,7 +41,8 @@ struct SettingsView: View {
                 outputSection
                 generalSection
             }
-            .padding(PopoverDesign.contentPadding)
+            .frame(maxWidth: SettingsWindowDesign.contentMaxWidth, alignment: .leading)
+            .padding(20)
         }
     }
 
@@ -163,6 +130,17 @@ struct SettingsView: View {
                 providerModePicker(selection: $viewModel.settings.audioProviderMode)
             }
 
+            fieldGroup(
+                "Apple Audio Language",
+                help: "Used only when Audio is set to Local Apple. Match this to the recording language for better recognition quality."
+            ) {
+                appleAudioLocalePicker()
+                    .disabled(
+                        !viewModel.isLocalAppleModeAvailable
+                            || viewModel.settings.audioProviderMode != .localApple
+                    )
+            }
+
             fieldGroup("PDF") {
                 providerModePicker(selection: $viewModel.settings.pdfProviderMode)
             }
@@ -200,6 +178,35 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
+
+            fieldGroup(
+                "Filename Prefix",
+                help: "Optional text exposed through the {prefix} variable, for example notes- or capture-."
+            ) {
+                TextField("notes-", text: $viewModel.settings.outputFileNamePrefix)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+            }
+
+            fieldGroup(
+                "Filename Template",
+                help: "Available variables: {originalFilename}, {fileType}, {timestamp}, {date}, {time}, {prefix}. The .md extension is added automatically."
+            ) {
+                TextField(
+                    AppSettings.defaultFileNameTemplate,
+                    text: $viewModel.settings.outputFileNameTemplate
+                )
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
+                .font(.system(.body, design: .monospaced))
+            }
+
+            fieldGroup("Preview") {
+                Text(viewModel.outputFileNamePreview)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -226,7 +233,51 @@ struct SettingsView: View {
             }
 
             Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
+
+            fieldGroup(
+                "Application",
+                help: "Quit closes the menu bar item and stops background processing until you relaunch the app."
+            ) {
+                Button("Quit trnscrb") {
+                    onQuitApp()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .pointingHandCursor()
+            }
         }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            if let error = viewModel.error {
+                Text(error)
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            } else {
+                Text("Changes apply when you save.")
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Save") {
+                Task {
+                    let didSave: Bool = await viewModel.save()
+                    if didSave {
+                        onClose()
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .keyboardShortcut("s", modifiers: .command)
+            .pointingHandCursor()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
     }
 
     private func fieldGroup<Content: View>(
@@ -329,6 +380,23 @@ struct SettingsView: View {
         .controlSize(.large)
     }
 
+    private func appleAudioLocalePicker() -> some View {
+        Picker("", selection: $viewModel.settings.appleAudioLocaleIdentifier) {
+            ForEach(appleAudioLocaleOptions) { option in
+                Text(option.label).tag(option.identifier)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.large)
+    }
+
+    private var appleAudioLocaleOptions: [AppleSpeechLocaleOption] {
+        AppleSpeechLocaleOption.options(
+            including: viewModel.settings.appleAudioLocaleIdentifier
+        )
+    }
+
     private func browseForSaveFolder() {
         NSApp.activate(ignoringOtherApps: true)
         let panel: NSOpenPanel = NSOpenPanel()
@@ -346,25 +414,32 @@ struct SettingsView: View {
     }
 }
 
-private struct SettingsBackButton: View {
-    let action: () -> Void
+private struct AppleSpeechLocaleOption: Identifiable, Hashable {
+    let identifier: String
+    let label: String
 
-    @State private var isHovered: Bool = false
+    var id: String { identifier }
 
-    var body: some View {
-        Button(action: action) {
-            Label("Settings", systemImage: "chevron.left")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
-                )
+    static func options(including selectedIdentifier: String) -> [AppleSpeechLocaleOption] {
+        let locale: Locale = .autoupdatingCurrent
+        var identifiers: Set<String> = Set(
+            SFSpeechRecognizer.supportedLocales().map(\.identifier)
+        )
+        if !selectedIdentifier.isEmpty {
+            identifiers.insert(selectedIdentifier)
         }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { isHovered = $0 }
+
+        return identifiers
+            .map { identifier in
+                let localizedName: String = locale.localizedString(forIdentifier: identifier)
+                    ?? identifier
+                return AppleSpeechLocaleOption(
+                    identifier: identifier,
+                    label: "\(localizedName) (\(identifier))"
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.label.localizedStandardCompare(rhs.label) == .orderedAscending
+            }
     }
 }

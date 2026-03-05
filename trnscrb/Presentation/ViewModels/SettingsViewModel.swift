@@ -112,6 +112,14 @@ public final class SettingsViewModel: ObservableObject {
         isLocalAppleModeAvailableProvider()
     }
 
+    public var outputFileNamePreview: String {
+        OutputFileNameFormatter.fileName(
+            sourceFileName: "meeting-note.m4a",
+            fileType: .audio,
+            settings: settings.normalizedForUse
+        )
+    }
+
     private func normalizedProviderModesForCurrentRuntime(_ input: AppSettings) -> AppSettings {
         guard !isLocalAppleModeAvailable else { return input }
         return AppSettings(
@@ -121,10 +129,13 @@ public final class SettingsViewModel: ObservableObject {
             s3Region: input.s3Region,
             s3PathPrefix: input.s3PathPrefix,
             saveFolderPath: input.saveFolderPath,
+            outputFileNamePrefix: input.outputFileNamePrefix,
+            outputFileNameTemplate: input.outputFileNameTemplate,
             copyToClipboard: input.copyToClipboard,
             fileRetentionHours: input.fileRetentionHours,
             launchAtLogin: input.launchAtLogin,
             audioProviderMode: .mistral,
+            appleAudioLocaleIdentifier: input.appleAudioLocaleIdentifier,
             pdfProviderMode: .mistral,
             imageProviderMode: .mistral
         )

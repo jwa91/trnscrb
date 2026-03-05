@@ -11,7 +11,10 @@ struct SettingsNormalizationTests {
             s3BucketName: "  bucket  ",
             s3Region: "  eu-west  ",
             s3PathPrefix: "  uploads  ",
-            saveFolderPath: "  ~/Documents/trnscrb  "
+            saveFolderPath: "  ~/Documents/trnscrb  ",
+            outputFileNamePrefix: "  notes-  ",
+            outputFileNameTemplate: "  {prefix}{fileType}  ",
+            appleAudioLocaleIdentifier: "  nl-NL  "
         )
 
         let normalized: AppSettings = input.normalizedForUse
@@ -22,6 +25,9 @@ struct SettingsNormalizationTests {
         #expect(normalized.s3Region == "eu-west")
         #expect(normalized.s3PathPrefix == "uploads/")
         #expect(normalized.saveFolderPath == "~/Documents/trnscrb")
+        #expect(normalized.outputFileNamePrefix == "notes-")
+        #expect(normalized.outputFileNameTemplate == "{prefix}{fileType}")
+        #expect(normalized.appleAudioLocaleIdentifier == "nl-NL")
     }
 
     @Test func normalizedEndpointPreservesExplicitScheme() {
@@ -33,5 +39,17 @@ struct SettingsNormalizationTests {
         #expect("uploads".trimmedPathPrefix == "uploads/")
         #expect("uploads/".trimmedPathPrefix == "uploads/")
         #expect("   ".trimmedPathPrefix == "")
+    }
+
+    @Test func blankAppleAudioLocaleFallsBackToDefault() {
+        let input: AppSettings = AppSettings(
+            appleAudioLocaleIdentifier: "   "
+        )
+
+        let normalized: AppSettings = input.normalizedForUse
+
+        #expect(
+            normalized.appleAudioLocaleIdentifier == AppSettings.defaultAppleAudioLocaleIdentifier
+        )
     }
 }

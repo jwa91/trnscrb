@@ -51,12 +51,18 @@ struct SettingsViewModelTests {
     @Test func loadPopulatesSettingsFromGateway() async {
         let customSettings: AppSettings = AppSettings(
             s3EndpointURL: "https://test.com",
-            s3BucketName: "bucket"
+            s3BucketName: "bucket",
+            outputFileNamePrefix: "notes-",
+            outputFileNameTemplate: "{prefix}{originalFilename}",
+            appleAudioLocaleIdentifier: "nl-NL"
         )
         let (vm, _, _, _, _) = makeViewModel(settings: customSettings)
         await vm.load()
         #expect(vm.settings.s3EndpointURL == "https://test.com")
         #expect(vm.settings.s3BucketName == "bucket")
+        #expect(vm.settings.outputFileNamePrefix == "notes-")
+        #expect(vm.settings.outputFileNameTemplate == "{prefix}{originalFilename}")
+        #expect(vm.settings.appleAudioLocaleIdentifier == "nl-NL")
     }
 
     @Test func loadPopulatesProviderModesFromGateway() async {
@@ -116,11 +122,17 @@ struct SettingsViewModelTests {
         let (vm, gateway, _, _, _) = makeViewModel()
         vm.settings.s3EndpointURL = "https://saved.com"
         vm.settings.s3BucketName = "saved-bucket"
+        vm.settings.outputFileNamePrefix = "notes-"
+        vm.settings.outputFileNameTemplate = "{prefix}{fileType}"
+        vm.settings.appleAudioLocaleIdentifier = "nl-NL"
         let didSave: Bool = await vm.save()
         #expect(didSave)
         let savedSettings: AppSettings = await gateway.snapshotSettings()
         #expect(savedSettings.s3EndpointURL == "https://saved.com")
         #expect(savedSettings.s3BucketName == "saved-bucket")
+        #expect(savedSettings.outputFileNamePrefix == "notes-")
+        #expect(savedSettings.outputFileNameTemplate == "{prefix}{fileType}")
+        #expect(savedSettings.appleAudioLocaleIdentifier == "nl-NL")
     }
 
     @Test func savePersistsProviderModesToGateway() async {

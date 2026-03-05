@@ -13,6 +13,11 @@ public enum SecretKey: String, Sendable {
 /// Secrets (API keys) are NOT part of this struct — they live in Keychain
 /// and are accessed through `SettingsGateway` separately.
 public struct AppSettings: Sendable, Equatable {
+    /// Default template used when generating markdown filenames.
+    public static let defaultFileNameTemplate: String = "{originalFilename}"
+    /// Default speech locale used by Apple's on-device audio transcription.
+    public static let defaultAppleAudioLocaleIdentifier: String = "en-US"
+
     /// S3-compatible endpoint URL (e.g., "https://nbg1.your-objectstorage.com").
     public var s3EndpointURL: String
     /// S3 access key identifier.
@@ -25,6 +30,10 @@ public struct AppSettings: Sendable, Equatable {
     public var s3PathPrefix: String
     /// Folder path where markdown files are saved.
     public var saveFolderPath: String
+    /// Optional prefix injected by the output filename template.
+    public var outputFileNamePrefix: String
+    /// Template used to generate saved markdown filenames.
+    public var outputFileNameTemplate: String
     /// Whether to also copy markdown output to the clipboard.
     public var copyToClipboard: Bool
     /// Hours to retain files in S3 before cleanup.
@@ -33,6 +42,8 @@ public struct AppSettings: Sendable, Equatable {
     public var launchAtLogin: Bool
     /// Provider mode used for audio files.
     public var audioProviderMode: ProviderMode
+    /// Speech locale identifier used for local Apple audio transcription.
+    public var appleAudioLocaleIdentifier: String
     /// Provider mode used for PDF files.
     public var pdfProviderMode: ProviderMode
     /// Provider mode used for image files.
@@ -46,10 +57,13 @@ public struct AppSettings: Sendable, Equatable {
         s3Region: String = "auto",
         s3PathPrefix: String = "trnscrb/",
         saveFolderPath: String = "~/Documents/trnscrb/",
+        outputFileNamePrefix: String = "",
+        outputFileNameTemplate: String = AppSettings.defaultFileNameTemplate,
         copyToClipboard: Bool = true,
         fileRetentionHours: Int = 24,
         launchAtLogin: Bool = false,
         audioProviderMode: ProviderMode = .mistral,
+        appleAudioLocaleIdentifier: String = AppSettings.defaultAppleAudioLocaleIdentifier,
         pdfProviderMode: ProviderMode = .mistral,
         imageProviderMode: ProviderMode = .mistral
     ) {
@@ -59,10 +73,13 @@ public struct AppSettings: Sendable, Equatable {
         self.s3Region = s3Region
         self.s3PathPrefix = s3PathPrefix
         self.saveFolderPath = saveFolderPath
+        self.outputFileNamePrefix = outputFileNamePrefix
+        self.outputFileNameTemplate = outputFileNameTemplate
         self.copyToClipboard = copyToClipboard
         self.fileRetentionHours = fileRetentionHours
         self.launchAtLogin = launchAtLogin
         self.audioProviderMode = audioProviderMode
+        self.appleAudioLocaleIdentifier = appleAudioLocaleIdentifier
         self.pdfProviderMode = pdfProviderMode
         self.imageProviderMode = imageProviderMode
     }

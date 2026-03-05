@@ -3,47 +3,28 @@ import UniformTypeIdentifiers
 
 /// Root view displayed inside the menu bar popover.
 ///
-/// Shows the drop zone when idle, job list when processing, and settings
-/// panel when toggled. The entire view is always a valid drop target.
+/// Shows the drop zone when idle and the job list while processing.
+/// The entire view is always a valid drop target.
 struct PopoverView: View {
-    /// Shared route state for the popover.
-    @ObservedObject var navigationModel: PopoverNavigationModel
     /// Tracks whether a file picker panel is currently open.
     @ObservedObject var filePickerPresentationModel: FilePickerPresentationModel
-    /// View model for the settings panel.
-    @ObservedObject var settingsViewModel: SettingsViewModel
     /// View model for the job queue and processing.
     @ObservedObject var jobListViewModel: JobListViewModel
+    /// Opens the dedicated settings window.
+    var onOpenSettings: () -> Void
     /// Called when the popover should close.
     var onClose: () -> Void
     /// Keeps the main popover surface active for keyboard commands.
     @FocusState private var isMainContentFocused: Bool
 
     var body: some View {
-        Group {
-            if navigationModel.route == .settings {
-                SettingsView(
-                    viewModel: settingsViewModel,
-                    onBack: {
-                        navigationModel.showMain()
-                    },
-                    onClose: onClose
-                )
-            } else {
-                mainContent
-            }
-        }
+        mainContent
         .onChange(of: jobListViewModel.shouldOpenSettings) { _, shouldOpenSettings in
             guard shouldOpenSettings else { return }
-            navigationModel.showSettings()
+            onOpenSettings()
             jobListViewModel.consumeSettingsNavigation()
         }
-        .onChange(of: navigationModel.route) { _, route in
-            guard route == .main else { return }
-            requestMainContentFocus()
-        }
         .onChange(of: jobListViewModel.selectedJobID) { _, _ in
-            guard navigationModel.route == .main else { return }
             requestMainContentFocus()
         }
     }
@@ -151,9 +132,7 @@ struct PopoverView: View {
                 ChromeIconButton(
                     systemName: "gearshape",
                     title: "Settings",
-                    action: {
-                        navigationModel.showSettings()
-                    }
+                    action: onOpenSettings
                 )
                 ChromeIconButton(
                     systemName: "xmark",
@@ -243,7 +222,6 @@ struct PopoverView: View {
 
     private func requestMainContentFocus() {
         DispatchQueue.main.async {
-            guard navigationModel.route == .main else { return }
             isMainContentFocused = true
         }
     }

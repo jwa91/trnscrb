@@ -14,98 +14,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     /// The popover displayed when the status item is clicked.
     private var popover: NSPopover?
-    /// Shared route state for the popover's main and settings screens.
-    private let popoverNavigationModel: PopoverNavigationModel = PopoverNavigationModel()
+    /// The dedicated settings window for app configuration.
+    private var settingsWindowController: NSWindowController?
     /// Tracks when the file picker panel is open so drag targets can disable safely.
     private let filePickerPresentationModel: FilePickerPresentationModel = FilePickerPresentationModel()
-    /// Settings gateway for the lifetime of the app.
-    private var settingsGateway: (any SettingsGateway)?
-    /// Job list view model — retained for status bar drop forwarding.
-    private var jobListViewModel: JobListViewModel?
-    /// Background retention cleanup use case.
-    private var cleanupUseCase: CleanupRetentionUseCase?
-    /// Applies launch-at-login settings at startup and from the settings screen.
-    private var launchAtLoginUseCase: ApplyLaunchAtLoginUseCase?
     /// Timer driving periodic retention cleanup.
     private var retentionTimer: Timer?
     /// Prevents retention cleanup from overlapping across timer ticks.
     private let retentionCleanupCoordinator: RetentionCleanupCoordinator = RetentionCleanupCoordinator()
+    /// Evaluates whether local Apple mode is available on this runtime.
+    private let isLocalModeAvailable: @Sendable () -> Bool = {
+        if #available(macOS 26, *) {
+            return true
+        }
+        return false
+    }
+
+    private lazy var settingsGateway: any SettingsGateway = {
+        TOMLConfigManager(keychainStore: KeychainStore())
+    }()
+    private lazy var outputFolderClient: OutputFolderClient = OutputFolderClient()
+    private lazy var s3Client: S3Client = S3Client(settingsGateway: settingsGateway)
+    private lazy var audioProvider: MistralAudioProvider = MistralAudioProvider(
+        settingsGateway: settingsGateway
+    )
+    private lazy var ocrProvider: MistralOCRProvider = MistralOCRProvider(
+        settingsGateway: settingsGateway
+    )
+    private lazy var localAudioProvider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider(
+        settingsGateway: settingsGateway,
+        isLocalModeAvailable: isLocalModeAvailable
+    )
+    private lazy var localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
+    private lazy var compositeDelivery: CompositeDelivery = CompositeDelivery(
+        clipboard: ClipboardDelivery(),
+        file: FileDelivery(
+            settingsGateway: settingsGateway,
+            outputFolderGateway: outputFolderClient
+        ),
+        settingsGateway: settingsGateway
+    )
+    private lazy var notificationUseCase: NotifyUserUseCase = NotifyUserUseCase(
+        gateway: UserNotificationClient()
+    )
+    private lazy var connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
+        gateway: ConnectivityClient()
+    )
+    private lazy var launchAtLoginUseCase: ApplyLaunchAtLoginUseCase = ApplyLaunchAtLoginUseCase(
+        gateway: LaunchAtLoginManager()
+    )
+    private lazy var saveSettingsUseCase: SaveSettingsUseCase = SaveSettingsUseCase(
+        gateway: settingsGateway,
+        outputFolderGateway: outputFolderClient,
+        launchAtLoginUseCase: launchAtLoginUseCase
+    )
+    private lazy var processFileUseCase: ProcessFileUseCase = ProcessFileUseCase(
+        storage: s3Client,
+        transcribers: [audioProvider, ocrProvider, localAudioProvider, localDocumentProvider],
+        delivery: compositeDelivery,
+        settings: settingsGateway,
+        isLocalModeAvailable: isLocalModeAvailable
+    )
+    private lazy var cleanupUseCase: CleanupRetentionUseCase = CleanupRetentionUseCase(
+        storage: s3Client,
+        settings: settingsGateway
+    )
+    private lazy var settingsViewModel: SettingsViewModel = SettingsViewModel(
+        gateway: settingsGateway,
+        connectivityUseCase: connectivityUseCase,
+        outputFolderGateway: outputFolderClient,
+        saveSettingsUseCase: saveSettingsUseCase,
+        isLocalAppleModeAvailable: isLocalModeAvailable
+    )
+    private lazy var jobListViewModel: JobListViewModel = JobListViewModel(
+        useCase: processFileUseCase,
+        settingsGateway: settingsGateway,
+        outputFolderGateway: outputFolderClient,
+        notificationUseCase: notificationUseCase,
+        isLocalModeAvailable: isLocalModeAvailable
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-
-        // Build infrastructure
-        let keychainStore: KeychainStore = KeychainStore()
-        let gateway: TOMLConfigManager = TOMLConfigManager(keychainStore: keychainStore)
-        settingsGateway = gateway
-        let outputFolderClient: OutputFolderClient = OutputFolderClient()
-
-        let s3Client: S3Client = S3Client(settingsGateway: gateway)
-        let audioProvider: MistralAudioProvider = MistralAudioProvider(settingsGateway: gateway)
-        let ocrProvider: MistralOCRProvider = MistralOCRProvider(settingsGateway: gateway)
-        let localAudioProvider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider()
-        let localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
-        let clipboardDelivery: ClipboardDelivery = ClipboardDelivery()
-        let fileDelivery: FileDelivery = FileDelivery(
-            settingsGateway: gateway,
-            outputFolderGateway: outputFolderClient
-        )
-        let compositeDelivery: CompositeDelivery = CompositeDelivery(
-            clipboard: clipboardDelivery,
-            file: fileDelivery,
-            settingsGateway: gateway
-        )
-        let notificationUseCase: NotifyUserUseCase = NotifyUserUseCase(
-            gateway: UserNotificationClient()
-        )
-        let connectivityClient: ConnectivityClient = ConnectivityClient()
-        let connectivityUseCase: TestConnectivityUseCase = TestConnectivityUseCase(
-            gateway: connectivityClient
-        )
-        let launchAtLoginUseCase: ApplyLaunchAtLoginUseCase = ApplyLaunchAtLoginUseCase(
-            gateway: LaunchAtLoginManager()
-        )
-        self.launchAtLoginUseCase = launchAtLoginUseCase
-        let saveSettingsUseCase: SaveSettingsUseCase = SaveSettingsUseCase(
-            gateway: gateway,
-            outputFolderGateway: outputFolderClient,
-            launchAtLoginUseCase: launchAtLoginUseCase
-        )
         if NotificationRuntimeSupport.areUserNotificationsSupported() {
             UNUserNotificationCenter.current().delegate = self
         }
-
-        // Build use case
-        let isLocalModeAvailable: @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        }
-        let useCase: ProcessFileUseCase = ProcessFileUseCase(
-            storage: s3Client,
-            transcribers: [audioProvider, ocrProvider, localAudioProvider, localDocumentProvider],
-            delivery: compositeDelivery,
-            settings: gateway,
-            isLocalModeAvailable: isLocalModeAvailable
-        )
-        cleanupUseCase = CleanupRetentionUseCase(storage: s3Client, settings: gateway)
-
-        // Build presentation
-        let settingsVM: SettingsViewModel = SettingsViewModel(
-            gateway: gateway,
-            connectivityUseCase: connectivityUseCase,
-            outputFolderGateway: outputFolderClient,
-            saveSettingsUseCase: saveSettingsUseCase
-        )
-        let jobListVM: JobListViewModel = JobListViewModel(
-            useCase: useCase,
-            settingsGateway: gateway,
-            outputFolderGateway: outputFolderClient,
-            notificationUseCase: notificationUseCase,
-            isLocalModeAvailable: isLocalModeAvailable
-        )
-        self.jobListViewModel = jobListVM
 
         // Setup popover with macOS-managed semitransient behavior:
         // it stays open for cross-app interactions like Finder drags,
@@ -119,10 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(
-                navigationModel: popoverNavigationModel,
                 filePickerPresentationModel: filePickerPresentationModel,
-                settingsViewModel: settingsVM,
-                jobListViewModel: jobListVM,
+                jobListViewModel: jobListViewModel,
+                onOpenSettings: { [weak self] in
+                    self?.showSettingsFromCommand()
+                },
                 onClose: { [weak self] in
                     self?.closePopover()
                 }
@@ -145,9 +139,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Add drop target overlay
             let dropView: StatusBarDropView = StatusBarDropView(frame: button.bounds)
             dropView.autoresizingMask = [.width, .height]
-            dropView.onDrop = { [weak self, weak jobListVM] urls in
-                jobListVM?.processFiles(urls)
-                self?.showPopover(route: .main)
+            dropView.onDrop = { [weak self] urls in
+                self?.jobListViewModel.processFiles(urls)
+                self?.showPopover()
             }
             dropView.onDragEntered = { [weak self] in
                 self?.statusItem?.button?.image = NSImage(
@@ -183,24 +177,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showSettingsFromCommand() {
-        showPopover(route: .settings)
+        closePopover()
+        showSettingsWindow()
     }
 
     func addFilesFromCommand() {
-        showPopover(route: .main)
+        showPopover()
         let urls: [URL] = filePickerPresentationModel.pickFiles()
         guard !urls.isEmpty else { return }
-        jobListViewModel?.processFiles(urls)
-    }
-
-    private func showPopover(route: PopoverRoute) {
-        switch route {
-        case .main:
-            popoverNavigationModel.showMain()
-        case .settings:
-            popoverNavigationModel.showSettings()
-        }
-        showPopover()
+        jobListViewModel.processFiles(urls)
     }
 
     /// Shows the popover and starts the event monitor.
@@ -225,6 +210,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover?.performClose(nil)
     }
 
+    private func showSettingsWindow() {
+        let controller: NSWindowController
+        if let existingController = settingsWindowController {
+            controller = existingController
+        } else {
+            controller = makeSettingsWindowController()
+            settingsWindowController = controller
+        }
+
+        if controller.window?.isVisible != true {
+            Task { @MainActor [weak self] in
+                await self?.settingsViewModel.load()
+            }
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func closeSettingsWindow() {
+        settingsWindowController?.close()
+    }
+
+    private func terminateApp() {
+        NSApp.terminate(nil)
+    }
+
+    private func makeSettingsWindowController() -> NSWindowController {
+        let rootView: SettingsView = SettingsView(
+            viewModel: settingsViewModel,
+            onClose: { [weak self] in
+                self?.closeSettingsWindow()
+            },
+            onQuitApp: { [weak self] in
+                self?.terminateApp()
+            }
+        )
+
+        let window: NSWindow = NSWindow(
+            contentRect: NSRect(
+                origin: .zero,
+                size: SettingsWindowDesign.defaultSize
+            ),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Settings"
+        window.contentViewController = NSHostingController(rootView: rootView)
+        window.minSize = SettingsWindowDesign.minSize
+        window.setFrameAutosaveName("trnscrb-settings")
+        window.isReleasedWhenClosed = false
+
+        return NSWindowController(window: window)
+    }
+
     private func makeStatusItemImage() -> NSImage? {
         if let image = AppLogoAsset.templateImage() {
             return image
@@ -238,7 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyLaunchAtLoginSetting() async {
-        guard let settingsGateway, let launchAtLoginUseCase else { return }
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings()
             try await launchAtLoginUseCase.apply(enabled: settings.launchAtLogin)
@@ -263,7 +304,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func runRetentionCleanup() async {
-        guard let cleanupUseCase else { return }
         do {
             try await cleanupUseCase.execute()
         } catch {
@@ -293,9 +333,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) async {
         let identifier: String = response.notification.request.identifier
         await MainActor.run {
-            self.showPopover(route: .main)
+            self.showPopover()
             if let jobID: UUID = UUID(uuidString: identifier) {
-                self.jobListViewModel?.selectJob(id: jobID)
+                self.jobListViewModel.selectJob(id: jobID)
             }
         }
     }
