@@ -30,19 +30,31 @@ The version is read from the `VERSION` file at the project root. The build numbe
    git push origin main v0.2.0
    ```
 
-3. Build the DMG:
+3. Build the DMG (signed with Developer ID):
 
    ```bash
-   make clean && make dmg
+   make clean && make dmg IDENTITY="Developer ID Application: REDACTED_DEVELOPER_IDENTITY"
    ```
 
-4. Create a GitHub Release:
+4. Notarize and staple:
+
+   ```bash
+   xcrun notarytool submit build/trnscrb-0.2.0.dmg \
+     --keychain-profile "notarytool" --wait
+   xcrun stapler staple build/trnscrb-0.2.0.dmg
+   ```
+
+   > **Note:** Notarization is handled by Apple's servers and can take minutes to hours.
+   > First-time submissions with a new Developer ID may take significantly longer.
+   > Once Apple has processed an initial submission, subsequent ones are typically fast.
+
+5. Create a GitHub Release:
 
    ```bash
    gh release create v0.2.0 build/trnscrb-0.2.0.dmg --title "v0.2.0"
    ```
 
-5. Update the Homebrew tap:
+6. Update the Homebrew tap:
 
    ```bash
    SHA=$(shasum -a 256 build/trnscrb-0.2.0.dmg | awk '{print $1}')
@@ -72,8 +84,16 @@ brew install --cask trnscrb
 
 ## Signing
 
-By default the app is signed ad-hoc (local use). For distribution with a Developer ID:
+By default the app is signed ad-hoc (local use). For distribution, sign with the Developer ID:
 
 ```bash
-make IDENTITY="Developer ID Application: Your Name (TEAMID)"
+make IDENTITY="Developer ID Application: REDACTED_DEVELOPER_IDENTITY"
+```
+
+Store notarytool credentials once (avoids passing Apple ID/password each time):
+
+```bash
+xcrun notarytool store-credentials "notarytool" \
+  --apple-id "REDACTED_EMAIL" \
+  --team-id "REDACTED_TEAM_ID"
 ```
