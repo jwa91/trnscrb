@@ -50,24 +50,29 @@ The version is read from the `VERSION` file at the project root. The build numbe
 
    If Apple is backlogged and `--wait` is impractical, submit without `--wait`,
    publish the signed DMG temporarily, and keep the Homebrew quarantine-removal
-   workaround in place. Once Apple reports `Accepted`, run:
+   workaround in place. Then use the read-only checker:
 
    ```bash
-   scripts/finalize_notarization_release.sh --version 0.2.0 --commit --push
+   scripts/notarization-status.sh --version 0.2.0
    ```
-
-   That helper will:
-   - find the latest `trnscrb-0.2.0.dmg` notarization submission (or use `--submission-id`)
-   - staple the local DMG
-   - replace the GitHub Release asset with the stapled DMG
-   - recompute the cask `sha256`
-   - remove the temporary `postflight` quarantine workaround from `homebrew-tap`
 
    Example cron entry to check every 30 minutes:
 
    ```cron
-   */30 * * * * cd /Users/jw/developer/trnscrb && scripts/finalize_notarization_release.sh --version 0.2.0 --commit --push >> /tmp/trnscrb-notarization.log 2>&1
+   */30 * * * * cd /Users/jw/developer/trnscrb && scripts/notarization-status.sh --version 0.2.0 >> /tmp/trnscrb-notarization.log 2>&1
    ```
+
+   Once Apple reports `Accepted`, finish the release manually:
+
+   ```bash
+   xcrun stapler staple build/trnscrb-0.2.0.dmg
+   gh release upload v0.2.0 build/trnscrb-0.2.0.dmg --clobber
+   SHA=$(shasum -a 256 build/trnscrb-0.2.0.dmg | awk '{print $1}')
+   ```
+
+   Then update `Casks/trnscrb.rb` in `homebrew-tap`:
+   - replace `sha256`
+   - remove the temporary `postflight` quarantine workaround block
 
 5. Create a GitHub Release:
 
@@ -83,7 +88,7 @@ The version is read from the `VERSION` file at the project root. The build numbe
 
    Edit `Casks/trnscrb.rb` in the [homebrew-tap](https://github.com/jwa91/homebrew-tap) repo — update `version` and `sha256`.
    If notarization is still pending, keep the temporary `postflight` block.
-   After notarization is accepted, the helper above will remove it.
+   After notarization is accepted, remove it manually.
 
 ## Install via Homebrew
 
