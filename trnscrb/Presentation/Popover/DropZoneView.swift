@@ -68,22 +68,22 @@ struct DropZoneView: View {
     private var content: some View {
         switch mode {
         case .full:
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 iconBadge(
                     size: PopoverDesign.largeIconBadgeSize,
                     symbolSize: PopoverDesign.largeIconSymbolSize
                 )
 
-                Text(isFilePickerPresented ? "File picker is open" : "Drop audio, PDFs, and images here")
+                Text(fullTitle)
                     .font(PopoverDesign.dropZoneTitleFont)
                     .multilineTextAlignment(.center)
 
-                if isFilePickerPresented {
-                    Text("Choose files in that window, or drag from Finder after closing it.")
-                        .font(PopoverDesign.secondaryTextFont)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                } else {
+                Text(fullSubtitle)
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                if !isFilePickerPresented {
                     browseButton
                 }
             }
@@ -96,33 +96,36 @@ struct DropZoneView: View {
                 )
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(isFilePickerPresented ? "File picker open" : "Add files")
+                    Text("Add files")
                         .font(PopoverDesign.sectionLabelFont)
-                    Text(
-                        isFilePickerPresented
-                            ? "Choose there, or drag from Finder after closing it"
-                            : "Audio, PDFs, and images"
-                    )
+                    Text(compactSubtitle)
                         .font(PopoverDesign.secondaryTextFont)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+
                 if !isFilePickerPresented {
                     browseButton
                 }
-                Spacer(minLength: 8)
             }
         }
     }
 
     private var browseButton: some View {
-        Button("Select files…") {
+        Button(buttonTitle) {
             onSelectFiles()
         }
-        .buttonStyle(.glass)
-        .controlSize(.regular)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(mode == .full ? .regular : .small)
         .font(PopoverDesign.secondaryTextFont)
+        .fixedSize()
+        .layoutPriority(2)
         .pointingHandCursor()
+        .help("You can also paste copied files with Command-V.")
     }
 
     private func iconBadge(size: CGFloat, symbolSize: CGFloat) -> some View {
@@ -201,5 +204,27 @@ struct DropZoneView: View {
             }
         }
         return true
+    }
+
+    private var fullTitle: String {
+        isFilePickerPresented ? "File picker is open" : "Drop audio, PDFs, and images"
+    }
+
+    private var fullSubtitle: String {
+        if isFilePickerPresented {
+            return "Choose files there, or drag from Finder after closing it."
+        }
+        return "You can also paste copied files with Command-V."
+    }
+
+    private var compactSubtitle: String {
+        if isFilePickerPresented {
+            return "Choose there, or drag from Finder after closing it."
+        }
+        return "Drag or paste copied files."
+    }
+
+    private var buttonTitle: String {
+        mode == .full ? "Choose files…" : "Choose…"
     }
 }
