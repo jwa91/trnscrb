@@ -1,17 +1,18 @@
 import SwiftUI
 
-/// Displays active and recently completed jobs in the popover.
+/// Displays active and recently completed jobs in the menu panel.
 struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel
     @State private var isClearAllHovered: Bool = false
+    @State private var isOpenFolderHovered: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PopoverDesign.sectionSpacing) {
                 if !viewModel.activeJobs.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        sectionHeader("ACTIVE")
+                        sectionHeader("ACTIVE", showsOpenFolder: viewModel.completedJobs.isEmpty)
                         ForEach(viewModel.activeJobs) { job in
                             row(for: job, allowsCopy: false)
                         }
@@ -20,21 +21,7 @@ struct JobListView: View {
 
                 if !viewModel.completedJobs.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            sectionHeader("RECENT")
-                            Spacer()
-                            Button("Clear All") {
-                                viewModel.clearCompleted()
-                            }
-                            .buttonStyle(.plain)
-                            .font(PopoverDesign.secondaryTextFont)
-                            .foregroundStyle(
-                                isClearAllHovered ? Color.accentColor : Color.secondary
-                            )
-                            .underline(isClearAllHovered)
-                            .pointingHandCursor()
-                            .onHover { isClearAllHovered = $0 }
-                        }
+                        sectionHeader("RECENT", showsOpenFolder: true, showsClearAll: true)
 
                         ForEach(viewModel.completedJobs) { job in
                             row(for: job, allowsCopy: true)
@@ -45,7 +32,6 @@ struct JobListView: View {
             .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onDeleteCommand(perform: handleDeleteCommand)
         .onChange(of: viewModel.jobs) { _, jobs in
             if let selectedJobID = viewModel.selectedJobID,
                !jobs.contains(where: { $0.id == selectedJobID }) {
@@ -66,6 +52,10 @@ struct JobListView: View {
             isSelected: viewModel.selectedJobID == job.id,
             showsMarkdownCopyConfirmation: showsMarkdownCopyConfirmation,
             showsSourceCopyConfirmation: showsSourceCopyConfirmation,
+            onSelect: { viewModel.selectJob(id: job.id) },
+            onPrimaryAction: allowsCopy && isOpenable(job)
+                ? { viewModel.openSavedFile(jobID: job.id) }
+                : nil,
             onCopyMarkdown: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
             onCopySourceURL: allowsCopy && job.presignedSourceURL != nil
                 ? { viewModel.copySourceURLToClipboard(jobID: job.id) }
@@ -95,21 +85,55 @@ struct JobListView: View {
     }
 
     /// Section header label.
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(PopoverDesign.sectionLabelFont)
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
+    private func sectionHeader(
+        _ title: String,
+        showsOpenFolder: Bool = false,
+        showsClearAll: Bool = false
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(PopoverDesign.sectionLabelFont)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            Spacer()
+
+            if showsOpenFolder {
+                Button {
+                    Task {
+                        await viewModel.openConfiguredSaveFolder()
+                    }
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isOpenFolderHovered ? Color.primary : Color.secondary)
+                .pointingHandCursor()
+                .onHover { isOpenFolderHovered = $0 }
+                .help("Open save folder")
+            }
+
+            if showsClearAll {
+                Button("Clear All") {
+                    viewModel.clearCompleted()
+                }
+                .buttonStyle(.plain)
+                .font(PopoverDesign.secondaryTextFont)
+                .foregroundStyle(
+                    isClearAllHovered ? Color.accentColor : Color.secondary
+                )
+                .underline(isClearAllHovered)
+                .pointingHandCursor()
+                .onHover { isClearAllHovered = $0 }
+            }
+        }
     }
 
-    private func handleDeleteCommand() {
-        if let selectedJobID = viewModel.selectedJobID {
-            viewModel.removeJob(id: selectedJobID)
-            viewModel.selectJob(id: nil)
-            return
+    private func isOpenable(_ job: Job) -> Bool {
+        if case .completed = job.status {
+            return job.savedFileURL != nil
         }
-        if let fallbackID: UUID = viewModel.completedJobs.first?.id ?? viewModel.activeJobs.first?.id {
-            viewModel.removeJob(id: fallbackID)
-        }
+        return false
     }
 }

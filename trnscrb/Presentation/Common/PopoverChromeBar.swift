@@ -32,7 +32,8 @@ struct PopoverChromeBar<Leading: View, Center: View, Trailing: View>: View {
                 center
                     .padding(.horizontal, 72)
             }
-            .background(.ultraThinMaterial)
+            .frame(maxWidth: .infinity)
+            .background(PopoverDesign.chromeSurface)
 
             if showsDivider {
                 Divider()

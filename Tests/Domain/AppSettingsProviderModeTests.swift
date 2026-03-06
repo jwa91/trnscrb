@@ -3,12 +3,12 @@ import Testing
 @testable import trnscrb
 
 struct AppSettingsProviderModeTests {
-    @Test func defaultsUseMistralForAllMedia() {
+    @Test func defaultsUseLocalAppleForAllMedia() {
         let settings: AppSettings = AppSettings()
 
-        #expect(settings.audioProviderMode == .mistral)
-        #expect(settings.pdfProviderMode == .mistral)
-        #expect(settings.imageProviderMode == .mistral)
+        #expect(settings.audioProviderMode == .localApple)
+        #expect(settings.pdfProviderMode == .localApple)
+        #expect(settings.imageProviderMode == .localApple)
     }
 
     @Test func modeForFileTypeReturnsPerMediaValue() {

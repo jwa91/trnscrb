@@ -1,251 +1,566 @@
 import AppKit
+import Speech
 import SwiftUI
 
-/// Settings panel displayed inside the popover.
-///
-/// Shows all configurable fields from SPEC.md organized into sections.
-/// API keys use `SecureField` and are stored in the Keychain, not the config file.
+enum SettingsWindowDesign {
+    static let defaultSize: CGSize = CGSize(width: 900, height: 640)
+    static let minSize: CGSize = CGSize(width: 780, height: 580)
+    static let detailMaxWidth: CGFloat = 660
+    static let detailPadding: CGFloat = 30
+    static let detailSpacing: CGFloat = 24
+    static let sectionSpacing: CGFloat = 18
+    static let formLabelWidth: CGFloat = 144
+}
+
+private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
+    case storage
+    case connections
+    case processing
+    case output
+    case general
+    case about
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .storage:
+            return "Storage"
+        case .connections:
+            return "Connections"
+        case .processing:
+            return "Processing"
+        case .output:
+            return "Output"
+        case .general:
+            return "General"
+        case .about:
+            return "About"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .storage:
+            return "externaldrive.badge.wifi"
+        case .connections:
+            return "network"
+        case .processing:
+            return "slider.horizontal.3"
+        case .output:
+            return "square.and.arrow.down"
+        case .general:
+            return "gearshape"
+        case .about:
+            return "info.circle"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .storage:
+            return "Configure S3 uploads and retention for files staged in the bucket."
+        case .connections:
+            return "Manage credentials for external services and future integrations."
+        case .processing:
+            return "Choose which engine handles each file type by default."
+        case .output:
+            return "Control where markdown files are saved and how they are named."
+        case .general:
+            return "Set app-wide behavior, defaults, and everyday workflow options."
+        case .about:
+            return "Version details, configuration access, and support information."
+        }
+    }
+}
+
+/// Settings content displayed inside the dedicated settings window.
 struct SettingsView: View {
     /// View model providing settings data and persistence.
     @ObservedObject var viewModel: SettingsViewModel
-    /// Called when the user taps the back button.
-    var onBack: () -> Void
-    /// Called when the user closes the popover.
+    /// Called when the user closes the settings window.
     var onClose: () -> Void
+    /// Terminates the menu bar app.
+    var onQuitApp: () -> Void
+    @State private var selectedPane: SettingsPane = .storage
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            settingsContent
+        TabView(selection: $selectedPane) {
+            Tab("Storage", systemImage: SettingsPane.storage.systemImage, value: .storage) {
+                detailContent(for: .storage)
+            }
+
+            Tab("Connections", systemImage: SettingsPane.connections.systemImage, value: .connections) {
+                detailContent(for: .connections)
+            }
+
+            Tab("Processing", systemImage: SettingsPane.processing.systemImage, value: .processing) {
+                detailContent(for: .processing)
+            }
+
+            Tab("Output", systemImage: SettingsPane.output.systemImage, value: .output) {
+                detailContent(for: .output)
+            }
+
+            Tab("General", systemImage: SettingsPane.general.systemImage, value: .general) {
+                detailContent(for: .general)
+            }
+
+            Tab("About", systemImage: SettingsPane.about.systemImage, value: .about) {
+                detailContent(for: .about)
+            }
         }
+        .tabViewStyle(.sidebarAdaptable)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .toolbar(removing: .title)
         .frame(
-            width: PopoverDesign.popoverSize.width,
-            height: PopoverDesign.popoverSize.height
+            minWidth: SettingsWindowDesign.minSize.width,
+            minHeight: SettingsWindowDesign.minSize.height
         )
-        .background(PopoverDesign.surfaceBackground)
+        .background(Color(nsColor: .windowBackgroundColor))
         .task { await viewModel.load() }
     }
 
-    /// Navigation header with back button and save button.
-    private var header: some View {
-        PopoverChromeBar {
-            SettingsBackButton(action: onBack)
-        } center: {
-            if let error = viewModel.error {
-                Text(error)
-                    .font(PopoverDesign.secondaryTextFont)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+    private func detailContent(for pane: SettingsPane) -> some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: SettingsWindowDesign.detailSpacing) {
+                    pageHeader(for: pane)
+                    pageContent(for: pane)
+                }
+                .frame(maxWidth: SettingsWindowDesign.detailMaxWidth, alignment: .leading)
+                .padding(SettingsWindowDesign.detailPadding)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-        } trailing: {
-            HStack(spacing: 6) {
-                Button("Save") {
-                    Task {
-                        let didSave: Bool = await viewModel.save()
-                        if didSave {
-                            onBack()
+
+            Divider()
+            footer
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func pageHeader(for pane: SettingsPane) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(pane.title)
+                .font(.system(size: 27, weight: .bold, design: .rounded))
+
+            Text(pane.description)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func pageContent(for pane: SettingsPane) -> some View {
+        switch pane {
+        case .storage:
+            storagePage
+        case .connections:
+            connectionsPage
+        case .processing:
+            processingPage
+        case .output:
+            outputPage
+        case .general:
+            generalPage
+        case .about:
+            aboutPage
+        }
+    }
+
+    private var storagePage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("S3-Compatible Storage") {
+                settingsGrid {
+                    settingsRow(
+                        "Endpoint URL",
+                        help: "You can paste either https://host or just host; the app will normalize it to HTTPS."
+                    ) {
+                        TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Access Key") {
+                        TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Secret Key") {
+                        secretField(
+                            "Secret Key",
+                            text: $viewModel.s3SecretKey,
+                            isVisible: $viewModel.isS3SecretKeyVisible
+                        )
+                    }
+
+                    settingsRow("Bucket Name") {
+                        TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Region") {
+                        TextField("Region", text: $viewModel.settings.s3Region)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Path Prefix") {
+                        TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Connection Test") {
+                        HStack(spacing: 10) {
+                            testButton("Test", result: viewModel.s3TestResult) {
+                                Task { await viewModel.testS3() }
+                            }
+                            testResultView(viewModel.s3TestResult)
+                            Spacer(minLength: 0)
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .pointingHandCursor()
-
-                ChromeIconButton(
-                    systemName: "xmark",
-                    title: "Close",
-                    action: onClose
-                )
-            }
-        }
-    }
-
-    /// Scrollable settings content with card grouping.
-    private var settingsContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                s3Section
-                mistralSection
-                providerSection
-                outputSection
-                generalSection
-            }
-            .padding(PopoverDesign.contentPadding)
-        }
-    }
-
-    /// S3 Storage configuration fields.
-    private var s3Section: some View {
-        SettingsSectionCard(title: "S3 Storage") {
-            fieldGroup(
-                "Endpoint URL",
-                help: "You can paste either https://host or just host; the app will use HTTPS."
-            ) {
-                TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.large)
             }
 
-            fieldGroup("Access Key") {
-                TextField("Access Key", text: $viewModel.settings.s3AccessKey)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.large)
-            }
+            settingsSection("Retention") {
+                settingsGrid {
+                    settingsRow(
+                        "File Retention",
+                        help: "Applies to files stored in S3 after upload. Set to 0 to disable automatic cleanup."
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField(
+                                "Hours",
+                                value: $viewModel.settings.fileRetentionHours,
+                                format: .number
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 96)
 
-            fieldGroup("Secret Key") {
-                secretField(
-                    "Secret Key",
-                    text: $viewModel.s3SecretKey,
-                    isVisible: $viewModel.isS3SecretKeyVisible
-                )
-            }
+                            Text("hours")
+                                .foregroundStyle(.secondary)
 
-            fieldGroup("Bucket Name") {
-                TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.large)
-            }
-
-            fieldGroup("Region") {
-                TextField("Region", text: $viewModel.settings.s3Region)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.large)
-            }
-
-            fieldGroup("Path Prefix") {
-                TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.large)
-            }
-
-            HStack(spacing: 10) {
-                testButton("Test", result: viewModel.s3TestResult) {
-                    Task { await viewModel.testS3() }
+                            Spacer(minLength: 0)
+                        }
+                        .controlSize(.large)
+                    }
                 }
-                testResultView(viewModel.s3TestResult)
-                Spacer(minLength: 0)
             }
-            .padding(.top, 2)
         }
     }
 
-    /// Mistral API key field.
-    private var mistralSection: some View {
-        SettingsSectionCard(title: "Mistral API") {
-            fieldGroup("API Key") {
-                secretField(
-                    "API Key",
-                    text: $viewModel.mistralAPIKey,
-                    isVisible: $viewModel.isMistralAPIKeyVisible
-                )
-            }
-
-            HStack(spacing: 10) {
-                testButton("Test", result: viewModel.mistralTestResult) {
-                    Task { await viewModel.testMistral() }
+    private var connectionsPage: some View {
+        settingsSection("Mistral API") {
+            settingsGrid {
+                settingsRow("API Key") {
+                    secretField(
+                        "API Key",
+                        text: $viewModel.mistralAPIKey,
+                        isVisible: $viewModel.isMistralAPIKeyVisible
+                    )
                 }
-                testResultView(viewModel.mistralTestResult)
-                Spacer(minLength: 0)
+
+                settingsRow("Connection Test") {
+                    HStack(spacing: 10) {
+                        testButton("Test", result: viewModel.mistralTestResult) {
+                            Task { await viewModel.testMistral() }
+                        }
+                        testResultView(viewModel.mistralTestResult)
+                        Spacer(minLength: 0)
+                    }
+                }
             }
-            .padding(.top, 2)
         }
     }
 
-    /// Per-media provider mode preferences.
-    private var providerSection: some View {
-        SettingsSectionCard(title: "Processing Providers") {
-            fieldGroup("Audio") {
-                providerModePicker(selection: $viewModel.settings.audioProviderMode)
+    private var processingPage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("Default Providers") {
+                settingsGrid {
+                    settingsRow("Audio") {
+                        providerModePicker(selection: $viewModel.settings.audioProviderMode)
+                    }
+
+                    settingsRow("PDF") {
+                        providerModePicker(selection: $viewModel.settings.pdfProviderMode)
+                    }
+
+                    settingsRow("Image") {
+                        providerModePicker(selection: $viewModel.settings.imageProviderMode)
+                    }
+                }
             }
 
-            fieldGroup("PDF") {
-                providerModePicker(selection: $viewModel.settings.pdfProviderMode)
+            settingsSection("Apple On-Device Audio") {
+                settingsGrid {
+                    settingsRow(
+                        "Language",
+                        help: "Used only when Audio is set to Local Apple. Match this to the recording language for better recognition quality."
+                    ) {
+                        appleAudioLocalePicker()
+                            .disabled(viewModel.settings.audioProviderMode != .localApple)
+                    }
+                }
+            }
+        }
+    }
+
+    private var outputPage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("Saving") {
+                settingsGrid {
+                    settingsRow(
+                        "Save Folder",
+                        help: "Markdown files are always saved to this folder."
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField("Folder path", text: $viewModel.settings.saveFolderPath)
+                                .textFieldStyle(.roundedBorder)
+
+                            Button("Browse…") {
+                                browseForSaveFolder()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .controlSize(.large)
+                    }
+                }
+
             }
 
-            fieldGroup("Image") {
-                providerModePicker(selection: $viewModel.settings.imageProviderMode)
+            settingsSection("File Naming") {
+                settingsGrid {
+                    settingsRow(
+                        "Filename Prefix",
+                        help: "Optional text exposed through the {prefix} variable, for example notes- or capture-."
+                    ) {
+                        TextField("notes-", text: $viewModel.settings.outputFileNamePrefix)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow(
+                        "Filename Template",
+                        help: "Available variables: {originalFilename}, {fileType}, {timestamp}, {date}, {time}, {prefix}. The .md extension is added automatically."
+                    ) {
+                        TextField(
+                            AppSettings.defaultFileNameTemplate,
+                            text: $viewModel.settings.outputFileNameTemplate
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
+                        .font(.system(.body, design: .monospaced))
+                    }
+
+                    settingsRow("Preview") {
+                        Text(viewModel.outputFileNamePreview)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+
+    private var generalPage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("Behavior") {
+                settingsToggleRow(
+                    help: "Also places the generated markdown on the clipboard after each run."
+                ) {
+                    Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
+                }
             }
 
-            if !viewModel.isLocalAppleModeAvailable {
-                Text("Local Apple mode requires macOS 26 or newer.")
-                    .font(PopoverDesign.secondaryTextFont)
+            settingsSection("Startup") {
+                settingsToggleRow(
+                    help: "Starts the menu bar app automatically when you sign in to macOS."
+                ) {
+                    Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
+                }
+            }
+        }
+    }
+
+    private var aboutPage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("Application") {
+                settingsGrid {
+                    settingsRow("Version") {
+                        Text(appVersionSummary)
+                            .textSelection(.enabled)
+                    }
+
+                    settingsRow("Bundle ID") {
+                        Text(Bundle.main.bundleIdentifier ?? "com.trnscrb.app")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+
+            settingsSection("Configuration") {
+                settingsGrid {
+                    settingsRow("Config File") {
+                        Text(configFileURL.path())
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+
+                    settingsRow("Actions") {
+                        HStack(spacing: 8) {
+                            Button("Reveal Config File") {
+                                revealConfigFile()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("Open Config Folder") {
+                                openConfigFolder()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            if let error = viewModel.error {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            } else {
+                Text("Changes apply when you save.")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
 
-    /// Output folder and clipboard configuration.
-    private var outputSection: some View {
-        SettingsSectionCard(title: "Output") {
-            fieldGroup("Save Folder") {
-                HStack(spacing: 8) {
-                    TextField("Folder path", text: $viewModel.settings.saveFolderPath)
-                        .textFieldStyle(.roundedBorder)
+            Spacer()
 
-                    Button("Browse…") {
-                        browseForSaveFolder()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .controlSize(.large)
+            Button("Quit trnscrb") {
+                onQuitApp()
             }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .pointingHandCursor()
 
-            Text("Markdown files are always saved to this folder.")
-                .font(PopoverDesign.secondaryTextFont)
-                .foregroundStyle(.secondary)
-
-            Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
+            saveButton
         }
+        .padding(.horizontal, SettingsWindowDesign.detailPadding)
+        .padding(.vertical, 14)
+        .background(.regularMaterial)
     }
 
-    /// General settings: retention and launch at login.
-    private var generalSection: some View {
-        SettingsSectionCard(title: "General") {
-            fieldGroup("File Retention") {
-                HStack(spacing: 8) {
-                    TextField(
-                        "Hours",
-                        value: $viewModel.settings.fileRetentionHours,
-                        format: .number
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 88)
-
-                    Text("hours")
-                        .font(PopoverDesign.secondaryTextFont)
-                        .foregroundStyle(.secondary)
-
-                    Spacer(minLength: 0)
+    @ViewBuilder
+    private var saveButton: some View {
+        Button("Save") {
+            Task {
+                let didSave: Bool = await viewModel.save()
+                if didSave {
+                    onClose()
                 }
-                .controlSize(.large)
             }
-
-            Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
         }
+        .buttonStyle(.glassProminent)
+        .tint(.accentColor)
+        .keyboardShortcut("s", modifiers: .command)
+        .pointingHandCursor()
     }
 
-    private func fieldGroup<Content: View>(
+    private func settingsSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        GroupBox {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Text(title)
+                .font(.headline)
+        }
+        .groupBoxStyle(.automatic)
+    }
+
+    private var appVersionSummary: String {
+        let shortVersion: String = {
+            guard let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                  !raw.isEmpty,
+                  !raw.contains("$")
+            else {
+                return "0.1.1"
+            }
+            return raw
+        }()
+
+        guard let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+              !buildNumber.isEmpty,
+              !buildNumber.contains("$")
+        else {
+            return shortVersion
+        }
+
+        return "\(shortVersion) (\(buildNumber))"
+    }
+
+    private var configFileURL: URL {
+        TOMLConfigManager.defaultConfigFileURL
+    }
+
+    private func settingsGrid<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 16) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func settingsRow<Content: View>(
         _ title: String,
         help: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        GridRow(alignment: .top) {
             Text(title)
-                .font(PopoverDesign.settingsLabelFont)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.secondary)
+                .frame(width: SettingsWindowDesign.formLabelWidth, alignment: .trailing)
 
+            VStack(alignment: .leading, spacing: 6) {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let help {
+                    Text(help)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func settingsToggleRow<Content: View>(
+        help: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
 
             if let help {
                 Text(help)
-                    .font(PopoverDesign.secondaryTextFont)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Test button helpers
@@ -272,13 +587,13 @@ struct SettingsView: View {
                 .controlSize(.small)
         case .success:
             Label("Connected", systemImage: "checkmark.circle.fill")
-                .font(PopoverDesign.secondaryTextFont)
+                .font(.footnote)
                 .foregroundStyle(.green)
         case .failure(let message):
             Text(message)
-                .font(PopoverDesign.secondaryTextFont)
+                .font(.footnote)
                 .foregroundStyle(.red)
-                .lineLimit(1)
+                .lineLimit(2)
                 .truncationMode(.tail)
         }
     }
@@ -317,13 +632,28 @@ struct SettingsView: View {
     private func providerModePicker(selection: Binding<ProviderMode>) -> some View {
         Picker("", selection: selection) {
             Text("Mistral").tag(ProviderMode.mistral)
-            Text("Local Apple (macOS 26+)")
-                .tag(ProviderMode.localApple)
-                .disabled(!viewModel.isLocalAppleModeAvailable)
+            Text("Local Apple").tag(ProviderMode.localApple)
         }
         .labelsHidden()
         .pickerStyle(.menu)
         .controlSize(.large)
+    }
+
+    private func appleAudioLocalePicker() -> some View {
+        Picker("", selection: $viewModel.settings.appleAudioLocaleIdentifier) {
+            ForEach(appleAudioLocaleOptions) { option in
+                Text(option.label).tag(option.identifier)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.large)
+    }
+
+    private var appleAudioLocaleOptions: [AppleSpeechLocaleOption] {
+        AppleSpeechLocaleOption.options(
+            including: viewModel.settings.appleAudioLocaleIdentifier
+        )
     }
 
     private func browseForSaveFolder() {
@@ -333,35 +663,62 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
-        panel.directoryURL = URL(
-            fileURLWithPath: (viewModel.settings.saveFolderPath as NSString).expandingTildeInPath
-        ).deletingLastPathComponent()
+        let expandedPath: String = (viewModel.settings.saveFolderPath as NSString).expandingTildeInPath
+        if !expandedPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: expandedPath).deletingLastPathComponent()
+        }
 
         if panel.runModal() == .OK, let selectedURL: URL = panel.url {
             viewModel.settings.saveFolderPath = selectedURL.standardizedFileURL.path()
         }
     }
+
+    private func revealConfigFile() {
+        let fileManager: FileManager = FileManager.default
+        let fileURL: URL = configFileURL
+        if fileManager.fileExists(atPath: fileURL.path()) {
+            NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+        } else {
+            openConfigFolder()
+        }
+    }
+
+    private func openConfigFolder() {
+        let folderURL: URL = configFileURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: folderURL,
+            withIntermediateDirectories: true
+        )
+        NSWorkspace.shared.open(folderURL)
+    }
 }
 
-private struct SettingsBackButton: View {
-    let action: () -> Void
+private struct AppleSpeechLocaleOption: Identifiable, Hashable {
+    let identifier: String
+    let label: String
 
-    @State private var isHovered: Bool = false
+    var id: String { identifier }
 
-    var body: some View {
-        Button(action: action) {
-            Label("Settings", systemImage: "chevron.left")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
-                )
+    static func options(including selectedIdentifier: String) -> [AppleSpeechLocaleOption] {
+        let locale: Locale = .autoupdatingCurrent
+        var identifiers: Set<String> = Set(
+            SFSpeechRecognizer.supportedLocales().map(\.identifier)
+        )
+        if !selectedIdentifier.isEmpty {
+            identifiers.insert(selectedIdentifier)
         }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { isHovered = $0 }
+
+        return identifiers
+            .map { identifier in
+                let localizedName: String = locale.localizedString(forIdentifier: identifier)
+                    ?? identifier
+                return AppleSpeechLocaleOption(
+                    identifier: identifier,
+                    label: "\(localizedName) (\(identifier))"
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.label.localizedStandardCompare(rhs.label) == .orderedAscending
+            }
     }
 }

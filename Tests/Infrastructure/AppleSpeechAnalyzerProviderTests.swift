@@ -18,17 +18,4 @@ struct AppleSpeechAnalyzerProviderTests {
         }
     }
 
-    @Test func processThrowsUnavailableErrorWhenLocalModeSupportIsDisabled() async {
-        let provider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider(
-            isLocalModeAvailable: { false }
-        )
-        do {
-            _ = try await provider.process(sourceURL: URL(filePath: "/tmp/audio.mp3"))
-            Issue.record("Expected unavailable error")
-        } catch let error as LocalProviderError {
-            #expect(error == .localModeUnavailable)
-        } catch {
-            Issue.record("Unexpected error: \(error)")
-        }
-    }
 }

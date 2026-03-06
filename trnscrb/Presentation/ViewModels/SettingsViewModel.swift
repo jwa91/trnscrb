@@ -39,9 +39,6 @@ public final class SettingsViewModel: ObservableObject {
     private let outputFolderGateway: any OutputFolderGateway
     /// Persists settings, secrets, and launch-at-login atomically.
     private let saveSettingsUseCase: SaveSettingsUseCase
-    /// Evaluates whether local Apple providers are available on this runtime.
-    private let isLocalAppleModeAvailableProvider: @Sendable () -> Bool
-
     /// Creates a view model backed by the given settings gateway.
     /// - Parameters:
     ///   - gateway: Settings persistence gateway.
@@ -51,26 +48,19 @@ public final class SettingsViewModel: ObservableObject {
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
         outputFolderGateway: any OutputFolderGateway,
-        saveSettingsUseCase: SaveSettingsUseCase,
-        isLocalAppleModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        }
+        saveSettingsUseCase: SaveSettingsUseCase
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
         self.outputFolderGateway = outputFolderGateway
         self.saveSettingsUseCase = saveSettingsUseCase
-        self.isLocalAppleModeAvailableProvider = isLocalAppleModeAvailable
     }
 
     /// Loads settings and secrets from persistent storage.
     public func load() async {
         do {
             let loadedSettings: AppSettings = try await gateway.loadSettings()
-            settings = normalizedProviderModesForCurrentRuntime(loadedSettings)
+            settings = loadedSettings
             mistralAPIKey = try await gateway.getSecret(for: .mistralAPIKey) ?? ""
             s3SecretKey = try await gateway.getSecret(for: .s3SecretKey) ?? ""
             error = nil
@@ -83,7 +73,7 @@ public final class SettingsViewModel: ObservableObject {
     @discardableResult
     public func save() async -> Bool {
         do {
-            settings = normalizedProviderModesForCurrentRuntime(settings.normalizedForUse)
+            settings = settings.normalizedForUse
             mistralAPIKey = mistralAPIKey.trimmedCredentialValue
             s3SecretKey = s3SecretKey.trimmedCredentialValue
             _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
@@ -108,25 +98,11 @@ public final class SettingsViewModel: ObservableObject {
         return URL(filePath: (trimmedPath as NSString).expandingTildeInPath).standardizedFileURL.path()
     }
 
-    public var isLocalAppleModeAvailable: Bool {
-        isLocalAppleModeAvailableProvider()
-    }
-
-    private func normalizedProviderModesForCurrentRuntime(_ input: AppSettings) -> AppSettings {
-        guard !isLocalAppleModeAvailable else { return input }
-        return AppSettings(
-            s3EndpointURL: input.s3EndpointURL,
-            s3AccessKey: input.s3AccessKey,
-            s3BucketName: input.s3BucketName,
-            s3Region: input.s3Region,
-            s3PathPrefix: input.s3PathPrefix,
-            saveFolderPath: input.saveFolderPath,
-            copyToClipboard: input.copyToClipboard,
-            fileRetentionHours: input.fileRetentionHours,
-            launchAtLogin: input.launchAtLogin,
-            audioProviderMode: .mistral,
-            pdfProviderMode: .mistral,
-            imageProviderMode: .mistral
+    public var outputFileNamePreview: String {
+        OutputFileNameFormatter.fileName(
+            sourceFileName: "meeting-note.m4a",
+            fileType: .audio,
+            settings: settings.normalizedForUse
         )
     }
 

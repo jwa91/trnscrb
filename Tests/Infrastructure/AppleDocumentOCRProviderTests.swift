@@ -18,24 +18,8 @@ struct AppleDocumentOCRProviderTests {
         }
     }
 
-    @Test func processThrowsUnavailableErrorWhenLocalModeSupportIsDisabled() async {
-        let provider: AppleDocumentOCRProvider = AppleDocumentOCRProvider(
-            isLocalModeAvailable: { false }
-        )
-        do {
-            _ = try await provider.process(sourceURL: URL(filePath: "/tmp/doc.pdf"))
-            Issue.record("Expected unavailable error")
-        } catch let error as LocalProviderError {
-            #expect(error == .localModeUnavailable)
-        } catch {
-            Issue.record("Unexpected error: \(error)")
-        }
-    }
-
     @Test func processRejectsUnsupportedLocalExtension() async {
-        let provider: AppleDocumentOCRProvider = AppleDocumentOCRProvider(
-            isLocalModeAvailable: { true }
-        )
+        let provider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
 
         do {
             _ = try await provider.process(sourceURL: URL(filePath: "/tmp/doc.txt"))

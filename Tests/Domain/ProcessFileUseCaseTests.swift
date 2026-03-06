@@ -55,7 +55,16 @@ private final class LockedRetrySleepRecorder: @unchecked Sendable {
     }
 }
 
-private func makeUseCase(
+private func mistralSettings(s3PathPrefix: String = "trnscrb/") -> AppSettings {
+    AppSettings(
+        s3PathPrefix: s3PathPrefix,
+        audioProviderMode: .mistral,
+        pdfProviderMode: .mistral,
+        imageProviderMode: .mistral
+    )
+}
+
+private func makeMistralUseCase(
     storage: MockStorageGateway = MockStorageGateway(),
     audioTranscriber: MockTranscriptionGateway = MockTranscriptionGateway(
         supportedExtensions: FileType.audioExtensions
@@ -64,7 +73,7 @@ private func makeUseCase(
         supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
     ),
     delivery: MockDeliveryGateway = MockDeliveryGateway(),
-    settings: MockSettingsGateway = MockSettingsGateway()
+    settings: MockSettingsGateway = MockSettingsGateway(settings: mistralSettings())
 ) -> (ProcessFileUseCase, MockStorageGateway, MockTranscriptionGateway, MockTranscriptionGateway, MockDeliveryGateway, MockSettingsGateway) {
     let useCase: ProcessFileUseCase = ProcessFileUseCase(
         storage: storage,
@@ -79,7 +88,7 @@ struct ProcessFileUseCaseTests {
     // MARK: - Happy path
 
     @Test func processAudioFile() async throws {
-        let (useCase, storage, audioTranscriber, ocrTranscriber, delivery, _) = makeUseCase()
+        let (useCase, storage, audioTranscriber, ocrTranscriber, delivery, _) = makeMistralUseCase()
         let presignedURL: URL = URL(string: "https://s3.example.com/presigned")!
         await storage.setUploadResult(presignedURL)
         await audioTranscriber.setProcessResult("# Meeting Notes")
@@ -108,7 +117,7 @@ struct ProcessFileUseCaseTests {
         let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
         let storage: MockStorageGateway = MockStorageGateway(uploadResult: presignedURL)
         let delivery: MockDeliveryGateway = MockDeliveryGateway(savedFileURL: savedFileURL)
-        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage, delivery: delivery)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(storage: storage, delivery: delivery)
 
         let result: TranscriptionResult = try await useCase.execute(
             fileURL: URL(filePath: "/tmp/meeting.mp3")
@@ -121,7 +130,7 @@ struct ProcessFileUseCaseTests {
     @Test func processPDFFile() async throws {
         let presignedURL: URL = URL(string: "https://s3.example.com/bucket/scan.pdf")!
         let storage: MockStorageGateway = MockStorageGateway(uploadResult: presignedURL)
-        let (useCase, _, audioTranscriber, ocrTranscriber, _, _) = makeUseCase(storage: storage)
+        let (useCase, _, audioTranscriber, ocrTranscriber, _, _) = makeMistralUseCase(storage: storage)
         await ocrTranscriber.setProcessResult("# Document")
 
         let fileURL: URL = URL(filePath: "/tmp/scan.pdf")
@@ -137,7 +146,7 @@ struct ProcessFileUseCaseTests {
     @Test func processImageFile() async throws {
         let presignedURL: URL = URL(string: "https://s3.example.com/bucket/notes.png")!
         let storage: MockStorageGateway = MockStorageGateway(uploadResult: presignedURL)
-        let (useCase, _, audioTranscriber, ocrTranscriber, _, _) = makeUseCase(storage: storage)
+        let (useCase, _, audioTranscriber, ocrTranscriber, _, _) = makeMistralUseCase(storage: storage)
         await ocrTranscriber.setProcessResult("# Handwritten Note")
 
         let fileURL: URL = URL(filePath: "/tmp/notes.png")
@@ -155,9 +164,9 @@ struct ProcessFileUseCaseTests {
     @Test func s3KeyUsesPathPrefixAndUUIDAndExtension() async throws {
         let storage: MockStorageGateway = MockStorageGateway()
         let settings: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(s3PathPrefix: "custom/")
+            settings: mistralSettings(s3PathPrefix: "custom/")
         )
-        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage, settings: settings)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(storage: storage, settings: settings)
 
         _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/test.wav"))
 
@@ -169,7 +178,7 @@ struct ProcessFileUseCaseTests {
     // MARK: - Stage changes
 
     @Test func reportsStageChangesInOrder() async throws {
-        let (useCase, _, _, _, _, _) = makeUseCase()
+        let (useCase, _, _, _, _, _) = makeMistralUseCase()
         let recorder: LockedStageRecorder = LockedStageRecorder()
 
         _ = try await useCase.execute(
@@ -182,7 +191,7 @@ struct ProcessFileUseCaseTests {
     }
 
     @Test func reportsUploadProgress() async throws {
-        let (useCase, _, _, _, _, _) = makeUseCase()
+        let (useCase, _, _, _, _, _) = makeMistralUseCase()
         let recorder: LockedProgressRecorder = LockedProgressRecorder()
 
         _ = try await useCase.execute(
@@ -203,7 +212,7 @@ struct ProcessFileUseCaseTests {
             count: 2,
             error: S3Error.requestFailed(statusCode: 503, body: "Temporary")
         )
-        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(storage: storage)
 
         _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/retry.mp3"))
 
@@ -218,7 +227,7 @@ struct ProcessFileUseCaseTests {
             count: 1,
             error: MistralError.requestFailed(statusCode: 503, body: "Temporary")
         )
-        let (useCase, _, _, _, _, _) = makeUseCase(audioTranscriber: audio)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(audioTranscriber: audio)
 
         _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/retry.mp3"))
 
@@ -238,7 +247,7 @@ struct ProcessFileUseCaseTests {
             storage: storage,
             transcribers: [audio, ocr],
             delivery: MockDeliveryGateway(),
-            settings: MockSettingsGateway(),
+            settings: MockSettingsGateway(settings: mistralSettings()),
             retrySleep: { nanoseconds in
                 recorder.append(nanoseconds)
             }
@@ -247,6 +256,67 @@ struct ProcessFileUseCaseTests {
         _ = try await useCase.execute(fileURL: URL(filePath: "/tmp/healthy.mp3"))
 
         #expect(recorder.snapshot().isEmpty)
+    }
+
+    @Test func waitsForProviderBackedFileToHydrateBeforeUpload() async throws {
+        let tempDirectory: URL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("process-file-use-case-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let fileURL: URL = tempDirectory.appendingPathComponent("scan.jpeg", isDirectory: false)
+        try Data().write(to: fileURL)
+
+        let sleepRecorder: LockedRetrySleepRecorder = LockedRetrySleepRecorder()
+        let storage: MockStorageGateway = MockStorageGateway()
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions
+        )
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(settings: mistralSettings()),
+            retrySleep: { nanoseconds in
+                sleepRecorder.append(nanoseconds)
+                try Data([0x01, 0x02, 0x03]).write(to: fileURL, options: .atomic)
+            }
+        )
+
+        _ = try await useCase.execute(fileURL: fileURL)
+
+        #expect(!sleepRecorder.snapshot().isEmpty)
+        #expect(await storage.recordedUploadAttemptCount() == 1)
+    }
+
+    @Test func throwsClearErrorWhenProviderBackedFileStaysEmpty() async throws {
+        let tempDirectory: URL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("process-file-use-case-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let fileURL: URL = tempDirectory.appendingPathComponent("scan.jpeg", isDirectory: false)
+        try Data().write(to: fileURL)
+
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: MockStorageGateway(),
+            transcribers: [
+                MockTranscriptionGateway(supportedExtensions: FileType.audioExtensions),
+                MockTranscriptionGateway(
+                    supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
+                )
+            ],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(settings: mistralSettings()),
+            retrySleep: { _ in }
+        )
+
+        await #expect(throws: ProcessFileError.emptyInputFile("scan.jpeg")) {
+            try await useCase.execute(fileURL: fileURL)
+        }
     }
 
     @Test func retryableUploadFailuresScheduleConfiguredBackoff() async throws {
@@ -266,7 +336,7 @@ struct ProcessFileUseCaseTests {
             storage: storage,
             transcribers: [audio, ocr],
             delivery: MockDeliveryGateway(),
-            settings: MockSettingsGateway(),
+            settings: MockSettingsGateway(settings: mistralSettings()),
             retrySleep: { nanoseconds in
                 recorder.append(nanoseconds)
             }
@@ -283,7 +353,7 @@ struct ProcessFileUseCaseTests {
             count: 3,
             error: S3Error.requestFailed(statusCode: 503, body: "Still failing")
         )
-        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(storage: storage)
 
         await #expect(throws: S3Error.self) {
             try await useCase.execute(fileURL: URL(filePath: "/tmp/retry.mp3"))
@@ -299,7 +369,7 @@ struct ProcessFileUseCaseTests {
             count: 2,
             error: MistralError.requestFailed(statusCode: 500, body: "Still failing")
         )
-        let (useCase, _, _, _, _, _) = makeUseCase(audioTranscriber: audio)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(audioTranscriber: audio)
 
         await #expect(throws: MistralError.self) {
             try await useCase.execute(fileURL: URL(filePath: "/tmp/retry.mp3"))
@@ -310,7 +380,7 @@ struct ProcessFileUseCaseTests {
     @Test func doesNotRetryOnNonRetriableS3RequestFailure() async throws {
         let storage: MockStorageGateway = MockStorageGateway()
         await storage.setUploadError(S3Error.requestFailed(statusCode: 400, body: "Bad request"))
-        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(storage: storage)
 
         await #expect(throws: S3Error.self) {
             try await useCase.execute(fileURL: URL(filePath: "/tmp/test.mp3"))
@@ -329,8 +399,7 @@ struct ProcessFileUseCaseTests {
             storage: MockStorageGateway(),
             transcribers: [localAudio],
             delivery: MockDeliveryGateway(),
-            settings: MockSettingsGateway(settings: AppSettings(audioProviderMode: .localApple)),
-            isLocalModeAvailable: { true }
+            settings: MockSettingsGateway(settings: AppSettings(audioProviderMode: .localApple))
         )
 
         await #expect(throws: LocalProviderError.self) {
@@ -342,7 +411,7 @@ struct ProcessFileUseCaseTests {
     // MARK: - Error cases
 
     @Test func throwsForUnsupportedFileType() async throws {
-        let (useCase, _, _, _, _, _) = makeUseCase()
+        let (useCase, _, _, _, _, _) = makeMistralUseCase()
 
         await #expect(throws: ProcessFileError.self) {
             try await useCase.execute(fileURL: URL(filePath: "/tmp/file.xyz"))
@@ -352,7 +421,7 @@ struct ProcessFileUseCaseTests {
     @Test func propagatesS3UploadError() async throws {
         let storage: MockStorageGateway = MockStorageGateway()
         await storage.setUploadError(S3Error.requestFailed(statusCode: 500, body: "Internal"))
-        let (useCase, _, _, _, _, _) = makeUseCase(storage: storage)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(storage: storage)
 
         await #expect(throws: S3Error.self) {
             try await useCase.execute(fileURL: URL(filePath: "/tmp/test.mp3"))
@@ -364,7 +433,7 @@ struct ProcessFileUseCaseTests {
             supportedExtensions: FileType.audioExtensions
         )
         await audio.setProcessError(MistralError.requestFailed(statusCode: 500, body: "Error"))
-        let (useCase, _, _, _, _, _) = makeUseCase(audioTranscriber: audio)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(audioTranscriber: audio)
 
         await #expect(throws: MistralError.self) {
             try await useCase.execute(fileURL: URL(filePath: "/tmp/test.mp3"))
@@ -377,7 +446,7 @@ struct ProcessFileUseCaseTests {
         )
         await audio.setProcessError(MistralError.requestFailed(statusCode: 500, body: "Error"))
         let delivery: MockDeliveryGateway = MockDeliveryGateway()
-        let (useCase, _, _, _, _, _) = makeUseCase(audioTranscriber: audio, delivery: delivery)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(audioTranscriber: audio, delivery: delivery)
 
         _ = try? await useCase.execute(fileURL: URL(filePath: "/tmp/test.mp3"))
 
@@ -388,7 +457,7 @@ struct ProcessFileUseCaseTests {
         let delivery: MockDeliveryGateway = MockDeliveryGateway(
             deliverWarnings: ["Copied markdown to the clipboard, but saving the file failed."]
         )
-        let (useCase, _, _, _, _, _) = makeUseCase(delivery: delivery)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(delivery: delivery)
 
         let result: TranscriptionResult = try await useCase.execute(
             fileURL: URL(filePath: "/tmp/test.mp3")
@@ -400,7 +469,7 @@ struct ProcessFileUseCaseTests {
     // MARK: - Extension case insensitivity
 
     @Test func handlesUppercaseExtension() async throws {
-        let (useCase, _, _, _, _, _) = makeUseCase()
+        let (useCase, _, _, _, _, _) = makeMistralUseCase()
 
         let result: TranscriptionResult = try await useCase.execute(
             fileURL: URL(filePath: "/tmp/photo.JPEG")
@@ -430,8 +499,7 @@ struct ProcessFileUseCaseTests {
             storage: storage,
             transcribers: [mistralAudio, localAudio],
             delivery: MockDeliveryGateway(),
-            settings: settings,
-            isLocalModeAvailable: { true }
+            settings: settings
         )
 
         let fileURL: URL = URL(filePath: "/tmp/local-source.mp3")
@@ -442,43 +510,6 @@ struct ProcessFileUseCaseTests {
         #expect(await storage.recordedUploadAttemptCount() == 0)
         #expect(await localAudio.recordedProcessedURLs() == [fileURL])
         #expect(await mistralAudio.recordedProcessedURLs().isEmpty)
-    }
-
-    @Test func fallsBackToMistralWhenLocalModeUnavailable() async throws {
-        let storage: MockStorageGateway = MockStorageGateway(
-            uploadResult: URL(string: "https://s3.example.com/presigned")!
-        )
-        let settings: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(audioProviderMode: .localApple)
-        )
-        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.audioExtensions,
-            providerMode: .localApple,
-            sourceKind: .localFile,
-            processResult: "# Local Audio"
-        )
-        let mistralAudio: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.audioExtensions,
-            providerMode: .mistral,
-            sourceKind: .remoteURL,
-            processResult: "# Cloud Audio"
-        )
-        let useCase: ProcessFileUseCase = ProcessFileUseCase(
-            storage: storage,
-            transcribers: [mistralAudio, localAudio],
-            delivery: MockDeliveryGateway(),
-            settings: settings,
-            isLocalModeAvailable: { false }
-        )
-
-        let result: TranscriptionResult = try await useCase.execute(
-            fileURL: URL(filePath: "/tmp/fallback.mp3")
-        )
-
-        #expect(result.markdown == "# Cloud Audio")
-        #expect(await storage.recordedUploadAttemptCount() == 1)
-        #expect(await localAudio.recordedProcessedURLs().isEmpty)
-        #expect(await mistralAudio.recordedProcessedURLs() == [URL(string: "https://s3.example.com/presigned")!])
     }
 
     @Test func usesLocalProviderForConfiguredPDFWithoutUploading() async throws {
@@ -502,8 +533,7 @@ struct ProcessFileUseCaseTests {
             storage: storage,
             transcribers: [mistralOCR, localOCR],
             delivery: MockDeliveryGateway(),
-            settings: settings,
-            isLocalModeAvailable: { true }
+            settings: settings
         )
 
         let fileURL: URL = URL(filePath: "/tmp/local-source.pdf")
@@ -537,8 +567,7 @@ struct ProcessFileUseCaseTests {
             storage: storage,
             transcribers: [mistralOCR, localOCR],
             delivery: MockDeliveryGateway(),
-            settings: settings,
-            isLocalModeAvailable: { true }
+            settings: settings
         )
 
         let fileURL: URL = URL(filePath: "/tmp/local-source.png")

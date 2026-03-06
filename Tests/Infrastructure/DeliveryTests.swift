@@ -132,4 +132,25 @@ struct FileDeliveryTests {
         let files: [String] = try FileManager.default.contentsOfDirectory(atPath: tempDir.path())
         #expect(files == ["scan.md"])
     }
+
+    @Test func deliverUsesConfiguredFileNameTemplate() async throws {
+        let tempDir: URL = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let gateway: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                saveFolderPath: tempDir.path(),
+                outputFileNamePrefix: "notes-",
+                outputFileNameTemplate: "{prefix}{fileType}-{originalFilename}"
+            )
+        )
+        let delivery: FileDelivery = FileDelivery(
+            settingsGateway: gateway,
+            outputFolderGateway: OutputFolderClient()
+        )
+
+        _ = try await delivery.deliver(result: makeResult(fileName: "meeting.mp3"))
+
+        let fileURL: URL = tempDir.appending(path: "notes-audio-meeting.md")
+        #expect(FileManager.default.fileExists(atPath: fileURL.path()))
+    }
 }

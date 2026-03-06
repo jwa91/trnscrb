@@ -9,13 +9,28 @@ extension AppSettings {
             s3Region: s3Region.trimmedCredentialValue,
             s3PathPrefix: s3PathPrefix.trimmedPathPrefix,
             saveFolderPath: saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines),
+            outputFileNamePrefix: outputFileNamePrefix.trimmingCharacters(in: .whitespacesAndNewlines),
+            outputFileNameTemplate: outputFileNameTemplate.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ),
             copyToClipboard: copyToClipboard,
             fileRetentionHours: fileRetentionHours,
             launchAtLogin: launchAtLogin,
             audioProviderMode: audioProviderMode,
+            appleAudioLocaleIdentifier: normalizedAppleAudioLocaleIdentifier,
             pdfProviderMode: pdfProviderMode,
             imageProviderMode: imageProviderMode
         )
+    }
+
+    var normalizedAppleAudioLocaleIdentifier: String {
+        let trimmed: String = appleAudioLocaleIdentifier.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmed.isEmpty else {
+            return AppSettings.defaultAppleAudioLocaleIdentifier
+        }
+        return trimmed
     }
 }
 
