@@ -43,8 +43,12 @@ public struct FileDelivery: DeliveryGateway {
         let folderURL: URL = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
         AppLog.delivery.info("Saving markdown for \(result.sourceFileName, privacy: .public) to \(folderURL.path(), privacy: .public)")
 
-        let baseName: String = (result.sourceFileName as NSString).deletingPathExtension
-        let fileURL: URL = outputFileURL(folder: folderURL, baseName: baseName)
+        let fileName: String = OutputFileNameFormatter.fileName(
+            sourceFileName: result.sourceFileName,
+            fileType: result.sourceFileType,
+            settings: settings.normalizedForUse
+        )
+        let fileURL: URL = outputFileURL(folder: folderURL, fileName: fileName)
 
         try result.markdown.write(to: fileURL, atomically: true, encoding: .utf8)
         AppLog.delivery.info("Saved markdown to \(fileURL.path(), privacy: .public)")
@@ -52,12 +56,15 @@ public struct FileDelivery: DeliveryGateway {
     }
 
     /// Determines the output file URL, appending a timestamp if the file already exists.
-    private func outputFileURL(folder: URL, baseName: String) -> URL {
-        let primary: URL = folder.appending(path: "\(baseName).md")
+    private func outputFileURL(folder: URL, fileName: String) -> URL {
+        let primary: URL = folder.appending(path: fileName)
         guard FileManager.default.fileExists(atPath: primary.path()) else {
             return primary
         }
+        let baseName: String = (fileName as NSString).deletingPathExtension
         let formatter: DateFormatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .autoupdatingCurrent
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
         let timestamp: String = formatter.string(from: Date())
 

@@ -51,8 +51,6 @@ public final class JobListViewModel: ObservableObject {
     private let notificationUseCase: NotifyUserUseCase?
     /// Opens the configured output folder in Finder.
     private let openFolder: @Sendable (URL) -> Void
-    /// Evaluates whether local Apple mode is available on this runtime.
-    private let isLocalModeAvailable: @Sendable () -> Bool
     /// Active processing tasks by job ID so work can be cancelled safely.
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     /// Jobs queued while offline. They resume automatically when connectivity returns.
@@ -83,12 +81,6 @@ public final class JobListViewModel: ObservableObject {
         copyFeedbackDuration: Duration = .seconds(1.5),
         openFolder: @escaping @Sendable (URL) -> Void = { url in
             NSWorkspace.shared.open(url)
-        },
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
         }
     ) {
         self.init(
@@ -98,7 +90,6 @@ public final class JobListViewModel: ObservableObject {
             notificationUseCase: notificationUseCase,
             copyFeedbackDuration: copyFeedbackDuration,
             openFolder: openFolder,
-            isLocalModeAvailable: isLocalModeAvailable,
             shouldStartNetworkMonitoring: true
         )
     }
@@ -112,12 +103,6 @@ public final class JobListViewModel: ObservableObject {
         openFolder: @escaping @Sendable (URL) -> Void = { url in
             NSWorkspace.shared.open(url)
         },
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        },
         shouldStartNetworkMonitoring: Bool
     ) {
         self.useCase = useCase
@@ -126,7 +111,6 @@ public final class JobListViewModel: ObservableObject {
         self.notificationUseCase = notificationUseCase
         self.copyFeedbackDuration = copyFeedbackDuration
         self.openFolder = openFolder
-        self.isLocalModeAvailable = isLocalModeAvailable
         if shouldStartNetworkMonitoring {
             startNetworkMonitoring()
         }
@@ -170,6 +154,11 @@ public final class JobListViewModel: ObservableObject {
             }
     }
 
+    /// Jobs in the same order they are rendered in the menu panel.
+    public var visibleJobs: [Job] {
+        activeJobs + completedJobs
+    }
+
     /// Selects a job so the UI can reveal it after keyboard actions or notification re-entry.
     public func selectJob(id: UUID?) {
         guard let id else {
@@ -178,6 +167,36 @@ public final class JobListViewModel: ObservableObject {
         }
         guard jobs.contains(where: { $0.id == id }) else { return }
         selectedJobID = id
+    }
+
+    /// Selects the next visible job in keyboard navigation order.
+    public func selectNextVisibleJob() {
+        let orderedIDs: [UUID] = visibleJobs.map(\.id)
+        guard !orderedIDs.isEmpty else {
+            selectedJobID = nil
+            return
+        }
+        guard let selectedJobID,
+              let selectedIndex: Int = orderedIDs.firstIndex(of: selectedJobID) else {
+            self.selectedJobID = orderedIDs.first
+            return
+        }
+        self.selectedJobID = orderedIDs[min(selectedIndex + 1, orderedIDs.count - 1)]
+    }
+
+    /// Selects the previous visible job in keyboard navigation order.
+    public func selectPreviousVisibleJob() {
+        let orderedIDs: [UUID] = visibleJobs.map(\.id)
+        guard !orderedIDs.isEmpty else {
+            selectedJobID = nil
+            return
+        }
+        guard let selectedJobID,
+              let selectedIndex: Int = orderedIDs.firstIndex(of: selectedJobID) else {
+            self.selectedJobID = orderedIDs.last
+            return
+        }
+        self.selectedJobID = orderedIDs[max(selectedIndex - 1, 0)]
     }
 
     /// Validates and queues files for processing.
@@ -260,6 +279,17 @@ public final class JobListViewModel: ObservableObject {
         jobs = jobs.filter { $0.id != jobID }
     }
 
+    /// Removes the selected job or falls back to the default Delete target.
+    public func removeSelectedOrMostRecentJob() {
+        if let selectedJobID {
+            removeJob(id: selectedJobID)
+            return
+        }
+        if let fallbackID: UUID = completedJobs.first?.id ?? activeJobs.first?.id {
+            removeJob(id: fallbackID)
+        }
+    }
+
     /// Removes all completed and failed jobs.
     public func clearCompleted() {
         let clearedIDs: Set<UUID> = Set(completedJobs.map(\.id))
@@ -284,7 +314,7 @@ public final class JobListViewModel: ObservableObject {
         configurationError = nil
     }
 
-    /// Consumes the one-shot request to route the popover into settings.
+    /// Consumes the one-shot request to route the menu panel into settings.
     public func consumeSettingsNavigation() {
         shouldOpenSettings = false
     }
@@ -334,6 +364,13 @@ public final class JobListViewModel: ObservableObject {
     public func revealInFinder(jobID: UUID) {
         guard let fileURL: URL = jobs.first(where: { $0.id == jobID })?.savedFileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    /// Opens the saved markdown file for a completed job in the default app.
+    /// - Parameter jobID: ID of the completed job.
+    public func openSavedFile(jobID: UUID) {
+        guard let fileURL: URL = jobs.first(where: { $0.id == jobID })?.savedFileURL else { return }
+        NSWorkspace.shared.open(fileURL)
     }
 
     /// Opens the configured markdown output folder in Finder.
@@ -386,10 +423,7 @@ public final class JobListViewModel: ObservableObject {
     }
 
     private func requiresCloudCredentials(for settings: AppSettings) -> Bool {
-        if isLocalModeAvailable() {
-            return settings.requiresCloudCredentials
-        }
-        return true
+        settings.requiresCloudCredentials
     }
 
     /// Processes a single job through the pipeline.

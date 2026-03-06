@@ -2,40 +2,30 @@ import Foundation
 import Speech
 
 /// Transcribes local audio files using Apple's on-device speech stack.
-///
-/// This provider is intentionally gated to macOS 26+ so local mode remains
-/// a Tahoe-only feature in the app.
 public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
     public let providerMode: ProviderMode = .localApple
     public let sourceKind: TranscriptionSourceKind = .localFile
     public var supportedExtensions: Set<String> { FileType.audioExtensions }
 
-    private let locale: Locale
-    private let isLocalModeAvailable: @Sendable () -> Bool
+    private let settingsGateway: (any SettingsGateway)?
+    private let fallbackLocaleIdentifier: String
 
     public init(
-        locale: Locale = Locale(identifier: "en-US"),
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        }
+        settingsGateway: (any SettingsGateway)? = nil,
+        locale: Locale = Locale(identifier: AppSettings.defaultAppleAudioLocaleIdentifier)
     ) {
-        self.locale = locale
-        self.isLocalModeAvailable = isLocalModeAvailable
+        self.settingsGateway = settingsGateway
+        self.fallbackLocaleIdentifier = locale.identifier
     }
 
     public func process(sourceURL: URL) async throws -> String {
         guard sourceURL.isFileURL else {
             throw LocalProviderError.localFileRequired
         }
-        guard isLocalModeAvailable() else {
-            throw LocalProviderError.localModeUnavailable
-        }
 
         try await ensureSpeechAuthorization()
 
+        let locale: Locale = await loadRecognitionLocale()
         guard let recognizer: SFSpeechRecognizer = SFSpeechRecognizer(locale: locale) else {
             throw LocalProviderError.transcriptionFailed("Speech recognizer unavailable for locale \(locale.identifier).")
         }
@@ -54,6 +44,18 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
             throw LocalProviderError.noRecognizedContent
         }
         return normalizedTranscript
+    }
+
+    private func loadRecognitionLocale() async -> Locale {
+        guard let settingsGateway else {
+            return Locale(identifier: fallbackLocaleIdentifier)
+        }
+        do {
+            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+            return Locale(identifier: settings.appleAudioLocaleIdentifier)
+        } catch {
+            return Locale(identifier: fallbackLocaleIdentifier)
+        }
     }
 
     private func ensureSpeechAuthorization() async throws {

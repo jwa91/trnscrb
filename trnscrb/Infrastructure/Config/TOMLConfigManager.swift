@@ -12,6 +12,18 @@ public enum ConfigError: Error, Sendable {
 /// defaulting to `~/.config/trnscrb/config.toml`.
 /// Secrets are delegated to the injected `KeychainStore`.
 public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
+    static var defaultConfigDirectoryURL: URL {
+        if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] {
+            return URL(filePath: xdg).appending(path: "trnscrb")
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".config/trnscrb")
+    }
+
+    static var defaultConfigFileURL: URL {
+        defaultConfigDirectoryURL.appending(path: "config.toml")
+    }
+
     /// Directory containing `config.toml`.
     private let configDirectory: URL
     /// Secret store wrapper for secret storage.
@@ -37,12 +49,7 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
         if let configDirectory {
             self.configDirectory = configDirectory
         } else {
-            if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] {
-                self.configDirectory = URL(filePath: xdg).appending(path: "trnscrb")
-            } else {
-                self.configDirectory = FileManager.default.homeDirectoryForCurrentUser
-                    .appending(path: ".config/trnscrb")
-            }
+            self.configDirectory = Self.defaultConfigDirectoryURL
         }
         self.secretStore = secretStore
     }
@@ -112,10 +119,13 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             "s3_region = \(quoted(settings.s3Region))",
             "s3_path_prefix = \(quoted(settings.s3PathPrefix))",
             "save_folder_path = \(quoted(settings.saveFolderPath))",
+            "output_file_name_prefix = \(quoted(settings.outputFileNamePrefix))",
+            "output_file_name_template = \(quoted(settings.outputFileNameTemplate))",
             "copy_to_clipboard = \(settings.copyToClipboard)",
             "file_retention_hours = \(settings.fileRetentionHours)",
             "launch_at_login = \(settings.launchAtLogin)",
             "audio_provider_mode = \(quoted(settings.audioProviderMode.rawValue))",
+            "apple_audio_locale_identifier = \(quoted(settings.appleAudioLocaleIdentifier))",
             "pdf_provider_mode = \(quoted(settings.pdfProviderMode.rawValue))",
             "image_provider_mode = \(quoted(settings.imageProviderMode.rawValue))"
         ]
@@ -148,6 +158,8 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
             s3Region: dict["s3_region"] ?? defaults.s3Region,
             s3PathPrefix: dict["s3_path_prefix"] ?? defaults.s3PathPrefix,
             saveFolderPath: dict["save_folder_path"] ?? defaults.saveFolderPath,
+            outputFileNamePrefix: dict["output_file_name_prefix"] ?? defaults.outputFileNamePrefix,
+            outputFileNameTemplate: dict["output_file_name_template"] ?? defaults.outputFileNameTemplate,
             copyToClipboard: try parseBool(
                 dict["copy_to_clipboard"],
                 key: "copy_to_clipboard",
@@ -168,6 +180,8 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
                 key: "audio_provider_mode",
                 defaultValue: defaults.audioProviderMode
             ),
+            appleAudioLocaleIdentifier: dict["apple_audio_locale_identifier"]
+                ?? defaults.appleAudioLocaleIdentifier,
             pdfProviderMode: try parseProviderMode(
                 dict["pdf_provider_mode"],
                 key: "pdf_provider_mode",

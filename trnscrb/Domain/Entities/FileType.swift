@@ -36,4 +36,16 @@ public enum FileType: Sendable, Equatable {
         if imageExtensions.contains(lowered) { return .image }
         return nil
     }
+
+    /// Stable lowercase token used in persisted filenames.
+    public var fileNameToken: String {
+        switch self {
+        case .audio:
+            return "audio"
+        case .pdf:
+            return "pdf"
+        case .image:
+            return "image"
+        }
+    }
 }

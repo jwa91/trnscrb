@@ -1,35 +1,25 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Root view displayed inside the menu bar popover.
+/// Root view displayed inside the attached menu bar panel.
 ///
-/// Shows the drop zone when idle, job list when processing, and settings
-/// panel when toggled. The entire view is always a valid drop target.
-struct PopoverView: View {
-    /// Controls whether the settings panel is visible.
-    @State private var showSettings: Bool = false
-    /// View model for the settings panel.
-    @ObservedObject var settingsViewModel: SettingsViewModel
+/// Shows the drop zone when idle and the job list while processing.
+/// The entire view is always a valid drop target.
+struct MenuPanelView: View {
+    /// Tracks whether a file picker panel is currently open.
+    @ObservedObject var filePickerPresentationModel: FilePickerPresentationModel
     /// View model for the job queue and processing.
     @ObservedObject var jobListViewModel: JobListViewModel
-    /// Called when the popover should close.
+    /// Opens the dedicated settings window.
+    var onOpenSettings: () -> Void
+    /// Called when the panel should close.
     var onClose: () -> Void
 
     var body: some View {
-        Group {
-            if showSettings {
-                SettingsView(
-                    viewModel: settingsViewModel,
-                    onBack: { showSettings = false },
-                    onClose: onClose
-                )
-            } else {
-                mainContent
-            }
-        }
+        mainContent
         .onChange(of: jobListViewModel.shouldOpenSettings) { _, shouldOpenSettings in
             guard shouldOpenSettings else { return }
-            showSettings = true
+            onOpenSettings()
             jobListViewModel.consumeSettingsNavigation()
         }
     }
@@ -74,11 +64,17 @@ struct PopoverView: View {
 
                 switch layout.dropZoneMode {
                 case .full:
-                    DropZoneView(onDrop: jobListViewModel.processFiles)
+                    DropZoneView(
+                        onDrop: jobListViewModel.processFiles,
+                        onSelectFiles: openFilePicker,
+                        isFilePickerPresented: filePickerPresentationModel.isPresenting
+                    )
                 case .compact:
                     DropZoneView(
                         onDrop: jobListViewModel.processFiles,
-                        mode: .compact
+                        onSelectFiles: openFilePicker,
+                        mode: .compact,
+                        isFilePickerPresented: filePickerPresentationModel.isPresenting
                     )
                 case .hidden:
                     EmptyView()
@@ -95,8 +91,8 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(
-            width: PopoverDesign.popoverSize.width,
-            height: PopoverDesign.popoverSize.height
+            width: PopoverDesign.panelSize.width,
+            height: PopoverDesign.panelSize.height
         )
         .background(PopoverDesign.surfaceBackground)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -105,29 +101,23 @@ struct PopoverView: View {
     }
 
     private var header: some View {
-        PopoverChromeBar {
+        PopoverChromeBar(showsDivider: false) {
             AppBrandView()
         } trailing: {
-            HStack(spacing: 6) {
-                ChromeIconButton(
-                    systemName: "folder",
-                    title: "Open Save Folder",
-                    action: {
-                        Task {
-                            await jobListViewModel.openConfiguredSaveFolder()
-                        }
-                    }
-                )
-                ChromeIconButton(
-                    systemName: "gearshape",
-                    title: "Settings",
-                    action: { showSettings = true }
-                )
-                ChromeIconButton(
-                    systemName: "xmark",
-                    title: "Close",
-                    action: onClose
-                )
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 6) {
+                    ChromeIconButton(
+                        systemName: "gearshape",
+                        title: "Settings",
+                        action: onOpenSettings
+                    )
+                    ChromeIconButton(
+                        systemName: "xmark",
+                        title: "Close",
+                        action: onClose,
+                        keyboardShortcut: KeyboardShortcut("w", modifiers: .command)
+                    )
+                }
             }
         }
     }
@@ -173,48 +163,20 @@ struct PopoverView: View {
         )
     }
 
-    /// Handles drops on the entire popover surface.
+    /// Handles drops on the entire panel surface.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        let collectedURLs: LockedURLStore = LockedURLStore()
-        let group: DispatchGroup = DispatchGroup()
-
-        for provider in providers {
-            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
-                continue
-            }
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
-                defer { group.leave() }
-                if let data = item as? Data,
-                   let url: URL = URL(dataRepresentation: data, relativeTo: nil) {
-                    collectedURLs.append(url)
-                }
-            }
-        }
-
-        group.notify(queue: .main) {
-            let urls: [URL] = collectedURLs.snapshot()
+        guard !filePickerPresentationModel.isPresenting else { return false }
+        SupportedFileImport.loadFileURLs(from: providers) { urls in
             if !urls.isEmpty {
                 jobListViewModel.processFiles(urls)
             }
         }
         return true
     }
-}
-/// Thread-safe URL collector for async item-provider callbacks.
-private final class LockedURLStore: @unchecked Sendable {
-    private let lock: NSLock = NSLock()
-    private var values: [URL] = []
 
-    func append(_ url: URL) {
-        lock.lock()
-        defer { lock.unlock() }
-        values.append(url)
-    }
-
-    func snapshot() -> [URL] {
-        lock.lock()
-        defer { lock.unlock() }
-        return values
+    private func openFilePicker() {
+        let urls: [URL] = filePickerPresentationModel.pickFiles()
+        guard !urls.isEmpty else { return }
+        jobListViewModel.processFiles(urls)
     }
 }

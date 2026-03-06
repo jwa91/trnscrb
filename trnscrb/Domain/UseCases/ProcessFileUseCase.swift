@@ -4,6 +4,8 @@ import Foundation
 public enum ProcessFileError: Error, Sendable, Equatable {
     /// The file extension is not supported by any provider.
     case unsupportedFileType(String)
+    /// The input file remained empty while waiting for a provider-backed export.
+    case emptyInputFile(String)
 }
 
 extension ProcessFileError: LocalizedError {
@@ -11,6 +13,8 @@ extension ProcessFileError: LocalizedError {
         switch self {
         case .unsupportedFileType(let ext):
             return "Unsupported file type: .\(ext)"
+        case .emptyInputFile(let fileName):
+            return "Input file is empty or still being prepared: \(fileName)"
         }
     }
 }
@@ -40,8 +44,6 @@ public final class ProcessFileUseCase: Sendable {
     private let delivery: any DeliveryGateway
     /// Settings for S3 path prefix and other config.
     private let settings: any SettingsGateway
-    /// Evaluates whether local Apple mode is available at runtime.
-    private let isLocalModeAvailable: @Sendable () -> Bool
     /// Injectable sleep used only for retry backoff scheduling.
     private let retrySleep: @Sendable (UInt64) async throws -> Void
 
@@ -53,12 +55,6 @@ public final class ProcessFileUseCase: Sendable {
         settings: any SettingsGateway,
         retrySleep: @escaping @Sendable (UInt64) async throws -> Void = { nanoseconds in
             try await Task.sleep(nanoseconds: nanoseconds)
-        },
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
         }
     ) {
         self.storage = storage
@@ -66,7 +62,6 @@ public final class ProcessFileUseCase: Sendable {
         self.delivery = delivery
         self.settings = settings
         self.retrySleep = retrySleep
-        self.isLocalModeAvailable = isLocalModeAvailable
     }
 
     /// Processes a dropped file end-to-end.
@@ -80,6 +75,8 @@ public final class ProcessFileUseCase: Sendable {
         onStageChange: (@Sendable (ProcessingStage) -> Void)? = nil,
         onUploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> TranscriptionResult {
+        try await waitForInputFileIfNeeded(fileURL)
+
         let ext: String = fileURL.pathExtension.lowercased()
         AppLog.pipeline.info("Starting process for \(fileURL.lastPathComponent, privacy: .public)")
 
@@ -95,13 +92,11 @@ public final class ProcessFileUseCase: Sendable {
                 fileType: fileType,
                 fileExtension: ext,
                 settings: appSettings,
-                transcribers: transcribers,
-                isLocalModeAvailable: isLocalModeAvailable()
+                transcribers: transcribers
             )
         } catch is TranscriptionRoutingError {
             throw ProcessFileError.unsupportedFileType(ext)
         }
-
         let sourceURL: URL
         let presignedURL: URL?
         switch route.transcriber.sourceKind {
@@ -165,6 +160,34 @@ public final class ProcessFileUseCase: Sendable {
             savedFileURL: deliveryReport.savedFileURL,
             presignedSourceURL: presignedURL
         )
+    }
+
+    private func waitForInputFileIfNeeded(_ fileURL: URL) async throws {
+        guard fileURL.isFileURL else { return }
+        guard let initialFileSize = fileSize(of: fileURL) else { return }
+        guard initialFileSize == 0 else { return }
+
+        let waitSchedule: [UInt64] = [
+            50_000_000,
+            100_000_000,
+            150_000_000,
+            250_000_000,
+            400_000_000,
+            600_000_000,
+            900_000_000
+        ]
+
+        var elapsedNanoseconds: UInt64 = 0
+        for delay in waitSchedule {
+            try await retrySleep(delay)
+            elapsedNanoseconds += delay
+
+            if let currentFileSize = fileSize(of: fileURL), currentFileSize > 0 {
+                return
+            }
+        }
+
+        throw ProcessFileError.emptyInputFile(fileURL.lastPathComponent)
     }
 
     /// Retries an async operation with exponential backoff.
@@ -239,5 +262,18 @@ public final class ProcessFileUseCase: Sendable {
         }
 
         return false
+    }
+
+    private func fileSize(of url: URL) -> Int? {
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try FileManager.default.attributesOfItem(atPath: url.path())
+        } catch {
+            return nil
+        }
+        if let fileSize = attributes[.size] as? NSNumber {
+            return fileSize.intValue
+        }
+        return attributes[.size] as? Int
     }
 }

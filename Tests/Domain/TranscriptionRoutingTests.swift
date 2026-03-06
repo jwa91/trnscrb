@@ -20,38 +20,12 @@ struct TranscriptionRoutingTests {
             fileType: .audio,
             fileExtension: "mp3",
             settings: AppSettings(audioProviderMode: .localApple),
-            transcribers: [mistralAudio, localAudio],
-            isLocalModeAvailable: true
+            transcribers: [mistralAudio, localAudio]
         )
 
         #expect(route.effectiveMode == .localApple)
         #expect(route.transcriber.providerMode == .localApple)
         #expect(route.transcriber.sourceKind == .localFile)
-    }
-
-    @Test func fallsBackToMistralWhenLocalModeIsUnavailable() throws {
-        let localOCR: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions),
-            providerMode: .localApple,
-            sourceKind: .localFile
-        )
-        let mistralOCR: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions),
-            providerMode: .mistral,
-            sourceKind: .remoteURL
-        )
-
-        let route: TranscriptionRoute = try TranscriptionRouting.resolve(
-            fileType: .pdf,
-            fileExtension: "pdf",
-            settings: AppSettings(pdfProviderMode: .localApple),
-            transcribers: [localOCR, mistralOCR],
-            isLocalModeAvailable: false
-        )
-
-        #expect(route.effectiveMode == .mistral)
-        #expect(route.transcriber.providerMode == .mistral)
-        #expect(route.transcriber.sourceKind == .remoteURL)
     }
 
     @Test func throwsWhenNoProviderMatchesEffectiveModeAndExtension() {
@@ -66,8 +40,7 @@ struct TranscriptionRoutingTests {
                 fileType: .image,
                 fileExtension: "png",
                 settings: AppSettings(imageProviderMode: .localApple),
-                transcribers: [mistralAudio],
-                isLocalModeAvailable: true
+                transcribers: [mistralAudio]
             )
         }
     }

@@ -4,8 +4,6 @@ import Foundation
 public enum LocalProviderError: Error, Sendable, Equatable {
     /// Local providers can only process local file URLs.
     case localFileRequired
-    /// Local mode is not available on this macOS version.
-    case localModeUnavailable
     /// The input file could not be read.
     case unreadableInput(String)
     /// No text was recognized from the input.
@@ -23,8 +21,6 @@ extension LocalProviderError: LocalizedError {
         switch self {
         case .localFileRequired:
             return "Local provider requires a local file URL."
-        case .localModeUnavailable:
-            return "Local Apple mode requires macOS 26 or newer."
         case .unreadableInput(let details):
             return details
         case .noRecognizedContent:
