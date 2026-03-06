@@ -254,11 +254,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 origin: .zero,
                 size: SettingsWindowDesign.defaultSize
             ),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Settings"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.toolbarStyle = .unifiedCompact
         window.contentViewController = NSHostingController(rootView: rootView)
         window.minSize = SettingsWindowDesign.minSize
         window.setFrameAutosaveName("trnscrb-settings")
