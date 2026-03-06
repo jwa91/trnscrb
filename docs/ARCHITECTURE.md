@@ -20,9 +20,9 @@ graph TB
     end
 
     subgraph Presentation["Presentation — SwiftUI"]
-        Popover["PopoverView, DropZoneView,<br/>JobListView, JobRowView"]
-        Settings["SettingsView, SettingsSectionCard"]
-        Common["AppLogo, PopoverChromeBar,<br/>ChromeIconButton, SupportedFilePicker"]
+        Panel["MenuPanelView, DropZoneView,<br/>JobListView, JobRowView"]
+        Settings["SettingsView"]
+        Common["AppLogo, PopoverChromeBar,<br/>ChromeIconButton, SupportedFilePicker,<br/>SupportedFileImport"]
     end
 
     subgraph Infrastructure["Infrastructure"]
@@ -37,7 +37,8 @@ graph TB
     end
 
     subgraph App["Composition Root"]
-        AppDelegate["AppDelegate<br/><i>NSStatusItem, NSPopover, DI wiring</i>"]
+        AppDelegate["AppDelegate<br/><i>NSStatusItem, menu panel host, DI wiring</i>"]
+        PanelHost["MenuBarPanelController<br/><i>NSPanel host + dismissal</i>"]
         StatusBar["StatusBarDropView<br/><i>Drag-and-drop on menu bar icon</i>"]
     end
 
@@ -48,6 +49,7 @@ graph TB
     App -->|wires| Adapters
     App -->|wires| Infrastructure
     App -->|wires| Presentation
+    AppDelegate --> PanelHost
 
     style Domain fill:#d3f9d8,stroke:#22c55e
     style Adapters fill:#e5dbff,stroke:#8b5cf6
@@ -77,12 +79,12 @@ sequenceDiagram
         R->>S: Upload file to S3 bucket
         S-->>R: Presigned URL
         R->>T: MistralAudioProvider / MistralOCRProvider
-    else Local Apple mode (macOS 26+)
+    else Local Apple mode
         R->>T: AppleSpeechAnalyzerProvider / AppleDocumentOCRProvider
     end
     T-->>VM: Markdown result
     VM->>D: Deliver markdown
-    D-->>U: Clipboard copy + .md file save
+    D-->>U: Configured outputs (.md file save, optional clipboard copy)
     D-->>U: macOS notification
 ```
 
@@ -92,16 +94,21 @@ sequenceDiagram
 trnscrb/
 ├── App/                              # Composition root
 │   ├── TrnscrbrApp.swift             # @main SwiftUI entry point
-│   ├── AppDelegate.swift             # NSStatusItem, NSPopover, DI wiring
+│   ├── AppDelegate.swift             # NSStatusItem, menu panel, DI wiring
+│   ├── MenuBarPanelController.swift  # Attached panel lifecycle + dismissal
+│   ├── MenuBarPanelLayout.swift      # Screen-aware panel positioning
+│   ├── MenuBarPanelWindow.swift      # Borderless NSPanel shell
+│   ├── RetentionCleanupCoordinator.swift # Schedules periodic cleanup runs
 │   └── StatusBarDropView.swift       # NSView drag-and-drop on menu bar icon
 ├── Domain/                           # Pure Swift — no framework imports
 │   ├── Entities/
-│   │   ├── Job.swift                 # State machine: uploading → processing → done/error
 │   │   ├── AppSettings.swift         # User-configurable settings model
+│   │   ├── DeliveryReport.swift      # Result of clipboard/file delivery
 │   │   ├── FileType.swift            # Audio/PDF/image routing + extension sets
+│   │   ├── Job.swift                 # State machine: uploading → processing → done/error
+│   │   ├── OutputFileNameFormatter.swift # Resolves markdown output filenames
 │   │   ├── ProviderMode.swift        # Mistral vs Local Apple per media type
-│   │   ├── TranscriptionResult.swift # Markdown output from processing
-│   │   └── DeliveryReport.swift      # Result of clipboard/file delivery
+│   │   └── TranscriptionResult.swift # Markdown output from processing
 │   ├── UseCases/
 │   │   ├── ProcessFileUseCase.swift  # Orchestrates upload → process → deliver
 │   │   ├── TranscriptionRouting.swift # Resolves provider by file type + mode
@@ -149,26 +156,28 @@ trnscrb/
 │   ├── Connectivity/
 │   │   └── ConnectivityClient.swift  # NWPathMonitor network status
 │   └── Logging/
-│       └── AppLog.swift              # Unified os.Logger wrapper
+│       ├── AppLog.swift              # Unified os.Logger wrapper
+│       └── LogRedaction.swift        # Centralized log redaction helpers
 └── Presentation/                     # SwiftUI views + ViewModels
     ├── ViewModels/
+    │   ├── FilePickerPresentationModel.swift # Tracks NSOpenPanel presentation
     │   ├── JobListViewModel.swift    # Job queue, processing, state management
     │   └── SettingsViewModel.swift   # Settings form binding + validation
     ├── Popover/
-    │   ├── PopoverView.swift         # Root popover container
-    │   ├── PopoverContentLayout.swift # Layout logic for popover content
+    │   ├── MenuPanelView.swift       # Root menu panel content
+    │   ├── PopoverContentLayout.swift # Layout logic for panel content
     │   ├── DropZoneView.swift        # Drag-and-drop target + file picker
     │   ├── JobListView.swift         # Scrollable list of active/completed jobs
     │   ├── JobRowView.swift          # Single job row with status + actions
     │   └── JobRowPresentation.swift  # Row display logic (icons, colors, labels)
     ├── Settings/
-    │   ├── SettingsView.swift        # Settings panel in popover
-    │   └── SettingsSectionCard.swift  # Grouped settings card component
+    │   └── SettingsView.swift        # Dedicated settings window content
     └── Common/
         ├── AppLogo.swift             # Menu bar icon (embedded SVG)
         ├── PopoverDesign.swift       # Shared layout constants
         ├── PopoverChromeBar.swift    # Top bar with branding + controls
         ├── ChromeIconButton.swift    # Icon button for chrome bar
+        ├── SupportedFileImport.swift # Pasteboard and drag import helpers
         ├── SupportedFilePicker.swift # NSOpenPanel wrapper for supported types
         └── PointingHandOnHoverModifier.swift # Cursor style modifier
 ```
@@ -177,7 +186,7 @@ trnscrb/
 
 **Gateway protocols are owned by the domain.** All 8 gateway protocols are defined in `Domain/Gateways/`. Infrastructure code imports and conforms to them. This is the dependency inversion that makes the architecture work — the domain never knows about S3, Mistral, or the file system.
 
-**Per-media provider routing.** `TranscriptionRouting` resolves the correct provider based on `(FileType, ProviderMode, OS version)`. Each media type (audio, PDF, image) has an independent provider mode. Adding a new provider is additive: implement `TranscriptionGateway`, register it in routing.
+**Per-media provider routing.** `TranscriptionRouting` resolves the correct provider based on `(FileType, ProviderMode)`. Each media type (audio, PDF, image) has an independent provider mode. Adding a new provider is additive: implement `TranscriptionGateway`, register it in routing.
 
 **CompositeDelivery combines output channels.** Clipboard and file delivery are independent implementations of `DeliveryGateway`. `CompositeDelivery` wraps both so the use case layer doesn't need to know which outputs are enabled.
 

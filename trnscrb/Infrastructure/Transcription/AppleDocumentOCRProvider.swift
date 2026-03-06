@@ -5,33 +5,18 @@ import PDFKit
 import Vision
 
 /// Performs local OCR for PDFs and images using Apple frameworks.
-///
-/// This provider is gated to macOS 26+ so local mode remains Tahoe-only.
 public struct AppleDocumentOCRProvider: TranscriptionGateway {
     public let providerMode: ProviderMode = .localApple
     public let sourceKind: TranscriptionSourceKind = .localFile
     public var supportedExtensions: Set<String> {
         FileType.pdfExtensions.union(FileType.imageExtensions)
     }
-    private let isLocalModeAvailable: @Sendable () -> Bool
 
-    public init(
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        }
-    ) {
-        self.isLocalModeAvailable = isLocalModeAvailable
-    }
+    public init() {}
 
     public func process(sourceURL: URL) async throws -> String {
         guard sourceURL.isFileURL else {
             throw LocalProviderError.localFileRequired
-        }
-        guard isLocalModeAvailable() else {
-            throw LocalProviderError.localModeUnavailable
         }
 
         let ext: String = sourceURL.pathExtension.lowercased()

@@ -44,8 +44,6 @@ public final class ProcessFileUseCase: Sendable {
     private let delivery: any DeliveryGateway
     /// Settings for S3 path prefix and other config.
     private let settings: any SettingsGateway
-    /// Evaluates whether local Apple mode is available at runtime.
-    private let isLocalModeAvailable: @Sendable () -> Bool
     /// Injectable sleep used only for retry backoff scheduling.
     private let retrySleep: @Sendable (UInt64) async throws -> Void
 
@@ -57,12 +55,6 @@ public final class ProcessFileUseCase: Sendable {
         settings: any SettingsGateway,
         retrySleep: @escaping @Sendable (UInt64) async throws -> Void = { nanoseconds in
             try await Task.sleep(nanoseconds: nanoseconds)
-        },
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
         }
     ) {
         self.storage = storage
@@ -70,7 +62,6 @@ public final class ProcessFileUseCase: Sendable {
         self.delivery = delivery
         self.settings = settings
         self.retrySleep = retrySleep
-        self.isLocalModeAvailable = isLocalModeAvailable
     }
 
     /// Processes a dropped file end-to-end.
@@ -101,8 +92,7 @@ public final class ProcessFileUseCase: Sendable {
                 fileType: fileType,
                 fileExtension: ext,
                 settings: appSettings,
-                transcribers: transcribers,
-                isLocalModeAvailable: isLocalModeAvailable()
+                transcribers: transcribers
             )
         } catch is TranscriptionRoutingError {
             throw ProcessFileError.unsupportedFileType(ext)

@@ -22,14 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var retentionTimer: Timer?
     /// Prevents retention cleanup from overlapping across timer ticks.
     private let retentionCleanupCoordinator: RetentionCleanupCoordinator = RetentionCleanupCoordinator()
-    /// Evaluates whether local Apple mode is available on this runtime.
-    private let isLocalModeAvailable: @Sendable () -> Bool = {
-        if #available(macOS 26, *) {
-            return true
-        }
-        return false
-    }
-
     private lazy var settingsGateway: any SettingsGateway = {
         TOMLConfigManager(keychainStore: KeychainStore())
     }()
@@ -42,8 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsGateway: settingsGateway
     )
     private lazy var localAudioProvider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider(
-        settingsGateway: settingsGateway,
-        isLocalModeAvailable: isLocalModeAvailable
+        settingsGateway: settingsGateway
     )
     private lazy var localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
     private lazy var compositeDelivery: CompositeDelivery = CompositeDelivery(
@@ -72,8 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         storage: s3Client,
         transcribers: [audioProvider, ocrProvider, localAudioProvider, localDocumentProvider],
         delivery: compositeDelivery,
-        settings: settingsGateway,
-        isLocalModeAvailable: isLocalModeAvailable
+        settings: settingsGateway
     )
     private lazy var cleanupUseCase: CleanupRetentionUseCase = CleanupRetentionUseCase(
         storage: s3Client,
@@ -83,15 +73,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         gateway: settingsGateway,
         connectivityUseCase: connectivityUseCase,
         outputFolderGateway: outputFolderClient,
-        saveSettingsUseCase: saveSettingsUseCase,
-        isLocalAppleModeAvailable: isLocalModeAvailable
+        saveSettingsUseCase: saveSettingsUseCase
     )
     private lazy var jobListViewModel: JobListViewModel = JobListViewModel(
         useCase: processFileUseCase,
         settingsGateway: settingsGateway,
         outputFolderGateway: outputFolderClient,
-        notificationUseCase: notificationUseCase,
-        isLocalModeAvailable: isLocalModeAvailable
+        notificationUseCase: notificationUseCase
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {

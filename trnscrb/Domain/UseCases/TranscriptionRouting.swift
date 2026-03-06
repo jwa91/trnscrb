@@ -21,22 +21,16 @@ public struct TranscriptionRoute: Sendable {
     public let effectiveMode: ProviderMode
 }
 
-/// Resolves a provider based on file type, user mode preference, and OS support.
+/// Resolves a provider based on file type and user mode preference.
 public enum TranscriptionRouting {
     /// Picks a provider route for the dropped file.
     public static func resolve(
         fileType: FileType,
         fileExtension: String,
         settings: AppSettings,
-        transcribers: [any TranscriptionGateway],
-        isLocalModeAvailable: Bool
+        transcribers: [any TranscriptionGateway]
     ) throws -> TranscriptionRoute {
-        let preferredMode: ProviderMode = settings.mode(for: fileType)
-        let effectiveMode: ProviderMode = if preferredMode == .localApple && !isLocalModeAvailable {
-            .mistral
-        } else {
-            preferredMode
-        }
+        let effectiveMode: ProviderMode = settings.mode(for: fileType)
 
         guard let transcriber: (any TranscriptionGateway) = transcribers.first(
             where: { $0.providerMode == effectiveMode && $0.supportedExtensions.contains(fileExtension) }

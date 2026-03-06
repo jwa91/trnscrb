@@ -301,17 +301,8 @@ struct SettingsView: View {
                         help: "Used only when Audio is set to Local Apple. Match this to the recording language for better recognition quality."
                     ) {
                         appleAudioLocalePicker()
-                            .disabled(
-                                !viewModel.isLocalAppleModeAvailable
-                                    || viewModel.settings.audioProviderMode != .localApple
-                            )
+                            .disabled(viewModel.settings.audioProviderMode != .localApple)
                     }
-                }
-
-                if !viewModel.isLocalAppleModeAvailable {
-                    Text("Local Apple mode requires macOS 26 or newer.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -471,34 +462,18 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var saveButton: some View {
-        if #available(macOS 26, *) {
-            Button("Save") {
-                Task {
-                    let didSave: Bool = await viewModel.save()
-                    if didSave {
-                        onClose()
-                    }
+        Button("Save") {
+            Task {
+                let didSave: Bool = await viewModel.save()
+                if didSave {
+                    onClose()
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.accentColor)
-            .keyboardShortcut("s", modifiers: .command)
-            .pointingHandCursor()
-        } else {
-            Button("Save") {
-                Task {
-                    let didSave: Bool = await viewModel.save()
-                    if didSave {
-                        onClose()
-                    }
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.accentColor)
-            .controlSize(.regular)
-            .keyboardShortcut("s", modifiers: .command)
-            .pointingHandCursor()
         }
+        .buttonStyle(.glassProminent)
+        .tint(.accentColor)
+        .keyboardShortcut("s", modifiers: .command)
+        .pointingHandCursor()
     }
 
     private func settingsSection<Content: View>(
@@ -657,9 +632,7 @@ struct SettingsView: View {
     private func providerModePicker(selection: Binding<ProviderMode>) -> some View {
         Picker("", selection: selection) {
             Text("Mistral").tag(ProviderMode.mistral)
-            Text("Local Apple (macOS 26+)")
-                .tag(ProviderMode.localApple)
-                .disabled(!viewModel.isLocalAppleModeAvailable)
+            Text("Local Apple").tag(ProviderMode.localApple)
         }
         .labelsHidden()
         .pickerStyle(.menu)

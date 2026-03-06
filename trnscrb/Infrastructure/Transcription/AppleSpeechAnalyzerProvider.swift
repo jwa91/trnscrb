@@ -2,9 +2,6 @@ import Foundation
 import Speech
 
 /// Transcribes local audio files using Apple's on-device speech stack.
-///
-/// This provider is intentionally gated to macOS 26+ so local mode remains
-/// a Tahoe-only feature in the app.
 public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
     public let providerMode: ProviderMode = .localApple
     public let sourceKind: TranscriptionSourceKind = .localFile
@@ -12,29 +9,18 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
 
     private let settingsGateway: (any SettingsGateway)?
     private let fallbackLocaleIdentifier: String
-    private let isLocalModeAvailable: @Sendable () -> Bool
 
     public init(
         settingsGateway: (any SettingsGateway)? = nil,
-        locale: Locale = Locale(identifier: AppSettings.defaultAppleAudioLocaleIdentifier),
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        }
+        locale: Locale = Locale(identifier: AppSettings.defaultAppleAudioLocaleIdentifier)
     ) {
         self.settingsGateway = settingsGateway
         self.fallbackLocaleIdentifier = locale.identifier
-        self.isLocalModeAvailable = isLocalModeAvailable
     }
 
     public func process(sourceURL: URL) async throws -> String {
         guard sourceURL.isFileURL else {
             throw LocalProviderError.localFileRequired
-        }
-        guard isLocalModeAvailable() else {
-            throw LocalProviderError.localModeUnavailable
         }
 
         try await ensureSpeechAuthorization()

@@ -7,13 +7,7 @@ import Testing
 struct SettingsViewModelTests {
     private func makeViewModel(
         settings: AppSettings = AppSettings(),
-        secrets: [SecretKey: String] = [:],
-        isLocalAppleModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        }
+        secrets: [SecretKey: String] = [:]
     ) -> (
         SettingsViewModel,
         MockSettingsGateway,
@@ -40,8 +34,7 @@ struct SettingsViewModelTests {
             gateway: gateway,
             connectivityUseCase: connectivityUseCase,
             outputFolderGateway: outputFolderGateway,
-            saveSettingsUseCase: saveSettingsUseCase,
-            isLocalAppleModeAvailable: isLocalAppleModeAvailable
+            saveSettingsUseCase: saveSettingsUseCase
         )
         return (vm, gateway, connectivityGateway, launchAtLoginGateway, outputFolderGateway)
     }
@@ -78,24 +71,6 @@ struct SettingsViewModelTests {
         #expect(vm.settings.audioProviderMode == .localApple)
         #expect(vm.settings.pdfProviderMode == .mistral)
         #expect(vm.settings.imageProviderMode == .localApple)
-    }
-
-    @Test func loadCoercesLocalModesToMistralWhenUnavailable() async {
-        let customSettings: AppSettings = AppSettings(
-            audioProviderMode: .localApple,
-            pdfProviderMode: .localApple,
-            imageProviderMode: .localApple
-        )
-        let (vm, _, _, _, _) = makeViewModel(
-            settings: customSettings,
-            isLocalAppleModeAvailable: { false }
-        )
-
-        await vm.load()
-
-        #expect(vm.settings.audioProviderMode == .mistral)
-        #expect(vm.settings.pdfProviderMode == .mistral)
-        #expect(vm.settings.imageProviderMode == .mistral)
     }
 
     @Test func loadPopulatesSecretsFromGateway() async {
@@ -148,23 +123,6 @@ struct SettingsViewModelTests {
         #expect(savedSettings.audioProviderMode == .localApple)
         #expect(savedSettings.pdfProviderMode == .mistral)
         #expect(savedSettings.imageProviderMode == .localApple)
-    }
-
-    @Test func saveCoercesLocalModesToMistralWhenUnavailable() async {
-        let (vm, gateway, _, _, _) = makeViewModel(
-            isLocalAppleModeAvailable: { false }
-        )
-        vm.settings.audioProviderMode = .localApple
-        vm.settings.pdfProviderMode = .localApple
-        vm.settings.imageProviderMode = .localApple
-
-        let didSave: Bool = await vm.save()
-        let savedSettings: AppSettings = await gateway.snapshotSettings()
-
-        #expect(didSave)
-        #expect(savedSettings.audioProviderMode == .mistral)
-        #expect(savedSettings.pdfProviderMode == .mistral)
-        #expect(savedSettings.imageProviderMode == .mistral)
     }
 
     @Test func savePersistsSecretsToKeychain() async {
@@ -288,8 +246,4 @@ struct SettingsViewModelTests {
         #expect(vm.mistralTestResult == .success)
     }
 
-    @Test func isLocalModeAvailabilityUsesInjectedRuntimeSupport() async {
-        let (vm, _, _, _, _) = makeViewModel(isLocalAppleModeAvailable: { false })
-        #expect(!vm.isLocalAppleModeAvailable)
-    }
 }

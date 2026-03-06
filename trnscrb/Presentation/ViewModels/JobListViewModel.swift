@@ -51,8 +51,6 @@ public final class JobListViewModel: ObservableObject {
     private let notificationUseCase: NotifyUserUseCase?
     /// Opens the configured output folder in Finder.
     private let openFolder: @Sendable (URL) -> Void
-    /// Evaluates whether local Apple mode is available on this runtime.
-    private let isLocalModeAvailable: @Sendable () -> Bool
     /// Active processing tasks by job ID so work can be cancelled safely.
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     /// Jobs queued while offline. They resume automatically when connectivity returns.
@@ -83,12 +81,6 @@ public final class JobListViewModel: ObservableObject {
         copyFeedbackDuration: Duration = .seconds(1.5),
         openFolder: @escaping @Sendable (URL) -> Void = { url in
             NSWorkspace.shared.open(url)
-        },
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
         }
     ) {
         self.init(
@@ -98,7 +90,6 @@ public final class JobListViewModel: ObservableObject {
             notificationUseCase: notificationUseCase,
             copyFeedbackDuration: copyFeedbackDuration,
             openFolder: openFolder,
-            isLocalModeAvailable: isLocalModeAvailable,
             shouldStartNetworkMonitoring: true
         )
     }
@@ -112,12 +103,6 @@ public final class JobListViewModel: ObservableObject {
         openFolder: @escaping @Sendable (URL) -> Void = { url in
             NSWorkspace.shared.open(url)
         },
-        isLocalModeAvailable: @escaping @Sendable () -> Bool = {
-            if #available(macOS 26, *) {
-                return true
-            }
-            return false
-        },
         shouldStartNetworkMonitoring: Bool
     ) {
         self.useCase = useCase
@@ -126,7 +111,6 @@ public final class JobListViewModel: ObservableObject {
         self.notificationUseCase = notificationUseCase
         self.copyFeedbackDuration = copyFeedbackDuration
         self.openFolder = openFolder
-        self.isLocalModeAvailable = isLocalModeAvailable
         if shouldStartNetworkMonitoring {
             startNetworkMonitoring()
         }
@@ -439,10 +423,7 @@ public final class JobListViewModel: ObservableObject {
     }
 
     private func requiresCloudCredentials(for settings: AppSettings) -> Bool {
-        if isLocalModeAvailable() {
-            return settings.requiresCloudCredentials
-        }
-        return true
+        settings.requiresCloudCredentials
     }
 
     /// Processes a single job through the pipeline.
