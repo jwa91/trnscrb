@@ -2,27 +2,29 @@ import AppKit
 import SwiftUI
 
 enum PopoverDesign {
-    static let popoverSize: CGSize = CGSize(width: 360, height: 560)
+    static let panelSize: CGSize = CGSize(width: 360, height: 548)
 
-    static let contentPadding: CGFloat = 16
-    static let sectionSpacing: CGFloat = 16
-    static let cardPadding: CGFloat = 16
+    static let panelCornerRadius: CGFloat = 20
+    static let contentPadding: CGFloat = 12
+    static let sectionSpacing: CGFloat = 12
     static let cardCornerRadius: CGFloat = 14
-    static let rowVerticalPadding: CGFloat = 10
+    static let rowVerticalPadding: CGFloat = 8
     static let rowHorizontalPadding: CGFloat = 12
     static let rowCornerRadius: CGFloat = 12
-    static let rowMinHeight: CGFloat = 64
+    static let rowMinHeight: CGFloat = 56
     static let rowSpacing: CGFloat = 8
     static let fieldGroupSpacing: CGFloat = 14
     static let chromeBarHeight: CGFloat = 48
-    static let chromeHorizontalPadding: CGFloat = 16
+    static let chromeHorizontalPadding: CGFloat = 14
+    static let chromeButtonHitSize: CGFloat = 44
+    static let chromeButtonVisualSize: CGFloat = 28
     static let dropZoneCornerRadius: CGFloat = 14
-    static let dropZoneFullHeight: CGFloat = 208
+    static let dropZoneFullHeight: CGFloat = 184
     static let rowBadgeSize: CGFloat = 36
     static let rowBadgeSymbolSize: CGFloat = 16
-    static let largeIconBadgeSize: CGFloat = 56
+    static let largeIconBadgeSize: CGFloat = 52
     static let largeIconSymbolSize: CGFloat = 24
-    static let compactIconBadgeSize: CGFloat = 36
+    static let compactIconBadgeSize: CGFloat = 34
     static let compactIconSymbolSize: CGFloat = 16
     static let actionButtonSize: CGFloat = 22
     static let actionButtonSymbolSize: CGFloat = 11
@@ -36,38 +38,66 @@ enum PopoverDesign {
     static let dropZoneTitleFont: Font = .system(size: 15, weight: .semibold)
 
     static var surfaceBackground: Color {
-        Color(nsColor: .windowBackgroundColor)
+        .clear
     }
 
-    static var cardBackground: Color {
-        Color(nsColor: .controlBackgroundColor).opacity(0.85)
+    static var chromeSurface: Color {
+        .clear
     }
 
-    static var cardBorder: Color {
-        Color.primary.opacity(0.08)
+    static var contentSurface: Color {
+        Color.white.opacity(0.05)
+    }
+
+    static var chromeButtonForeground: Color {
+        .secondary
+    }
+
+    static var chromeButtonHoverForeground: Color {
+        .primary
     }
 
     static var rowHoverBackground: Color {
-        Color.primary.opacity(0.05)
+        Color.white.opacity(0.045)
     }
 
     static var rowSelectedBackground: Color {
-        Color.accentColor.opacity(0.14)
-    }
-
-    static var previewBackground: Color {
-        Color.primary.opacity(0.05)
+        Color.accentColor.opacity(0.06)
     }
 
     static var dropZoneIdleFill: Color {
-        Color.primary.opacity(0.04)
+        contentSurface
     }
 
     static var dropZoneHoverFill: Color {
-        Color.primary.opacity(0.06)
+        Color.white.opacity(0.055)
     }
 
     static var dropZoneTargetedFill: Color {
-        Color.accentColor.opacity(0.12)
+        Color.accentColor.opacity(0.08)
+    }
+
+    static var dropZoneIdleStroke: Color {
+        Color.secondary.opacity(0.3)
+    }
+
+    static var dropZoneHoverStroke: Color {
+        Color.secondary.opacity(0.46)
+    }
+
+    static var dropZoneActiveStroke: Color {
+        Color.accentColor.opacity(0.92)
+    }
+
+    static var dropZoneIdleBadgeFill: Color {
+        Color.primary.opacity(0.06)
+    }
+
+    static var dropZoneHoverBadgeFill: Color {
+        Color.primary.opacity(0.09)
+    }
+
+    static var dropZoneActiveBadgeFill: Color {
+        Color.accentColor.opacity(0.18)
     }
 }

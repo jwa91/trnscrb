@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Displays active and recently completed jobs in the popover.
+/// Displays active and recently completed jobs in the menu panel.
 struct JobListView: View {
     /// The job list view model.
     @ObservedObject var viewModel: JobListViewModel

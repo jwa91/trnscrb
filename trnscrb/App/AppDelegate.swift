@@ -4,7 +4,7 @@ import UserNotifications
 
 /// Application delegate and composition root.
 ///
-/// Creates the `NSStatusItem` (menu bar icon), manages the `NSPopover`,
+/// Creates the `NSStatusItem` (menu bar icon), manages the attached menu panel,
 /// and wires all infrastructure dependencies. This is the only component
 /// that knows about all layers — it creates concrete instances and injects
 /// them into view models and use cases.
@@ -12,8 +12,8 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The menu bar status item showing the app icon.
     private var statusItem: NSStatusItem?
-    /// The popover displayed when the status item is clicked.
-    private var popover: NSPopover?
+    /// The attached menu panel displayed when the status item is clicked.
+    private var menuPanelController: MenuBarPanelController?
     /// The dedicated settings window for app configuration.
     private var settingsWindowController: NSWindowController?
     /// Tracks when the file picker panel is open so drag targets can disable safely.
@@ -100,30 +100,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UNUserNotificationCenter.current().delegate = self
         }
 
-        // Setup popover with macOS-managed semitransient behavior:
-        // it stays open for cross-app interactions like Finder drags,
-        // but dismisses on appropriate local interactions.
-        let popover: NSPopover = NSPopover()
-        popover.contentSize = NSSize(
-            width: PopoverDesign.popoverSize.width,
-            height: PopoverDesign.popoverSize.height
-        )
-        popover.behavior = .semitransient
-        popover.delegate = self
-        popover.contentViewController = NSHostingController(
-            rootView: PopoverView(
-                filePickerPresentationModel: filePickerPresentationModel,
-                jobListViewModel: jobListViewModel,
-                onOpenSettings: { [weak self] in
-                    self?.showSettingsFromCommand()
-                },
-                onClose: { [weak self] in
-                    self?.closePopover()
-                }
-            )
-        )
-        self.popover = popover
-
         // Setup status item
         let statusItem: NSStatusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
@@ -131,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button: NSStatusBarButton = statusItem.button {
             button.image = makeStatusItemImage()
             button.setAccessibilityLabel("trnscrb menu bar item")
-            button.action = #selector(togglePopover)
+            button.action = #selector(toggleMenuPanel)
             button.target = self
             // Avoid known right-click highlight sticking bug (Jesse Squires).
             button.sendAction(on: [.leftMouseDown, .rightMouseUp])
@@ -140,8 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let dropView: StatusBarDropView = StatusBarDropView(frame: button.bounds)
             dropView.autoresizingMask = [.width, .height]
             dropView.onDrop = { [weak self] urls in
+                self?.showMenuPanel()
                 self?.jobListViewModel.processFiles(urls)
-                self?.showPopover()
             }
             dropView.onDragEntered = { [weak self] in
                 self?.statusItem?.button?.image = NSImage(
@@ -158,6 +134,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.addSubview(dropView)
         }
         self.statusItem = statusItem
+        self.menuPanelController = MenuBarPanelController(
+            statusItem: statusItem,
+            contentSize: PopoverDesign.panelSize,
+            shouldIgnoreAutoDismiss: { [weak self] in
+                self?.filePickerPresentationModel.isPresenting ?? false
+            },
+            onMoveUp: { [weak self] in
+                self?.jobListViewModel.selectPreviousVisibleJob()
+            },
+            onMoveDown: { [weak self] in
+                self?.jobListViewModel.selectNextVisibleJob()
+            },
+            onDelete: { [weak self] in
+                self?.jobListViewModel.removeSelectedOrMostRecentJob()
+            },
+            onPaste: { [weak self] in
+                self?.processPasteboardFilesFromCommand()
+            }
+        ) {
+            MenuPanelView(
+                filePickerPresentationModel: filePickerPresentationModel,
+                jobListViewModel: jobListViewModel,
+                onOpenSettings: { [weak self] in
+                    self?.showSettingsFromCommand()
+                },
+                onClose: { [weak self] in
+                    self?.closeMenuPanel()
+                }
+            )
+        }
 
         Task { @MainActor [weak self] in
             await self?.applyLaunchAtLoginSetting()
@@ -166,48 +172,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         triggerRetentionCleanup()
     }
 
-    /// Toggles the popover visibility when the menu bar icon is clicked.
-    @objc private func togglePopover() {
-        guard let popover else { return }
-        if popover.isShown {
-            closePopover()
+    /// Toggles the attached menu panel visibility when the menu bar icon is clicked.
+    @objc private func toggleMenuPanel() {
+        guard let menuPanelController else { return }
+        if menuPanelController.isShown {
+            closeMenuPanel()
         } else {
-            showPopover()
+            showMenuPanel()
         }
     }
 
     func showSettingsFromCommand() {
-        closePopover()
+        closeMenuPanel()
         showSettingsWindow()
     }
 
     func addFilesFromCommand() {
-        showPopover()
+        showMenuPanel()
         let urls: [URL] = filePickerPresentationModel.pickFiles()
         guard !urls.isEmpty else { return }
         jobListViewModel.processFiles(urls)
     }
 
-    /// Shows the popover and starts the event monitor.
-    private func showPopover() {
-        guard let popover, let button = statusItem?.button else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        guard !popover.isShown else {
-            popover.contentViewController?.view.window?.makeKey()
-            return
-        }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
-        // Must be async — NSStatusBarButton resets highlight on mouse-up.
-        // Dispatching to the next run loop iteration runs after that reset.
-        DispatchQueue.main.async {
-            button.isHighlighted = true
-        }
+    private func processPasteboardFilesFromCommand() {
+        let pasteboard: NSPasteboard = .general
+        let urls: [URL] = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+
+        guard SupportedFileImport.containsSupportedFile(urls) else { return }
+        jobListViewModel.processFiles(urls)
     }
 
-    /// Closes the popover and removes the event monitor.
-    private func closePopover() {
-        popover?.performClose(nil)
+    /// Shows the attached menu panel and makes it the active keyboard surface.
+    private func showMenuPanel() {
+        menuPanelController?.show()
+    }
+
+    /// Closes the attached menu panel and tears down dismissal monitoring.
+    private func closeMenuPanel() {
+        menuPanelController?.close()
     }
 
     private func showSettingsWindow() {
@@ -316,18 +321,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - NSPopoverDelegate
-
-extension AppDelegate: NSPopoverDelegate {
-    /// Called when the popover closes for any reason (click outside, programmatic, etc.).
-    /// Unhighlights the status bar button.
-    nonisolated func popoverDidClose(_ notification: Notification) {
-        DispatchQueue.main.async { @MainActor in
-            self.statusItem?.button?.isHighlighted = false
-        }
-    }
-}
-
 // MARK: - UNUserNotificationCenterDelegate
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
@@ -337,7 +330,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) async {
         let identifier: String = response.notification.request.identifier
         await MainActor.run {
-            self.showPopover()
+            self.showMenuPanel()
             if let jobID: UUID = UUID(uuidString: identifier) {
                 self.jobListViewModel.selectJob(id: jobID)
             }

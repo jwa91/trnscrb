@@ -31,7 +31,7 @@ struct DropZoneView: View {
                 minHeight: mode == .full ? PopoverDesign.dropZoneFullHeight : nil,
                 alignment: mode == .full ? .center : .leading
             )
-            .padding(mode == .full ? 24 : 16)
+            .padding(mode == .full ? 20 : 14)
             .background(
                 RoundedRectangle(
                     cornerRadius: PopoverDesign.dropZoneCornerRadius,
@@ -119,9 +119,9 @@ struct DropZoneView: View {
         Button("Select files…") {
             onSelectFiles()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.glass)
+        .controlSize(.regular)
         .font(PopoverDesign.secondaryTextFont)
-        .foregroundStyle(Color.accentColor)
         .pointingHandCursor()
     }
 
@@ -139,7 +139,7 @@ struct DropZoneView: View {
 
     private var backgroundColor: Color {
         if isFilePickerPresented {
-            return PopoverDesign.dropZoneIdleFill.opacity(0.55)
+            return PopoverDesign.dropZoneIdleFill.opacity(0.75)
         }
         if isTargeted {
             return PopoverDesign.dropZoneTargetedFill
@@ -152,15 +152,15 @@ struct DropZoneView: View {
 
     private var borderColor: Color {
         if isFilePickerPresented {
-            return Color.secondary.opacity(0.22)
+            return PopoverDesign.dropZoneIdleStroke
         }
         if isTargeted {
-            return Color.accentColor
+            return PopoverDesign.dropZoneActiveStroke
         }
         if isHovered {
-            return Color.secondary.opacity(0.55)
+            return PopoverDesign.dropZoneHoverStroke
         }
-        return Color.secondary.opacity(0.35)
+        return PopoverDesign.dropZoneIdleStroke
     }
 
     private var borderLineWidth: CGFloat {
@@ -174,14 +174,23 @@ struct DropZoneView: View {
         if isFilePickerPresented {
             return Color.secondary.opacity(0.12)
         }
-        return Color.accentColor.opacity(isTargeted ? 0.24 : 0.16)
+        if isTargeted {
+            return PopoverDesign.dropZoneActiveBadgeFill
+        }
+        if isHovered {
+            return PopoverDesign.dropZoneHoverBadgeFill
+        }
+        return PopoverDesign.dropZoneIdleBadgeFill
     }
 
     private var iconForegroundColor: Color {
         if isFilePickerPresented {
             return Color.secondary
         }
-        return isHovered || isTargeted ? Color.accentColor : Color.primary
+        if isTargeted {
+            return Color.accentColor
+        }
+        return isHovered ? Color.primary : Color.secondary
     }
 
     /// Extracts file URLs from drop providers and calls onDrop.

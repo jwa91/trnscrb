@@ -170,7 +170,7 @@ public final class JobListViewModel: ObservableObject {
             }
     }
 
-    /// Jobs in the same order they are rendered in the popover.
+    /// Jobs in the same order they are rendered in the menu panel.
     public var visibleJobs: [Job] {
         activeJobs + completedJobs
     }
@@ -330,7 +330,7 @@ public final class JobListViewModel: ObservableObject {
         configurationError = nil
     }
 
-    /// Consumes the one-shot request to route the popover into settings.
+    /// Consumes the one-shot request to route the menu panel into settings.
     public func consumeSettingsNavigation() {
         shouldOpenSettings = false
     }

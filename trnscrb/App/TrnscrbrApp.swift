@@ -7,7 +7,7 @@ import SwiftUI
 /// by `AppDelegate`, which is bridged via `@NSApplicationDelegateAdaptor`.
 @main
 struct TrnscrbrApp: App {
-    /// Bridges to the AppKit AppDelegate which owns the NSStatusItem and NSPopover.
+    /// Bridges to the AppKit AppDelegate which owns the NSStatusItem and menu panel host.
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {

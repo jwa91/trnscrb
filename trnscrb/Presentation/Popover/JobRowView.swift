@@ -24,24 +24,10 @@ struct JobRowView: View {
     var body: some View {
         let presentation: JobRowPresentation = JobRowPresentation(job: job)
 
-        return HStack(alignment: .top, spacing: 12) {
-            fileTypeBadge(presentation)
-
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(presentation.titleText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .font(PopoverDesign.primaryRowFont)
-
-                    subtitleView(for: presentation)
-                }
+        return HStack(alignment: .top, spacing: 10) {
+            selectionButton(for: presentation)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer(minLength: 8)
-
-                trailingView(for: presentation)
-            }
+            trailingActions(for: presentation)
         }
         .padding(.vertical, PopoverDesign.rowVerticalPadding)
         .padding(.horizontal, PopoverDesign.rowHorizontalPadding)
@@ -60,9 +46,6 @@ struct JobRowView: View {
             )
         )
         .onHover { isHovered = $0 }
-        .onTapGesture {
-            onSelect?()
-        }
         .contextMenu {
             if case .completed = job.status {
                 Button("Copy Markdown") {
@@ -78,6 +61,43 @@ struct JobRowView: View {
                 onDelete?()
             }
         }
+    }
+
+    private func selectionButton(for presentation: JobRowPresentation) -> some View {
+        Button {
+            onSelect?()
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                fileTypeBadge(presentation)
+
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(presentation.titleText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .font(PopoverDesign.primaryRowFont)
+
+                        subtitleView(for: presentation)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Spacer(minLength: 8)
+
+                    statusView(for: presentation)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: PopoverDesign.rowCornerRadius,
+                    style: .continuous
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -101,37 +121,41 @@ struct JobRowView: View {
     }
 
     @ViewBuilder
-    private func trailingView(for presentation: JobRowPresentation) -> some View {
+    private func statusView(for presentation: JobRowPresentation) -> some View {
         switch job.status {
         case .pending:
-            trailingStatusWithDelete {
-                statusPill("Waiting")
-            }
+            statusPill("Waiting")
         case .uploading:
-            trailingStatusWithDelete {
-                if let uploadActivity = presentation.uploadActivity {
-                    uploadActivityView(uploadActivity)
-                }
+            if let uploadActivity = presentation.uploadActivity {
+                uploadActivityView(uploadActivity)
             }
         case .processing:
-            trailingStatusWithDelete {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Processing")
-                        .font(PopoverDesign.secondaryTextFont)
-                        .foregroundStyle(.secondary)
-                }
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Processing")
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
             }
+        case .failed:
+            statusPill(
+                "Failed",
+                color: .red,
+                systemImage: "exclamationmark.triangle.fill"
+            )
+        case .completed:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func trailingActions(for presentation: JobRowPresentation) -> some View {
+        switch job.status {
         case .completed:
             completionTrailingView(for: presentation)
-        case .failed:
-            trailingStatusWithDelete {
-                statusPill(
-                    "Failed",
-                    color: .red,
-                    systemImage: "exclamationmark.triangle.fill"
-                )
+        case .pending, .uploading, .processing, .failed:
+            if let onDelete {
+                deleteActionButton(action: onDelete)
             }
         }
     }
@@ -300,18 +324,6 @@ struct JobRowView: View {
         .help(isConfirmed ? successTitle : title)
         .disabled(!isEnabled)
         .pointingHandCursor()
-    }
-
-    @ViewBuilder
-    private func trailingStatusWithDelete<Content: View>(
-        @ViewBuilder _ content: () -> Content
-    ) -> some View {
-        HStack(spacing: 8) {
-            content()
-            if let onDelete {
-                deleteActionButton(action: onDelete)
-            }
-        }
     }
 
     private func deleteActionButton(action: @escaping () -> Void) -> some View {
