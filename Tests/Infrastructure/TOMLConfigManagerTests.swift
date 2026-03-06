@@ -76,13 +76,15 @@ struct TOMLConfigManagerTests {
         let (manager, tempDir) = try makeManager()
         defer { cleanupDir(tempDir) }
 
-        try await manager.saveSettings(AppSettings(appleAudioLocaleIdentifier: supportedLocaleIdentifier()))
+        try await manager.saveSettings(
+            AppSettings(appleAudioLocaleIdentifier: supportedLocaleIdentifier())
+        )
 
         let filePath: String = tempDir.appending(path: "config.toml").path()
         #expect(FileManager.default.fileExists(atPath: filePath))
     }
 
-    @Test func roundTripPreservesAllFieldsAcrossNestedSchema() async throws {
+    @Test func roundTripPreservesAllFieldsAcrossFlatSchema() async throws {
         let (manager, tempDir) = try makeManager()
         defer { cleanupDir(tempDir) }
 
@@ -111,7 +113,7 @@ struct TOMLConfigManagerTests {
         #expect(loaded == expected)
     }
 
-    @Test func savedFileUsesCanonicalNestedSchemaAndOrder() async throws {
+    @Test func savedFileUsesCanonicalFlatSchemaAndOrder() async throws {
         let (manager, tempDir) = try makeManager()
         defer { cleanupDir(tempDir) }
 
@@ -141,45 +143,33 @@ struct TOMLConfigManagerTests {
         # trnscrb configuration
         # Passwords are stored in Keychain and are not written here.
 
-        [storage.s3]
-        endpoint_url = "https://s3.example.com"
-        access_key = "AKID"
-        bucket_name = "bucket"
-        region = "auto"
-        path_prefix = "uploads/"
+        storage.s3.endpoint_url = "https://s3.example.com"
+        storage.s3.access_key = "AKID"
+        storage.s3.bucket_name = "bucket"
+        storage.s3.region = "auto"
+        storage.s3.path_prefix = "uploads/"
+        storage.retention.hours = 12
 
-        [storage.retention]
-        hours = 12
+        processing.providers.audio = "local"
+        processing.providers.pdf = "mistral"
+        processing.providers.image = "local"
+        processing.apple_audio.locale_identifier = "\(supportedLocaleIdentifier())"
 
-        [processing.providers]
-        audio = "local"
-        pdf = "mistral"
-        image = "local"
+        output.saving.folder_path = "~/Documents/trnscrb/"
+        output.naming.filename_prefix = "notes-"
+        output.naming.filename_template = "{prefix}{fileType}"
 
-        [processing.apple_audio]
-        locale_identifier = "\(supportedLocaleIdentifier())"
-
-        [output.saving]
-        folder_path = "~/Documents/trnscrb/"
-
-        [output.naming]
-        filename_prefix = "notes-"
-        filename_template = "{prefix}{fileType}"
-
-        [general.behavior]
-        copy_to_clipboard = false
-
-        [general.startup]
-        launch_at_login = true
+        general.behavior.copy_to_clipboard = false
+        general.startup.launch_at_login = true
         """
 
         #expect(content == expected + "\n")
         #expect(!content.contains("mistral_api_key"))
         #expect(!content.contains("s3_secret_key"))
-        #expect(!content.contains("[connections]"))
+        #expect(!content.contains("[storage.s3]"))
     }
 
-    @Test func loadParsesNestedSchemaWithCommentsAndBlankLines() async throws {
+    @Test func loadParsesFlatSchemaRegardlessOfKeyOrder() async throws {
         let tempDir: URL = FileManager.default.temporaryDirectory
             .appending(path: "trnscrb-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -189,37 +179,21 @@ struct TOMLConfigManagerTests {
         let content: String = """
         # trnscrb config
 
-        [storage.s3]
-        endpoint_url = "https://test.com"
-        access_key = "AKID"
-        bucket_name = "test-bucket"
-        region = "auto"
-        path_prefix = "archive/"
-
-        # retention is configured separately
-        [storage.retention]
-        hours = 72
-
-        [processing.providers]
-        audio = "mistral"
-        pdf = "local"
-        image = "local"
-
-        [processing.apple_audio]
-        locale_identifier = " \(supportedLocaleIdentifier()) "
-
-        [output.saving]
-        folder_path = "~/Documents/trnscrb/"
-
-        [output.naming]
-        filename_prefix = "notes-"
-        filename_template = "{prefix}{originalFilename}"
-
-        [general.behavior]
-        copy_to_clipboard = true
-
-        [general.startup]
-        launch_at_login = false
+        general.startup.launch_at_login = false
+        output.naming.filename_template = "{prefix}{originalFilename}"
+        storage.s3.path_prefix = "archive/"
+        processing.providers.image = "local"
+        storage.s3.bucket_name = "test-bucket"
+        processing.apple_audio.locale_identifier = " \(supportedLocaleIdentifier()) "
+        storage.retention.hours = 72
+        output.naming.filename_prefix = "notes-"
+        storage.s3.region = "auto"
+        output.saving.folder_path = "~/Documents/trnscrb/"
+        processing.providers.pdf = "local"
+        general.behavior.copy_to_clipboard = true
+        storage.s3.access_key = "AKID"
+        processing.providers.audio = "mistral"
+        storage.s3.endpoint_url = "https://test.com"
         """
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
 
@@ -245,65 +219,32 @@ struct TOMLConfigManagerTests {
         #expect(loaded.launchAtLogin == false)
     }
 
-    @Test func loadRejectsLegacyFlatSchema() async throws {
-        let tempDir: URL = FileManager.default.temporaryDirectory
-            .appending(path: "trnscrb-test-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-        let fileURL: URL = tempDir.appending(path: "config.toml")
-        let content: String = """
-        s3_endpoint_url = "https://legacy.example.com"
-        s3_access_key = "AKID"
-        """
-        try content.write(to: fileURL, atomically: true, encoding: .utf8)
-
-        let keychainStore: KeychainStore = KeychainStore(
-            service: "com.trnscrb.test.toml.\(UUID().uuidString)"
-        )
-        let manager: TOMLConfigManager = TOMLConfigManager(
-            configDirectory: tempDir,
-            keychainStore: keychainStore
-        )
-
-        await #expect(throws: ConfigError.self) {
-            _ = try await manager.loadSettings()
-        }
-        do {
-            _ = try await manager.loadSettings()
-        } catch let error as ConfigError {
-            #expect(error.localizedDescription.contains("Legacy flat config schema"))
-        }
-    }
-
-    @Test func loadRejectsUnknownSection() async throws {
+    @Test func loadRejectsSectionHeaders() async throws {
         try await assertLoadFails(
             """
-            [storage.unknown]
-            value = "nope"
+            [storage.s3]
+            endpoint_url = "https://legacy.example.com"
             """,
-            messageFragment: "Unknown config section [storage.unknown]"
+            messageFragment: "Section headers are not supported"
         )
     }
 
     @Test func loadRejectsUnknownKey() async throws {
         try await assertLoadFails(
             """
-            [storage.s3]
-            endpoint_url = "https://test.com"
-            unknown_key = "nope"
+            storage.s3.endpoint_url = "https://test.com"
+            storage.s3.unknown_key = "nope"
             """,
-            messageFragment: "Unknown config key 'unknown_key'"
+            messageFragment: "Unknown config key 'storage.s3.unknown_key'"
         )
     }
 
     @Test func loadRejectsInvalidProviderMode() async throws {
         try await assertLoadFails(
             """
-            [processing.providers]
-            audio = "cloud"
-            pdf = "local"
-            image = "local"
+            processing.providers.audio = "cloud"
+            processing.providers.pdf = "local"
+            processing.providers.image = "local"
             """,
             messageFragment: "Invalid provider mode 'cloud'"
         )
@@ -312,8 +253,7 @@ struct TOMLConfigManagerTests {
     @Test func loadRejectsNegativeRetentionHours() async throws {
         try await assertLoadFails(
             """
-            [storage.retention]
-            hours = -1
+            storage.retention.hours = -1
             """,
             messageFragment: "0 or greater"
         )
@@ -322,8 +262,7 @@ struct TOMLConfigManagerTests {
     @Test func loadRejectsUnsupportedAppleAudioLocaleIdentifier() async throws {
         try await assertLoadFails(
             """
-            [processing.apple_audio]
-            locale_identifier = "xx-INVALID"
+            processing.apple_audio.locale_identifier = "xx-INVALID"
             """,
             messageFragment: "not supported on this Mac"
         )
@@ -332,8 +271,7 @@ struct TOMLConfigManagerTests {
     @Test func loadRejectsUnquotedStringValues() async throws {
         try await assertLoadFails(
             """
-            [storage.s3]
-            endpoint_url = https://test.com
+            storage.s3.endpoint_url = https://test.com
             """,
             messageFragment: "Use double-quoted TOML strings"
         )
@@ -342,10 +280,19 @@ struct TOMLConfigManagerTests {
     @Test func loadRejectsMalformedLine() async throws {
         try await assertLoadFails(
             """
-            [storage.s3]
             this is not valid toml
             """,
             messageFragment: "Malformed config line"
+        )
+    }
+
+    @Test func loadRejectsDuplicateKey() async throws {
+        try await assertLoadFails(
+            """
+            storage.s3.endpoint_url = "https://test.com"
+            storage.s3.endpoint_url = "https://test-2.com"
+            """,
+            messageFragment: "Duplicate config key 'storage.s3.endpoint_url'"
         )
     }
 

@@ -15,8 +15,8 @@ struct TOMLConfigDocument {
 
     private struct FieldDefinition {
         let fullKey: String
-        let key: String
         let valueType: ValueType
+        let group: String
     }
 
     private struct ParsedLine {
@@ -24,108 +24,62 @@ struct TOMLConfigDocument {
         let value: ParsedValue
     }
 
-    private static let canonicalSections: [(section: String, fields: [FieldDefinition])] = [
-        (
-            section: "storage.s3",
-            fields: [
-                FieldDefinition(fullKey: "storage.s3.endpoint_url", key: "endpoint_url", valueType: .string),
-                FieldDefinition(fullKey: "storage.s3.access_key", key: "access_key", valueType: .string),
-                FieldDefinition(fullKey: "storage.s3.bucket_name", key: "bucket_name", valueType: .string),
-                FieldDefinition(fullKey: "storage.s3.region", key: "region", valueType: .string),
-                FieldDefinition(fullKey: "storage.s3.path_prefix", key: "path_prefix", valueType: .string)
-            ]
+    private static let fieldDefinitions: [FieldDefinition] = [
+        FieldDefinition(fullKey: "storage.s3.endpoint_url", valueType: .string, group: "storage"),
+        FieldDefinition(fullKey: "storage.s3.access_key", valueType: .string, group: "storage"),
+        FieldDefinition(fullKey: "storage.s3.bucket_name", valueType: .string, group: "storage"),
+        FieldDefinition(fullKey: "storage.s3.region", valueType: .string, group: "storage"),
+        FieldDefinition(fullKey: "storage.s3.path_prefix", valueType: .string, group: "storage"),
+        FieldDefinition(fullKey: "storage.retention.hours", valueType: .int, group: "storage"),
+        FieldDefinition(
+            fullKey: "processing.providers.audio",
+            valueType: .string,
+            group: "processing"
         ),
-        (
-            section: "storage.retention",
-            fields: [
-                FieldDefinition(fullKey: "storage.retention.hours", key: "hours", valueType: .int)
-            ]
+        FieldDefinition(
+            fullKey: "processing.providers.pdf",
+            valueType: .string,
+            group: "processing"
         ),
-        (
-            section: "processing.providers",
-            fields: [
-                FieldDefinition(fullKey: "processing.providers.audio", key: "audio", valueType: .string),
-                FieldDefinition(fullKey: "processing.providers.pdf", key: "pdf", valueType: .string),
-                FieldDefinition(fullKey: "processing.providers.image", key: "image", valueType: .string)
-            ]
+        FieldDefinition(
+            fullKey: "processing.providers.image",
+            valueType: .string,
+            group: "processing"
         ),
-        (
-            section: "processing.apple_audio",
-            fields: [
-                FieldDefinition(
-                    fullKey: "processing.apple_audio.locale_identifier",
-                    key: "locale_identifier",
-                    valueType: .string
-                )
-            ]
+        FieldDefinition(
+            fullKey: "processing.apple_audio.locale_identifier",
+            valueType: .string,
+            group: "processing"
         ),
-        (
-            section: "output.saving",
-            fields: [
-                FieldDefinition(fullKey: "output.saving.folder_path", key: "folder_path", valueType: .string)
-            ]
+        FieldDefinition(fullKey: "output.saving.folder_path", valueType: .string, group: "output"),
+        FieldDefinition(
+            fullKey: "output.naming.filename_prefix",
+            valueType: .string,
+            group: "output"
         ),
-        (
-            section: "output.naming",
-            fields: [
-                FieldDefinition(
-                    fullKey: "output.naming.filename_prefix",
-                    key: "filename_prefix",
-                    valueType: .string
-                ),
-                FieldDefinition(
-                    fullKey: "output.naming.filename_template",
-                    key: "filename_template",
-                    valueType: .string
-                )
-            ]
+        FieldDefinition(
+            fullKey: "output.naming.filename_template",
+            valueType: .string,
+            group: "output"
         ),
-        (
-            section: "general.behavior",
-            fields: [
-                FieldDefinition(
-                    fullKey: "general.behavior.copy_to_clipboard",
-                    key: "copy_to_clipboard",
-                    valueType: .bool
-                )
-            ]
+        FieldDefinition(
+            fullKey: "general.behavior.copy_to_clipboard",
+            valueType: .bool,
+            group: "general"
         ),
-        (
-            section: "general.startup",
-            fields: [
-                FieldDefinition(
-                    fullKey: "general.startup.launch_at_login",
-                    key: "launch_at_login",
-                    valueType: .bool
-                )
-            ]
+        FieldDefinition(
+            fullKey: "general.startup.launch_at_login",
+            valueType: .bool,
+            group: "general"
         )
     ]
 
-    private static let supportedSectionNames: Set<String> = Set(
-        canonicalSections.map(\.section)
+    private static let fieldDefinitionsByFullKey: [String: FieldDefinition] = Dictionary(
+        uniqueKeysWithValues: fieldDefinitions.map { ($0.fullKey, $0) }
     )
 
-    private static let fieldDefinitionsBySection: [String: [String: FieldDefinition]] = {
-        var definitions: [String: [String: FieldDefinition]] = [:]
-        for section in canonicalSections {
-            definitions[section.section] = Dictionary(
-                uniqueKeysWithValues: section.fields.map { ($0.key, $0) }
-            )
-        }
-        return definitions
-    }()
-
-    private static let fieldDefinitionsByFullKey: [String: FieldDefinition] = {
-        Dictionary(
-            uniqueKeysWithValues: canonicalSections
-                .flatMap(\.fields)
-                .map { ($0.fullKey, $0) }
-        )
-    }()
-
-    private static let legacySchemaErrorMessage: String =
-        "Legacy flat config schema is no longer supported. Use sectioned config tables like [storage.s3], [processing.providers], [output.saving], and [general.behavior]."
+    private static let unsupportedSectionMessage: String =
+        "Section headers are not supported in config.toml. Use flat dotted keys like 'storage.s3.endpoint_url = \"https://s3.example.com\"'."
 
     private var values: [String: ParsedValue] = [:]
 
@@ -150,7 +104,6 @@ struct TOMLConfigDocument {
     }
 
     init(content: String) throws {
-        var currentSection: String?
         var parsedValues: [String: ParsedValue] = [:]
 
         for (lineNumber, rawLine) in content.components(separatedBy: "\n").enumerated() {
@@ -160,21 +113,12 @@ struct TOMLConfigDocument {
             }
 
             if line.hasPrefix("[") {
-                currentSection = try Self.parseSection(line, lineNumber: lineNumber + 1)
-                continue
-            }
-
-            guard let currentSection else {
-                if line.contains("=") {
-                    throw ConfigError.parseError(Self.legacySchemaErrorMessage)
-                }
-                throw ConfigError.parseError("Malformed config line \(lineNumber + 1).")
+                throw ConfigError.parseError(Self.unsupportedSectionMessage)
             }
 
             let parsedLine: ParsedLine = try Self.parseKeyValueLine(
                 line,
-                lineNumber: lineNumber + 1,
-                section: currentSection
+                lineNumber: lineNumber + 1
             )
             if parsedValues[parsedLine.fullKey] != nil {
                 throw ConfigError.parseError(
@@ -225,14 +169,13 @@ struct TOMLConfigDocument {
             ""
         ]
 
-        for (index, section) in Self.canonicalSections.enumerated() {
-            lines.append("[\(section.section)]")
-            for field in section.fields {
-                lines.append("\(field.key) = \(serializedValue(for: field.fullKey))")
-            }
-            if index < Self.canonicalSections.count - 1 {
+        var previousGroup: String?
+        for definition in Self.fieldDefinitions {
+            if let previousGroup, previousGroup != definition.group {
                 lines.append("")
             }
+            lines.append("\(definition.fullKey) = \(serializedValue(for: definition.fullKey))")
+            previousGroup = definition.group
         }
 
         return lines.joined(separator: "\n") + "\n"
@@ -286,31 +229,9 @@ struct TOMLConfigDocument {
         }
     }
 
-    private static func parseSection(
-        _ line: String,
-        lineNumber: Int
-    ) throws -> String {
-        guard line.hasSuffix("]") else {
-            throw ConfigError.parseError("Malformed section header on line \(lineNumber).")
-        }
-
-        let sectionName: String = String(line.dropFirst().dropLast())
-            .trimmingCharacters(in: .whitespaces)
-        guard !sectionName.isEmpty else {
-            throw ConfigError.parseError("Malformed section header on line \(lineNumber).")
-        }
-        guard supportedSectionNames.contains(sectionName) else {
-            throw ConfigError.parseError(
-                "Unknown config section [\(sectionName)] on line \(lineNumber)."
-            )
-        }
-        return sectionName
-    }
-
     private static func parseKeyValueLine(
         _ line: String,
-        lineNumber: Int,
-        section: String
+        lineNumber: Int
     ) throws -> ParsedLine {
         guard let separatorIndex = line.firstIndex(of: "=") else {
             throw ConfigError.parseError("Malformed config line \(lineNumber).")
@@ -323,9 +244,9 @@ struct TOMLConfigDocument {
             throw ConfigError.parseError("Malformed config line \(lineNumber).")
         }
 
-        guard let definition: FieldDefinition = fieldDefinitionsBySection[section]?[key] else {
+        guard let definition: FieldDefinition = fieldDefinitionsByFullKey[key] else {
             throw ConfigError.parseError(
-                "Unknown config key '\(key)' in section [\(section)] on line \(lineNumber)."
+                "Unknown config key '\(key)' on line \(lineNumber)."
             )
         }
 
