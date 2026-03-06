@@ -12,6 +12,8 @@ struct JobRowView: View {
     var showsSourceCopyConfirmation: Bool = false
     /// Called when the row becomes selected.
     var onSelect: (() -> Void)?
+    /// Called when the row should perform its primary action.
+    var onPrimaryAction: (() -> Void)?
     /// Called when the user requests a markdown copy.
     var onCopyMarkdown: (() -> Void)?
     /// Called when the user requests copying the source URL.
@@ -66,6 +68,7 @@ struct JobRowView: View {
     private func selectionButton(for presentation: JobRowPresentation) -> some View {
         Button {
             onSelect?()
+            onPrimaryAction?()
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 fileTypeBadge(presentation)

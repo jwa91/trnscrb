@@ -24,7 +24,6 @@ Drop a file onto the menu bar icon (or into the popover drop zone), and trnscrb 
 
 - **Per-media provider selection** — audio, PDF, and image each have independent mode selection; modeled as extensible options (not a hardcoded toggle).
 - **BYOK (Bring Your Own Key)** — no subscription; when using Mistral mode, you pay Mistral and your S3 provider directly for what you use.
-- **Zero UI overhead** — the entire interface lives in the menu bar popover. No windows, no onboarding wizard. Settings slide in from a gear icon.
 - **Parallel batch processing** — drop multiple files at once; they all process concurrently with per-file progress tracking.
 - **Privacy-first** — API keys stored in macOS Keychain, config follows XDG conventions, no telemetry, no analytics.
 

@@ -382,6 +382,13 @@ public final class JobListViewModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
     }
 
+    /// Opens the saved markdown file for a completed job in the default app.
+    /// - Parameter jobID: ID of the completed job.
+    public func openSavedFile(jobID: UUID) {
+        guard let fileURL: URL = jobs.first(where: { $0.id == jobID })?.savedFileURL else { return }
+        NSWorkspace.shared.open(fileURL)
+    }
+
     /// Opens the configured markdown output folder in Finder.
     public func openConfiguredSaveFolder() async {
         do {

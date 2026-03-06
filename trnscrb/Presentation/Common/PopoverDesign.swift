@@ -15,7 +15,7 @@ enum PopoverDesign {
     static let rowSpacing: CGFloat = 8
     static let fieldGroupSpacing: CGFloat = 14
     static let chromeBarHeight: CGFloat = 48
-    static let chromeHorizontalPadding: CGFloat = 14
+    static let chromeHorizontalPadding: CGFloat = 12
     static let chromeButtonHitSize: CGFloat = 44
     static let chromeButtonVisualSize: CGFloat = 28
     static let dropZoneCornerRadius: CGFloat = 14

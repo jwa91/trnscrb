@@ -104,17 +104,8 @@ struct MenuPanelView: View {
         PopoverChromeBar(showsDivider: false) {
             AppBrandView()
         } trailing: {
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 8) {
-                    ChromeIconButton(
-                        systemName: "folder",
-                        title: "Open Save Folder",
-                        action: {
-                            Task {
-                                await jobListViewModel.openConfiguredSaveFolder()
-                            }
-                        }
-                    )
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 6) {
                     ChromeIconButton(
                         systemName: "gearshape",
                         title: "Settings",
