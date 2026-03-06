@@ -6,7 +6,7 @@ import Testing
 struct KeychainStoreTests {
     /// Each test gets a unique service name to avoid parallel test interference.
     private static func makeStore() -> KeychainStore {
-        KeychainStore(service: "com.trnscrb.test.\(UUID().uuidString)")
+        KeychainStore(service: "com.janwillemaltink.trnscrb.test.\(UUID().uuidString)")
     }
 
     @Test func setAndGetSecret() throws {

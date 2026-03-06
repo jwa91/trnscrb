@@ -1,7 +1,7 @@
 import OSLog
 
 enum AppLog {
-    private static let subsystem: String = "com.trnscrb"
+    private static let subsystem: String = AppIdentity.loggerSubsystem
 
     static let pipeline: Logger = Logger(subsystem: subsystem, category: "pipeline")
     static let network: Logger = Logger(subsystem: subsystem, category: "network")

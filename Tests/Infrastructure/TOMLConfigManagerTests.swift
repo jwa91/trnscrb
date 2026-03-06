@@ -44,7 +44,7 @@ struct TOMLConfigManagerTests {
         let tempDir: URL = FileManager.default.temporaryDirectory
             .appending(path: "trnscrb-test-\(UUID().uuidString)")
         let keychainStore: KeychainStore = KeychainStore(
-            service: "com.trnscrb.test.toml.\(UUID().uuidString)"
+            service: "com.janwillemaltink.trnscrb.test.toml.\(UUID().uuidString)"
         )
         let manager: TOMLConfigManager = TOMLConfigManager(
             configDirectory: tempDir,
@@ -198,7 +198,7 @@ struct TOMLConfigManagerTests {
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
 
         let keychainStore: KeychainStore = KeychainStore(
-            service: "com.trnscrb.test.toml.\(UUID().uuidString)"
+            service: "com.janwillemaltink.trnscrb.test.toml.\(UUID().uuidString)"
         )
         let manager: TOMLConfigManager = TOMLConfigManager(
             configDirectory: tempDir,

@@ -396,7 +396,7 @@ struct SettingsView: View {
                     }
 
                     settingsRow("Bundle ID") {
-                        Text(Bundle.main.bundleIdentifier ?? "com.trnscrb.app")
+                        Text(Bundle.main.bundleIdentifier ?? AppIdentity.bundleIdentifier)
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
