@@ -3,24 +3,22 @@ import Speech
 import SwiftUI
 
 enum SettingsWindowDesign {
-    static let defaultSize: CGSize = CGSize(width: 860, height: 620)
-    static let minSize: CGSize = CGSize(width: 760, height: 560)
-    static let sidebarWidth: CGFloat = 208
-    static let detailMaxWidth: CGFloat = 640
+    static let defaultSize: CGSize = CGSize(width: 900, height: 640)
+    static let minSize: CGSize = CGSize(width: 780, height: 580)
+    static let detailMaxWidth: CGFloat = 660
     static let detailPadding: CGFloat = 30
     static let detailSpacing: CGFloat = 24
     static let sectionSpacing: CGFloat = 18
     static let formLabelWidth: CGFloat = 144
-    static let sidebarItemCornerRadius: CGFloat = 14
-    static let sectionCornerRadius: CGFloat = 20
 }
 
 private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
     case storage
-    case mistral
+    case connections
     case processing
     case output
     case general
+    case about
 
     var id: Self { self }
 
@@ -28,14 +26,16 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .storage:
             return "Storage"
-        case .mistral:
-            return "Mistral"
+        case .connections:
+            return "Connections"
         case .processing:
             return "Processing"
         case .output:
             return "Output"
         case .general:
             return "General"
+        case .about:
+            return "About"
         }
     }
 
@@ -43,29 +43,33 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .storage:
             return "externaldrive.badge.wifi"
-        case .mistral:
-            return "key.horizontal"
+        case .connections:
+            return "network"
         case .processing:
             return "slider.horizontal.3"
         case .output:
             return "square.and.arrow.down"
         case .general:
             return "gearshape"
+        case .about:
+            return "info.circle"
         }
     }
 
     var description: String {
         switch self {
         case .storage:
-            return "Configure the S3-compatible bucket where uploads are staged."
-        case .mistral:
-            return "Manage the cloud API key used for transcription and OCR."
+            return "Configure S3 uploads and retention for files staged in the bucket."
+        case .connections:
+            return "Manage credentials for external services and future integrations."
         case .processing:
             return "Choose which engine handles each file type by default."
         case .output:
             return "Control where markdown files are saved and how they are named."
         case .general:
-            return "Set startup behavior, retention, and app-level controls."
+            return "Set app-wide behavior, defaults, and everyday workflow options."
+        case .about:
+            return "Version details, configuration access, and support information."
         }
     }
 }
@@ -86,8 +90,8 @@ struct SettingsView: View {
                 detailContent(for: .storage)
             }
 
-            Tab("Mistral", systemImage: SettingsPane.mistral.systemImage, value: .mistral) {
-                detailContent(for: .mistral)
+            Tab("Connections", systemImage: SettingsPane.connections.systemImage, value: .connections) {
+                detailContent(for: .connections)
             }
 
             Tab("Processing", systemImage: SettingsPane.processing.systemImage, value: .processing) {
@@ -100,6 +104,10 @@ struct SettingsView: View {
 
             Tab("General", systemImage: SettingsPane.general.systemImage, value: .general) {
                 detailContent(for: .general)
+            }
+
+            Tab("About", systemImage: SettingsPane.about.systemImage, value: .about) {
+                detailContent(for: .about)
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -147,75 +155,104 @@ struct SettingsView: View {
         switch pane {
         case .storage:
             storagePage
-        case .mistral:
-            mistralPage
+        case .connections:
+            connectionsPage
         case .processing:
             processingPage
         case .output:
             outputPage
         case .general:
             generalPage
+        case .about:
+            aboutPage
         }
     }
 
     private var storagePage: some View {
-        settingsSection("S3-Compatible Storage") {
-            settingsGrid {
-                settingsRow(
-                    "Endpoint URL",
-                    help: "You can paste either https://host or just host; the app will normalize it to HTTPS."
-                ) {
-                    TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("S3-Compatible Storage") {
+                settingsGrid {
+                    settingsRow(
+                        "Endpoint URL",
+                        help: "You can paste either https://host or just host; the app will normalize it to HTTPS."
+                    ) {
+                        TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
 
-                settingsRow("Access Key") {
-                    TextField("Access Key", text: $viewModel.settings.s3AccessKey)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
+                    settingsRow("Access Key") {
+                        TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
 
-                settingsRow("Secret Key") {
-                    secretField(
-                        "Secret Key",
-                        text: $viewModel.s3SecretKey,
-                        isVisible: $viewModel.isS3SecretKeyVisible
-                    )
-                }
+                    settingsRow("Secret Key") {
+                        secretField(
+                            "Secret Key",
+                            text: $viewModel.s3SecretKey,
+                            isVisible: $viewModel.isS3SecretKeyVisible
+                        )
+                    }
 
-                settingsRow("Bucket Name") {
-                    TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
+                    settingsRow("Bucket Name") {
+                        TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
 
-                settingsRow("Region") {
-                    TextField("Region", text: $viewModel.settings.s3Region)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
+                    settingsRow("Region") {
+                        TextField("Region", text: $viewModel.settings.s3Region)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
 
-                settingsRow("Path Prefix") {
-                    TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
+                    settingsRow("Path Prefix") {
+                        TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
 
-                settingsRow("Connection Test") {
-                    HStack(spacing: 10) {
-                        testButton("Test", result: viewModel.s3TestResult) {
-                            Task { await viewModel.testS3() }
+                    settingsRow("Connection Test") {
+                        HStack(spacing: 10) {
+                            testButton("Test", result: viewModel.s3TestResult) {
+                                Task { await viewModel.testS3() }
+                            }
+                            testResultView(viewModel.s3TestResult)
+                            Spacer(minLength: 0)
                         }
-                        testResultView(viewModel.s3TestResult)
-                        Spacer(minLength: 0)
+                    }
+                }
+            }
+
+            settingsSection("Retention") {
+                settingsGrid {
+                    settingsRow(
+                        "File Retention",
+                        help: "Applies to files stored in S3 after upload. Set to 0 to disable automatic cleanup."
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField(
+                                "Hours",
+                                value: $viewModel.settings.fileRetentionHours,
+                                format: .number
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 96)
+
+                            Text("hours")
+                                .foregroundStyle(.secondary)
+
+                            Spacer(minLength: 0)
+                        }
+                        .controlSize(.large)
                     }
                 }
             }
         }
     }
 
-    private var mistralPage: some View {
+    private var connectionsPage: some View {
         settingsSection("Mistral API") {
             settingsGrid {
                 settingsRow("API Key") {
@@ -301,13 +338,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Divider()
-
-                settingsToggleRow(
-                    help: "Also places the generated markdown on the clipboard after each run."
-                ) {
-                    Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
-                }
             }
 
             settingsSection("File Naming") {
@@ -347,25 +377,11 @@ struct SettingsView: View {
 
     private var generalPage: some View {
         VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("Retention") {
-                settingsGrid {
-                    settingsRow("File Retention") {
-                        HStack(spacing: 8) {
-                            TextField(
-                                "Hours",
-                                value: $viewModel.settings.fileRetentionHours,
-                                format: .number
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 96)
-
-                            Text("hours")
-                                .foregroundStyle(.secondary)
-
-                            Spacer(minLength: 0)
-                        }
-                        .controlSize(.large)
-                    }
+            settingsSection("Behavior") {
+                settingsToggleRow(
+                    help: "Also places the generated markdown on the clipboard after each run."
+                ) {
+                    Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
                 }
             }
 
@@ -376,23 +392,50 @@ struct SettingsView: View {
                     Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
                 }
             }
+        }
+    }
 
+    private var aboutPage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
             settingsSection("Application") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(
-                        "Quit closes the menu bar item and stops background processing until you relaunch the app."
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                    Button("Quit trnscrb") {
-                        onQuitApp()
+                settingsGrid {
+                    settingsRow("Version") {
+                        Text(appVersionSummary)
+                            .textSelection(.enabled)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .pointingHandCursor()
+
+                    settingsRow("Bundle ID") {
+                        Text(Bundle.main.bundleIdentifier ?? "com.trnscrb.app")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            settingsSection("Configuration") {
+                settingsGrid {
+                    settingsRow("Config File") {
+                        Text(configFileURL.path())
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+
+                    settingsRow("Actions") {
+                        HStack(spacing: 8) {
+                            Button("Reveal Config File") {
+                                revealConfigFile()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("Open Config Folder") {
+                                openConfigFolder()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
             }
         }
     }
@@ -411,6 +454,13 @@ struct SettingsView: View {
             }
 
             Spacer()
+
+            Button("Quit trnscrb") {
+                onQuitApp()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .pointingHandCursor()
 
             saveButton
         }
@@ -431,6 +481,7 @@ struct SettingsView: View {
                 }
             }
             .buttonStyle(.glassProminent)
+            .tint(.accentColor)
             .keyboardShortcut("s", modifiers: .command)
             .pointingHandCursor()
         } else {
@@ -443,6 +494,7 @@ struct SettingsView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .tint(.accentColor)
             .controlSize(.regular)
             .keyboardShortcut("s", modifiers: .command)
             .pointingHandCursor()
@@ -461,6 +513,31 @@ struct SettingsView: View {
                 .font(.headline)
         }
         .groupBoxStyle(.automatic)
+    }
+
+    private var appVersionSummary: String {
+        let shortVersion: String = {
+            guard let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                  !raw.isEmpty,
+                  !raw.contains("$")
+            else {
+                return "0.1.1"
+            }
+            return raw
+        }()
+
+        guard let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+              !buildNumber.isEmpty,
+              !buildNumber.contains("$")
+        else {
+            return shortVersion
+        }
+
+        return "\(shortVersion) (\(buildNumber))"
+    }
+
+    private var configFileURL: URL {
+        TOMLConfigManager.defaultConfigFileURL
     }
 
     private func settingsGrid<Content: View>(
@@ -621,6 +698,25 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let selectedURL: URL = panel.url {
             viewModel.settings.saveFolderPath = selectedURL.standardizedFileURL.path()
         }
+    }
+
+    private func revealConfigFile() {
+        let fileManager: FileManager = FileManager.default
+        let fileURL: URL = configFileURL
+        if fileManager.fileExists(atPath: fileURL.path()) {
+            NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+        } else {
+            openConfigFolder()
+        }
+    }
+
+    private func openConfigFolder() {
+        let folderURL: URL = configFileURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: folderURL,
+            withIntermediateDirectories: true
+        )
+        NSWorkspace.shared.open(folderURL)
     }
 }
 

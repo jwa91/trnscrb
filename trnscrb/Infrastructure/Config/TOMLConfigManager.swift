@@ -12,6 +12,18 @@ public enum ConfigError: Error, Sendable {
 /// defaulting to `~/.config/trnscrb/config.toml`.
 /// Secrets are delegated to the injected `KeychainStore`.
 public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
+    static var defaultConfigDirectoryURL: URL {
+        if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] {
+            return URL(filePath: xdg).appending(path: "trnscrb")
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".config/trnscrb")
+    }
+
+    static var defaultConfigFileURL: URL {
+        defaultConfigDirectoryURL.appending(path: "config.toml")
+    }
+
     /// Directory containing `config.toml`.
     private let configDirectory: URL
     /// Secret store wrapper for secret storage.
@@ -37,12 +49,7 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
         if let configDirectory {
             self.configDirectory = configDirectory
         } else {
-            if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] {
-                self.configDirectory = URL(filePath: xdg).appending(path: "trnscrb")
-            } else {
-                self.configDirectory = FileManager.default.homeDirectoryForCurrentUser
-                    .appending(path: ".config/trnscrb")
-            }
+            self.configDirectory = Self.defaultConfigDirectoryURL
         }
         self.secretStore = secretStore
     }

@@ -4,7 +4,7 @@ import PackageDescription
 
 let package: Package = Package(
     name: "trnscrb",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("26.0")],
     targets: [
         .executableTarget(
             name: "trnscrb",
