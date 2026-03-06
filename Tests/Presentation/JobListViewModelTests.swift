@@ -23,11 +23,14 @@ struct JobListViewModelTests {
         }
     }
 
-    private func configuredSettingsGateway() -> MockSettingsGateway {
+    private func configuredMistralSettingsGateway() -> MockSettingsGateway {
         let settings: AppSettings = AppSettings(
             s3EndpointURL: "https://s3.example.com",
             s3AccessKey: "AKID",
-            s3BucketName: "bucket"
+            s3BucketName: "bucket",
+            audioProviderMode: .mistral,
+            pdfProviderMode: .mistral,
+            imageProviderMode: .mistral
         )
         let secrets: [SecretKey: String] = [
             .mistralAPIKey: "mk-test",
@@ -78,7 +81,7 @@ struct JobListViewModelTests {
         return (vm, storage, delivery, settings, notificationGateway, outputFolderGateway)
     }
 
-    private func makeViewModel(
+    private func makeMistralViewModel(
         storage: MockStorageGateway = MockStorageGateway(),
         delivery: MockDeliveryGateway = MockDeliveryGateway(
             savedFileURL: URL(filePath: "/tmp/trnscrb-output.md")
@@ -96,7 +99,7 @@ struct JobListViewModelTests {
         makeViewModel(
             storage: storage,
             delivery: delivery,
-            settings: configuredSettingsGateway(),
+            settings: configuredMistralSettingsGateway(),
             copyFeedbackDuration: copyFeedbackDuration,
             openFolder: openFolder
         )
@@ -135,14 +138,14 @@ struct JobListViewModelTests {
     // MARK: - File validation
 
     @Test func rejectsUnsupportedFileType() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.processFiles([URL(filePath: "/tmp/file.xyz")])
         #expect(vm.jobs.isEmpty)
         #expect(vm.dropError == "Unsupported file type: .xyz")
     }
 
     @Test func createsJobForSupportedFile() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         #expect(vm.jobs.count == 1)
         #expect(vm.jobs[0].fileType == .audio)
@@ -150,7 +153,7 @@ struct JobListViewModelTests {
     }
 
     @Test func createsJobsForMultipleFiles() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.processFiles([
             URL(filePath: "/tmp/audio.mp3"),
             URL(filePath: "/tmp/doc.pdf"),
@@ -160,7 +163,7 @@ struct JobListViewModelTests {
     }
 
     @Test func filtersUnsupportedFromMixedBatch() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.processFiles([
             URL(filePath: "/tmp/good.mp3"),
             URL(filePath: "/tmp/bad.xyz"),
@@ -171,7 +174,7 @@ struct JobListViewModelTests {
     }
 
     @Test func mixedOfflineBatchKeepsValidationErrorSeparateFromOfflineStatus() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.handleNetworkStatusChange(isOnline: false)
 
         vm.processFiles([
@@ -194,7 +197,7 @@ struct JobListViewModelTests {
     }
 
     @Test func resumingQueuedOfflineJobsClearsOnlyOfflineStatus() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.handleNetworkStatusChange(isOnline: false)
 
         vm.processFiles([
@@ -222,7 +225,7 @@ struct JobListViewModelTests {
         let storage: MockStorageGateway = MockStorageGateway(
             uploadError: URLError(.notConnectedToInternet)
         )
-        let (vm, _, _, _, _, _) = makeViewModel(storage: storage)
+        let (vm, _, _, _, _, _) = makeMistralViewModel(storage: storage)
 
         vm.processFiles([
             URL(filePath: "/tmp/good.mp3"),
@@ -245,7 +248,7 @@ struct JobListViewModelTests {
         let storage: MockStorageGateway = MockStorageGateway(
             uploadError: URLError(.notConnectedToInternet)
         )
-        let (vm, _, _, _, _, _) = makeViewModel(storage: storage)
+        let (vm, _, _, _, _, _) = makeMistralViewModel(storage: storage)
 
         vm.processFiles([
             URL(filePath: "/tmp/good.mp3"),
@@ -268,7 +271,7 @@ struct JobListViewModelTests {
         let storage: MockStorageGateway = MockStorageGateway(
             uploadError: URLError(.notConnectedToInternet)
         )
-        let (vm, _, _, _, _, _) = makeViewModel(storage: storage)
+        let (vm, _, _, _, _, _) = makeMistralViewModel(storage: storage)
 
         vm.processFiles([
             URL(filePath: "/tmp/good.mp3"),
@@ -297,6 +300,11 @@ struct JobListViewModelTests {
 
     @Test func setsConfigErrorWhenS3NotConfigured() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
+            ),
             secrets: [.mistralAPIKey: "mk-test"]
         )
         // s3EndpointURL is empty by default — not configured
@@ -317,7 +325,10 @@ struct JobListViewModelTests {
             settings: AppSettings(
                 s3EndpointURL: "https://s3.example.com",
                 s3AccessKey: "AKID",
-                s3BucketName: "bucket"
+                s3BucketName: "bucket",
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
             ),
             secrets: [.s3SecretKey: "sk-test"]
         )
@@ -339,7 +350,10 @@ struct JobListViewModelTests {
             settings: AppSettings(
                 s3EndpointURL: "https://s3.example.com",
                 s3AccessKey: "AKID",
-                s3BucketName: "bucket"
+                s3BucketName: "bucket",
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
             ),
             secrets: [.mistralAPIKey: "mk-test"]
         )
@@ -404,7 +418,7 @@ struct JobListViewModelTests {
     }
 
     @Test func invalidSaveFolderPreventsProcessingAndRequestsSettings() async {
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway()
         outputFolderGateway.setError(OutputFolderError.notWritable)
         let (vm, _, delivery, _, _, _) = makeViewModel(
@@ -430,7 +444,7 @@ struct JobListViewModelTests {
     // MARK: - Completed jobs history
 
     @Test func completedJobsListHasMaxTenItems() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
 
         // Process 12 files
         for i in 0..<12 {
@@ -446,7 +460,7 @@ struct JobListViewModelTests {
     }
 
     @Test func completedJobsAreSortedNewestFirst() async throws {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
 
         var older: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/older.mp3"))
         older.startUpload()
@@ -468,14 +482,14 @@ struct JobListViewModelTests {
     // MARK: - Computed properties
 
     @Test func activeJobsFiltersCorrectly() async {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         // Job should be active immediately after creation
         #expect(vm.activeJobs.count == 1)
     }
 
     @Test func multiFileBatchStartsAllJobsPromptlyWithoutWaitingForEarlierJobs() async {
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let storage: MockStorageGateway = MockStorageGateway()
         let delivery: MockDeliveryGateway = MockDeliveryGateway()
         let audio: MockTranscriptionGateway = MockTranscriptionGateway(
@@ -515,7 +529,7 @@ struct JobListViewModelTests {
     @Test func removingActiveJobCancelsUnderlyingProcessingTask() async {
         let storage: MockStorageGateway = MockStorageGateway()
         let delivery: MockDeliveryGateway = MockDeliveryGateway()
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let audio: MockTranscriptionGateway = MockTranscriptionGateway(
             supportedExtensions: FileType.audioExtensions
         )
@@ -564,7 +578,7 @@ struct JobListViewModelTests {
         let notificationGateway: MockNotificationGateway = MockNotificationGateway()
         let (vm, _, _, _, _, _) = makeViewModel(
             delivery: delivery,
-            settings: configuredSettingsGateway(),
+            settings: configuredMistralSettingsGateway(),
             notificationGateway: notificationGateway
         )
 
@@ -585,7 +599,7 @@ struct JobListViewModelTests {
     }
 
     @Test func successfulProcessingDoesNotReloadSettingsAfterPipelineCompletes() async {
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/no-extra-load.mp3")])
@@ -607,7 +621,10 @@ struct JobListViewModelTests {
                 s3EndpointURL: "https://s3.example.com",
                 s3AccessKey: "AKID",
                 s3BucketName: "bucket",
-                copyToClipboard: false
+                copyToClipboard: false,
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
             ),
             secrets: [
                 .mistralAPIKey: "mk-test",
@@ -640,7 +657,7 @@ struct JobListViewModelTests {
         let notificationGateway: MockNotificationGateway = MockNotificationGateway()
         let (vm, _, _, _, _, _) = makeViewModel(
             delivery: delivery,
-            settings: configuredSettingsGateway(),
+            settings: configuredMistralSettingsGateway(),
             notificationGateway: notificationGateway
         )
 
@@ -669,7 +686,7 @@ struct JobListViewModelTests {
         let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
         let storage: MockStorageGateway = MockStorageGateway(uploadResult: sourceURL)
         let delivery: MockDeliveryGateway = MockDeliveryGateway(savedFileURL: savedFileURL)
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let (vm, _, _, _, _, _) = makeViewModel(
             storage: storage,
             delivery: delivery,
@@ -688,7 +705,7 @@ struct JobListViewModelTests {
     }
 
     @Test func copyToClipboardSetsTransientCopiedFeedback() async {
-        let (vm, _, _, _, _, _) = makeViewModel(copyFeedbackDuration: .milliseconds(20))
+        let (vm, _, _, _, _, _) = makeMistralViewModel(copyFeedbackDuration: .milliseconds(20))
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied.mp3"))
         job.startUpload()
         job.startProcessing()
@@ -710,7 +727,7 @@ struct JobListViewModelTests {
     }
 
     @Test func copySourceURLToClipboardSetsTransientCopiedFeedback() async {
-        let (vm, _, _, _, _, _) = makeViewModel(copyFeedbackDuration: .milliseconds(20))
+        let (vm, _, _, _, _, _) = makeMistralViewModel(copyFeedbackDuration: .milliseconds(20))
         let sourceURL: URL = URL(string: "https://s3.example.com/transcript-source")!
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied-source.mp3"))
         job.startUpload()
@@ -738,7 +755,7 @@ struct JobListViewModelTests {
         let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(
             preparedURL: preparedURL
         )
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let (vm, _, _, _, _, _) = makeViewModel(
             settings: settings,
             outputFolderGateway: outputFolderGateway,
@@ -756,7 +773,7 @@ struct JobListViewModelTests {
     @Test func failedProcessingMarksJobAsFailedInsteadOfLeavingItActive() async {
         let storage: MockStorageGateway = MockStorageGateway()
         let delivery: MockDeliveryGateway = MockDeliveryGateway()
-        let settings: MockSettingsGateway = configuredSettingsGateway()
+        let settings: MockSettingsGateway = configuredMistralSettingsGateway()
         let audio: MockTranscriptionGateway = MockTranscriptionGateway(
             supportedExtensions: FileType.audioExtensions,
             processError: MistralError.requestFailed(statusCode: 422, body: "bad request")
@@ -795,7 +812,7 @@ struct JobListViewModelTests {
     }
 
     @Test func selectNextVisibleJobFollowsRenderedOrderAndClampsAtEnd() {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         let firstActive: Job = Job(
             fileType: .audio,
             fileURL: URL(filePath: "/tmp/first.mp3"),
@@ -830,7 +847,7 @@ struct JobListViewModelTests {
     }
 
     @Test func selectPreviousVisibleJobStartsAtLastVisibleJob() {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
         completedJob.startUpload()
@@ -849,7 +866,7 @@ struct JobListViewModelTests {
     }
 
     @Test func removeSelectedOrMostRecentJobPrefersSelectedJob() {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
         completedJob.startUpload()
@@ -865,7 +882,7 @@ struct JobListViewModelTests {
     }
 
     @Test func removeSelectedOrMostRecentJobFallsBackToNewestCompletedJob() {
-        let (vm, _, _, _, _, _) = makeViewModel()
+        let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
         completedJob.startUpload()

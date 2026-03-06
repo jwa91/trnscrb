@@ -62,10 +62,10 @@ public struct AppSettings: Sendable, Equatable {
         copyToClipboard: Bool = true,
         fileRetentionHours: Int = 24,
         launchAtLogin: Bool = false,
-        audioProviderMode: ProviderMode = .mistral,
+        audioProviderMode: ProviderMode = .localApple,
         appleAudioLocaleIdentifier: String = AppSettings.defaultAppleAudioLocaleIdentifier,
-        pdfProviderMode: ProviderMode = .mistral,
-        imageProviderMode: ProviderMode = .mistral
+        pdfProviderMode: ProviderMode = .localApple,
+        imageProviderMode: ProviderMode = .localApple
     ) {
         self.s3EndpointURL = s3EndpointURL
         self.s3AccessKey = s3AccessKey

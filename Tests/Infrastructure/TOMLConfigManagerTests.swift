@@ -182,9 +182,9 @@ struct TOMLConfigManagerTests {
         try await manager.saveSettings(loaded)
 
         let rewritten: String = try String(contentsOf: fileURL, encoding: .utf8)
-        #expect(rewritten.contains("audio_provider_mode = \"mistral\""))
-        #expect(rewritten.contains("pdf_provider_mode = \"mistral\""))
-        #expect(rewritten.contains("image_provider_mode = \"mistral\""))
+        #expect(rewritten.contains("audio_provider_mode = \"local\""))
+        #expect(rewritten.contains("pdf_provider_mode = \"local\""))
+        #expect(rewritten.contains("image_provider_mode = \"local\""))
     }
 
     // MARK: - Edge cases
