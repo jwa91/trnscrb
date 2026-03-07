@@ -19,15 +19,17 @@ The version is read from the `VERSION` file at the project root. The build numbe
 1. Update the version:
 
    ```bash
-   echo "0.2.0" > VERSION
+   VERSION="0.3.1"
+   printf '%s\n' "$VERSION" > VERSION
    ```
 
 2. Commit and tag:
 
    ```bash
-   git add -A && git commit -m "Bump version to 0.2.0"
-   git tag v0.2.0
-   git push origin main v0.2.0
+   VERSION="0.3.1"
+   git add -A && git commit -m "Bump version to $VERSION"
+   git tag "v$VERSION"
+   git push origin main "v$VERSION"
    ```
 
 3. Build the DMG (signed with Developer ID):
@@ -48,9 +50,10 @@ The version is read from the `VERSION` file at the project root. The build numbe
 4. Notarize and staple:
 
    ```bash
-   xcrun notarytool submit build/trnscrb-0.2.0.dmg \
+   VERSION="0.3.1"
+   xcrun notarytool submit "build/trnscrb-$VERSION.dmg" \
      --keychain-profile "notarytool" --wait
-   xcrun stapler staple build/trnscrb-0.2.0.dmg
+   xcrun stapler staple "build/trnscrb-$VERSION.dmg"
    ```
 
    > **Note:** Notarization is handled by Apple's servers and can take minutes to hours.
@@ -62,21 +65,23 @@ The version is read from the `VERSION` file at the project root. The build numbe
    workaround in place. Then use the read-only checker:
 
    ```bash
-   scripts/notarization-status.sh --version 0.2.0
+   VERSION="0.3.1"
+   scripts/notarization-status.sh --version "$VERSION"
    ```
 
    Example cron entry to check every 30 minutes:
 
    ```cron
-   */30 * * * * cd /Users/jw/developer/trnscrb && scripts/notarization-status.sh --version 0.2.0 >> /tmp/trnscrb-notarization.log 2>&1
+   */30 * * * * cd /Users/jw/developer/trnscrb && scripts/notarization-status.sh --version 0.3.1 >> /tmp/trnscrb-notarization.log 2>&1
    ```
 
-   Once Apple reports `Accepted`, finish the release manually:
+   If you created the GitHub release before notarization completed, replace the release asset after Apple reports `Accepted`:
 
    ```bash
-   xcrun stapler staple build/trnscrb-0.2.0.dmg
-   gh release upload v0.2.0 build/trnscrb-0.2.0.dmg --clobber
-   SHA=$(shasum -a 256 build/trnscrb-0.2.0.dmg | awk '{print $1}')
+   VERSION="0.3.1"
+   xcrun stapler staple "build/trnscrb-$VERSION.dmg"
+   gh release upload "v$VERSION" "build/trnscrb-$VERSION.dmg" --clobber
+   SHA=$(shasum -a 256 "build/trnscrb-$VERSION.dmg" | awk '{print $1}')
    ```
 
    Then update `Casks/trnscrb.rb` in `homebrew-tap`:
@@ -86,13 +91,17 @@ The version is read from the `VERSION` file at the project root. The build numbe
 5. Create a GitHub Release:
 
    ```bash
-   gh release create v0.2.0 build/trnscrb-0.2.0.dmg --title "v0.2.0"
+   VERSION="0.3.1"
+   gh release create "v$VERSION" "build/trnscrb-$VERSION.dmg" --title "v$VERSION"
    ```
+
+   If you had to publish before notarization completed, rerun `gh release upload "v$VERSION" "build/trnscrb-$VERSION.dmg" --clobber` after stapling the accepted DMG.
 
 6. Update the Homebrew tap:
 
    ```bash
-   SHA=$(shasum -a 256 build/trnscrb-0.2.0.dmg | awk '{print $1}')
+   VERSION="0.3.1"
+   SHA=$(shasum -a 256 "build/trnscrb-$VERSION.dmg" | awk '{print $1}')
    ```
 
    Edit `Casks/trnscrb.rb` in the [homebrew-tap](https://github.com/jwa91/homebrew-tap) repo — update `version` and `sha256`.
