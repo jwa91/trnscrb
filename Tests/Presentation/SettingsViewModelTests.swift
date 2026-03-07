@@ -1,10 +1,16 @@
 import Foundation
+import Speech
 import Testing
 
 @testable import trnscrb
 
 @MainActor
 struct SettingsViewModelTests {
+    private func supportedLocaleIdentifier() -> String {
+        SFSpeechRecognizer.supportedLocales().map(\.identifier).sorted().first
+            ?? AppSettings.defaultAppleAudioLocaleIdentifier
+    }
+
     private func makeViewModel(
         settings: AppSettings = AppSettings(),
         secrets: [SecretKey: String] = [:]
@@ -47,7 +53,7 @@ struct SettingsViewModelTests {
             s3BucketName: "bucket",
             outputFileNamePrefix: "notes-",
             outputFileNameTemplate: "{prefix}{originalFilename}",
-            appleAudioLocaleIdentifier: "nl-NL"
+            appleAudioLocaleIdentifier: supportedLocaleIdentifier()
         )
         let (vm, _, _, _, _) = makeViewModel(settings: customSettings)
         await vm.load()
@@ -55,7 +61,7 @@ struct SettingsViewModelTests {
         #expect(vm.settings.s3BucketName == "bucket")
         #expect(vm.settings.outputFileNamePrefix == "notes-")
         #expect(vm.settings.outputFileNameTemplate == "{prefix}{originalFilename}")
-        #expect(vm.settings.appleAudioLocaleIdentifier == "nl-NL")
+        #expect(vm.settings.appleAudioLocaleIdentifier == supportedLocaleIdentifier())
     }
 
     @Test func loadPopulatesProviderModesFromGateway() async {
@@ -99,7 +105,7 @@ struct SettingsViewModelTests {
         vm.settings.s3BucketName = "saved-bucket"
         vm.settings.outputFileNamePrefix = "notes-"
         vm.settings.outputFileNameTemplate = "{prefix}{fileType}"
-        vm.settings.appleAudioLocaleIdentifier = "nl-NL"
+        vm.settings.appleAudioLocaleIdentifier = supportedLocaleIdentifier()
         let didSave: Bool = await vm.save()
         #expect(didSave)
         let savedSettings: AppSettings = await gateway.snapshotSettings()
@@ -107,7 +113,7 @@ struct SettingsViewModelTests {
         #expect(savedSettings.s3BucketName == "saved-bucket")
         #expect(savedSettings.outputFileNamePrefix == "notes-")
         #expect(savedSettings.outputFileNameTemplate == "{prefix}{fileType}")
-        #expect(savedSettings.appleAudioLocaleIdentifier == "nl-NL")
+        #expect(savedSettings.appleAudioLocaleIdentifier == supportedLocaleIdentifier())
     }
 
     @Test func savePersistsProviderModesToGateway() async {

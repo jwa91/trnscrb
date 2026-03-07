@@ -36,6 +36,15 @@ The version is read from the `VERSION` file at the project root. The build numbe
    make clean && make dmg IDENTITY="Developer ID Application: Jan Willem Altink (U3ST8HC98U)"
    ```
 
+   Verify the app bundle identifier before notarizing:
+
+   ```bash
+   /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' build/trnscrb.app/Contents/Info.plist
+   # expected: com.janwillemaltink.trnscrb
+   ```
+
+   The `dmg` target now signs the disk image as well when `IDENTITY` is a real Developer ID.
+
 4. Notarize and staple:
 
    ```bash
@@ -105,7 +114,7 @@ brew install --cask trnscrb
 | `make build`   | Compile release binary               |
 | `make app`     | Assemble `.app` bundle               |
 | `make sign`    | Codesign the `.app`                  |
-| `make dmg`     | Create `.dmg` for distribution       |
+| `make dmg`     | Create and sign `.dmg` for distribution |
 | `make install` | Copy `.app` to `/Applications`       |
 | `make verify`  | Verify codesign integrity            |
 | `make clean`   | Remove build artifacts               |

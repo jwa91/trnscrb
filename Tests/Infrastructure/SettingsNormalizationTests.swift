@@ -1,9 +1,15 @@
 import Foundation
+import Speech
 import Testing
 
 @testable import trnscrb
 
 struct SettingsNormalizationTests {
+    private func supportedLocaleIdentifier() -> String {
+        SFSpeechRecognizer.supportedLocales().map(\.identifier).sorted().first
+            ?? AppSettings.defaultAppleAudioLocaleIdentifier
+    }
+
     @Test func normalizedForUseTrimsCredentialsAndSaveFolder() {
         let input: AppSettings = AppSettings(
             s3EndpointURL: "  s3.example.com  ",
@@ -14,7 +20,7 @@ struct SettingsNormalizationTests {
             saveFolderPath: "  ~/Documents/trnscrb  ",
             outputFileNamePrefix: "  notes-  ",
             outputFileNameTemplate: "  {prefix}{fileType}  ",
-            appleAudioLocaleIdentifier: "  nl-NL  "
+            appleAudioLocaleIdentifier: "  \(supportedLocaleIdentifier())  "
         )
 
         let normalized: AppSettings = input.normalizedForUse
@@ -27,7 +33,7 @@ struct SettingsNormalizationTests {
         #expect(normalized.saveFolderPath == "~/Documents/trnscrb")
         #expect(normalized.outputFileNamePrefix == "notes-")
         #expect(normalized.outputFileNameTemplate == "{prefix}{fileType}")
-        #expect(normalized.appleAudioLocaleIdentifier == "nl-NL")
+        #expect(normalized.appleAudioLocaleIdentifier == supportedLocaleIdentifier())
     }
 
     @Test func normalizedEndpointPreservesExplicitScheme() {
@@ -51,5 +57,26 @@ struct SettingsNormalizationTests {
         #expect(
             normalized.appleAudioLocaleIdentifier == AppSettings.defaultAppleAudioLocaleIdentifier
         )
+    }
+
+    @Test func validatedForPersistenceRejectsNegativeRetentionHours() {
+        let input: AppSettings = AppSettings(
+            fileRetentionHours: -1,
+            appleAudioLocaleIdentifier: supportedLocaleIdentifier()
+        )
+
+        #expect(throws: SettingsValidationError.self) {
+            _ = try input.validatedForPersistence()
+        }
+    }
+
+    @Test func validatedForPersistenceRejectsUnsupportedAppleAudioLocale() {
+        let input: AppSettings = AppSettings(
+            appleAudioLocaleIdentifier: "xx-INVALID"
+        )
+
+        #expect(throws: SettingsValidationError.self) {
+            _ = try input.validatedForPersistence()
+        }
     }
 }

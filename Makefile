@@ -36,7 +36,12 @@ dmg: sign
 		-srcfolder $(APP_BUNDLE) \
 		-ov -format UDZO \
 		build/$(APP_NAME)-$(VERSION).dmg
-	@echo "Created build/$(APP_NAME)-$(VERSION).dmg"
+	@if [ "$(IDENTITY)" != "-" ]; then \
+		codesign --force --sign "$(IDENTITY)" --timestamp build/$(APP_NAME)-$(VERSION).dmg; \
+		echo "Signed build/$(APP_NAME)-$(VERSION).dmg with identity: $(IDENTITY)"; \
+	else \
+		echo "Created build/$(APP_NAME)-$(VERSION).dmg (disk image not signed for distribution)"; \
+	fi
 
 install: sign
 	@rm -rf /Applications/$(APP_NAME).app

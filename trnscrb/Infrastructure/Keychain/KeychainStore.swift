@@ -33,9 +33,11 @@ public struct KeychainStore: SecretStore, Sendable {
     /// Keychain service name used to scope stored items.
     private let service: String
 
+    public static let defaultService: String = AppIdentity.keychainService
+
     /// Creates a KeychainStore scoped to the given service name.
-    /// - Parameter service: Keychain service identifier (default: `"com.trnscrb"`).
-    public init(service: String = "com.trnscrb.credentials.v2") {
+    /// - Parameter service: Primary keychain service identifier used for reads and writes.
+    public init(service: String = KeychainStore.defaultService) {
         self.service = service
     }
 

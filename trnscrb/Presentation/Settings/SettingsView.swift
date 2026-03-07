@@ -169,83 +169,74 @@ struct SettingsView: View {
     }
 
     private var storagePage: some View {
-        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("S3-Compatible Storage") {
-                settingsGrid {
-                    settingsRow(
-                        "Endpoint URL",
-                        help: "You can paste either https://host or just host; the app will normalize it to HTTPS."
-                    ) {
-                        TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Access Key") {
-                        TextField("Access Key", text: $viewModel.settings.s3AccessKey)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Secret Key") {
-                        secretField(
-                            "Secret Key",
-                            text: $viewModel.s3SecretKey,
-                            isVisible: $viewModel.isS3SecretKeyVisible
-                        )
-                    }
-
-                    settingsRow("Bucket Name") {
-                        TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Region") {
-                        TextField("Region", text: $viewModel.settings.s3Region)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Path Prefix") {
-                        TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Connection Test") {
-                        HStack(spacing: 10) {
-                            testButton("Test", result: viewModel.s3TestResult) {
-                                Task { await viewModel.testS3() }
-                            }
-                            testResultView(viewModel.s3TestResult)
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-            }
-
-            settingsSection("Retention") {
-                settingsGrid {
-                    settingsRow(
-                        "File Retention",
-                        help: "Applies to files stored in S3 after upload. Set to 0 to disable automatic cleanup."
-                    ) {
-                        HStack(spacing: 8) {
-                            TextField(
-                                "Hours",
-                                value: $viewModel.settings.fileRetentionHours,
-                                format: .number
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 96)
-
-                            Text("hours")
-                                .foregroundStyle(.secondary)
-
-                            Spacer(minLength: 0)
-                        }
+        settingsSection("S3-Compatible Storage") {
+            settingsGrid {
+                settingsRow("Endpoint URL") {
+                    TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
+                        .textFieldStyle(.roundedBorder)
                         .controlSize(.large)
+                }
+
+                settingsRow("Access Key") {
+                    TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
+                }
+
+                settingsRow("Secret Key") {
+                    secretField(
+                        "Secret Key",
+                        text: $viewModel.s3SecretKey,
+                        isVisible: $viewModel.isS3SecretKeyVisible
+                    )
+                }
+
+                settingsRow("Bucket Name") {
+                    TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
+                }
+
+                settingsRow("Region") {
+                    TextField("Region", text: $viewModel.settings.s3Region)
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
+                }
+
+                settingsRow("Path Prefix") {
+                    TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
+                }
+
+                settingsRow(
+                    "File Retention",
+                    help: "Applies to files stored in S3 after upload. Set to 0 to disable automatic cleanup."
+                ) {
+                    HStack(spacing: 8) {
+                        TextField(
+                            "Hours",
+                            value: $viewModel.settings.fileRetentionHours,
+                            format: .number
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 96)
+
+                        Text("hours")
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 0)
+                    }
+                    .controlSize(.large)
+                }
+
+                settingsRow("Connection Test") {
+                    HStack(spacing: 10) {
+                        testButton("Test", result: viewModel.s3TestResult) {
+                            Task { await viewModel.testS3() }
+                        }
+                        testResultView(viewModel.s3TestResult)
+                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -396,7 +387,7 @@ struct SettingsView: View {
                     }
 
                     settingsRow("Bundle ID") {
-                        Text(Bundle.main.bundleIdentifier ?? "com.trnscrb.app")
+                        Text(Bundle.main.bundleIdentifier ?? AppIdentity.bundleIdentifier)
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -491,24 +482,7 @@ struct SettingsView: View {
     }
 
     private var appVersionSummary: String {
-        let shortVersion: String = {
-            guard let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-                  !raw.isEmpty,
-                  !raw.contains("$")
-            else {
-                return "0.1.1"
-            }
-            return raw
-        }()
-
-        guard let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
-              !buildNumber.isEmpty,
-              !buildNumber.contains("$")
-        else {
-            return shortVersion
-        }
-
-        return "\(shortVersion) (\(buildNumber))"
+        AppVersionInfo.summary()
     }
 
     private var configFileURL: URL {
