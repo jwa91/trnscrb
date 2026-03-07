@@ -117,7 +117,7 @@ public final class SettingsViewModel: ObservableObject {
                   !settings.s3AccessKey.isEmpty,
                   !settings.s3BucketName.isEmpty,
                   !s3SecretKey.isEmpty else {
-                s3TestResult = .failure("Fill in all S3 fields first")
+                s3TestResult = .failure("Fill in all S3 mirroring fields first")
                 return
             }
             try await connectivityUseCase.testS3(

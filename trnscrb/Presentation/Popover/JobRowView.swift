@@ -54,7 +54,7 @@ struct JobRowView: View {
                     onCopyMarkdown?()
                 }
                 if onCopySourceURL != nil {
-                    Button("Copy S3 URL") {
+                    Button("Copy Source URL") {
                         onCopySourceURL?()
                     }
                 }
@@ -203,8 +203,8 @@ struct JobRowView: View {
             if presentation.showsSourceLinkAction, let onCopySourceURL {
                 rowActionButton(
                     systemName: "link",
-                    title: "Copy S3 URL",
-                    successTitle: "Copied S3 URL",
+                    title: "Copy Source URL",
+                    successTitle: "Copied Source URL",
                     isConfirmed: showsSourceCopyConfirmation,
                     action: onCopySourceURL
                 )
