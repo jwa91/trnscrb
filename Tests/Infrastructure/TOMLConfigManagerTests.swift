@@ -333,6 +333,51 @@ struct TOMLConfigManagerTests {
         )
     }
 
+    @Test func loadAcceptsLegacyMultilineEndpointValueAndNormalizesIt() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = """
+        storage.s3.endpoint_url = "https://nbg1.your-objectstorage.com
+        nbg1.your-objectstorage.com
+        nbg1.your-objectstorage.com"
+        processing.apple_audio.locale_identifier = "\(supportedLocaleIdentifier())"
+        """
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let keychainStore: KeychainStore = KeychainStore(
+            service: "com.trnscrb.test.toml.\(UUID().uuidString)"
+        )
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            keychainStore: keychainStore
+        )
+
+        let loaded: AppSettings = try await manager.loadSettings()
+        #expect(loaded.s3EndpointURL == "https://nbg1.your-objectstorage.com")
+    }
+
+    @Test func saveEscapesEmbeddedNewlinesSoConfigRemainsParseable() async throws {
+        let (manager, tempDir) = try makeManager()
+        defer { cleanupDir(tempDir) }
+
+        let settings: AppSettings = AppSettings(
+            outputFileNamePrefix: "line-one\nline-two",
+            appleAudioLocaleIdentifier: supportedLocaleIdentifier()
+        )
+
+        try await manager.saveSettings(settings)
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = try String(contentsOf: fileURL, encoding: .utf8)
+        #expect(content.contains("output.naming.filename_prefix = \"line-one\\nline-two\""))
+
+        let loaded: AppSettings = try await manager.loadSettings()
+        #expect(loaded.outputFileNamePrefix == "line-one\nline-two")
+    }
+
     @Test func loadRejectsMalformedLine() async throws {
         try await assertLoadFails(
             """

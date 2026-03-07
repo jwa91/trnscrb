@@ -111,10 +111,14 @@ struct TOMLConfigDocument {
 
     init(content: String) throws {
         var parsedValues: [String: ParsedValue] = [:]
+        let rawLines: [String] = content.components(separatedBy: "\n")
+        var lineIndex: Int = 0
 
-        for (lineNumber, rawLine) in content.components(separatedBy: "\n").enumerated() {
+        while lineIndex < rawLines.count {
+            let rawLine: String = rawLines[lineIndex]
             let line: String = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, !line.hasPrefix("#") else {
+                lineIndex += 1
                 continue
             }
 
@@ -122,16 +126,22 @@ struct TOMLConfigDocument {
                 throw ConfigError.parseError(Self.unsupportedSectionMessage)
             }
 
-            let parsedLine: ParsedLine = try Self.parseKeyValueLine(
+            let combinedLine: CombinedLine = Self.combineMultilineStringValueIfNeeded(
                 line,
-                lineNumber: lineNumber + 1
+                allRawLines: rawLines,
+                startIndex: lineIndex
+            )
+            let parsedLine: ParsedLine = try Self.parseKeyValueLine(
+                combinedLine.content,
+                lineNumber: lineIndex + 1
             )
             if parsedValues[parsedLine.fullKey] != nil {
                 throw ConfigError.parseError(
-                    "Duplicate config key '\(parsedLine.fullKey)' on line \(lineNumber + 1)."
+                    "Duplicate config key '\(parsedLine.fullKey)' on line \(lineIndex + 1)."
                 )
             }
             parsedValues[parsedLine.fullKey] = parsedLine.value
+            lineIndex += combinedLine.consumedLineCount
         }
 
         values = parsedValues
@@ -305,10 +315,8 @@ struct TOMLConfigDocument {
             )
         }
 
-        var result: String = String(rawValue.dropFirst().dropLast())
-        result = result
-            .replacingOccurrences(of: "\\\"", with: "\"")
-            .replacingOccurrences(of: "\\\\", with: "\\")
+        let inner: String = String(rawValue.dropFirst().dropLast())
+        let result: String = unescapeQuotedString(inner)
         return result
     }
 
@@ -316,6 +324,86 @@ struct TOMLConfigDocument {
         let escaped: String = value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
         return "\"\(escaped)\""
+    }
+
+    private static func unescapeQuotedString(_ value: String) -> String {
+        var result: String = ""
+        var iterator: String.Iterator = value.makeIterator()
+
+        while let character: Character = iterator.next() {
+            guard character == "\\" else {
+                result.append(character)
+                continue
+            }
+
+            guard let escapedCharacter: Character = iterator.next() else {
+                result.append("\\")
+                break
+            }
+
+            switch escapedCharacter {
+            case "\"":
+                result.append("\"")
+            case "\\":
+                result.append("\\")
+            case "n":
+                result.append("\n")
+            case "r":
+                result.append("\r")
+            case "t":
+                result.append("\t")
+            default:
+                result.append("\\")
+                result.append(escapedCharacter)
+            }
+        }
+
+        return result
+    }
+
+    private struct CombinedLine {
+        let content: String
+        let consumedLineCount: Int
+    }
+
+    private static func combineMultilineStringValueIfNeeded(
+        _ line: String,
+        allRawLines: [String],
+        startIndex: Int
+    ) -> CombinedLine {
+        guard let separatorIndex: String.Index = line.firstIndex(of: "=") else {
+            return CombinedLine(content: line, consumedLineCount: 1)
+        }
+
+        let rawValue: String = String(line[line.index(after: separatorIndex)...])
+            .trimmingCharacters(in: .whitespaces)
+        guard rawValue.hasPrefix("\""), !isQuotedValueClosed(rawValue) else {
+            return CombinedLine(content: line, consumedLineCount: 1)
+        }
+
+        var combinedLine: String = line
+        var index: Int = startIndex + 1
+        while index < allRawLines.count {
+            combinedLine += "\n" + allRawLines[index]
+            let combinedRawValue: String = String(combinedLine[combinedLine.index(after: separatorIndex)...])
+                .trimmingCharacters(in: .whitespaces)
+            if isQuotedValueClosed(combinedRawValue) {
+                return CombinedLine(
+                    content: combinedLine,
+                    consumedLineCount: index - startIndex + 1
+                )
+            }
+            index += 1
+        }
+
+        return CombinedLine(content: line, consumedLineCount: 1)
+    }
+
+    private static func isQuotedValueClosed(_ rawValue: String) -> Bool {
+        rawValue.hasPrefix("\"") && rawValue.hasSuffix("\"") && rawValue.count >= 2
     }
 }

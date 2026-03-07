@@ -41,6 +41,19 @@ struct SettingsNormalizationTests {
         #expect("https://s3.example.com".normalizedEndpointURLString == "https://s3.example.com")
     }
 
+    @Test func normalizedEndpointUsesFirstTokenAcrossWhitespaceAndNewlines() {
+        #expect(
+            "https://nbg1.your-objectstorage.com\nnbg1.your-objectstorage.com"
+                .normalizedEndpointURLString
+                == "https://nbg1.your-objectstorage.com"
+        )
+        #expect(
+            "  nbg1.your-objectstorage.com   extra-token  "
+                .normalizedEndpointURLString
+                == "https://nbg1.your-objectstorage.com"
+        )
+    }
+
     @Test func trimmedPathPrefixAddsAtMostOneTrailingSlash() {
         #expect("uploads".trimmedPathPrefix == "uploads/")
         #expect("uploads/".trimmedPathPrefix == "uploads/")
