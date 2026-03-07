@@ -97,33 +97,16 @@ public final class ProcessFileUseCase: Sendable {
         } catch is TranscriptionRoutingError {
             throw ProcessFileError.unsupportedFileType(ext)
         }
-        let sourceURL: URL
-        let presignedURL: URL?
-        switch route.transcriber.sourceKind {
-        case .remoteURL:
-            let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(ext)"
-            onStageChange?(.uploading)
-            AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
-            let uploadStartedAt: Date = Date()
-            let uploadedURL: URL = try await retry(
-                operationName: "upload",
-                maxAttempts: 3,
-                initialBackoffNanoseconds: 250_000_000
-            ) {
-                try await storage.upload(
-                    fileURL: fileURL,
-                    key: key,
-                    onProgress: onUploadProgress
-                )
-            }
-            let uploadElapsedMs: Int = Int((Date().timeIntervalSince(uploadStartedAt) * 1000).rounded())
-            AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public) in \(uploadElapsedMs, privacy: .public) ms")
-            sourceURL = uploadedURL
-            presignedURL = uploadedURL
-        case .localFile:
-            sourceURL = fileURL
-            presignedURL = nil
-        }
+        let preparedSource: PreparedSource = try await prepareSource(
+            fileURL: fileURL,
+            fileExtension: ext,
+            appSettings: appSettings,
+            transcriber: route.transcriber,
+            onStageChange: onStageChange,
+            onUploadProgress: onUploadProgress
+        )
+        let sourceURL: URL = preparedSource.processingURL
+        let presignedURL: URL? = preparedSource.presignedSourceURL
 
         onStageChange?(.processing)
         AppLog.pipeline.info(
@@ -188,6 +171,80 @@ public final class ProcessFileUseCase: Sendable {
         }
 
         throw ProcessFileError.emptyInputFile(fileURL.lastPathComponent)
+    }
+
+    private func prepareSource(
+        fileURL: URL,
+        fileExtension: String,
+        appSettings: AppSettings,
+        transcriber: any TranscriptionGateway,
+        onStageChange: (@Sendable (ProcessingStage) -> Void)?,
+        onUploadProgress: (@Sendable (Double) -> Void)?
+    ) async throws -> PreparedSource {
+        let sourceKind: TranscriptionSourceKind = sourceKindForProcessing(
+            transcriber: transcriber,
+            appSettings: appSettings
+        )
+
+        switch sourceKind {
+        case .localFile:
+            return PreparedSource(processingURL: fileURL, presignedSourceURL: nil)
+        case .remoteURL:
+            let uploadedURL: URL = try await uploadSourceFile(
+                fileURL: fileURL,
+                fileExtension: fileExtension,
+                appSettings: appSettings,
+                onStageChange: onStageChange,
+                onUploadProgress: onUploadProgress
+            )
+            return PreparedSource(processingURL: uploadedURL, presignedSourceURL: uploadedURL)
+        }
+    }
+
+    private func sourceKindForProcessing(
+        transcriber: any TranscriptionGateway,
+        appSettings: AppSettings
+    ) -> TranscriptionSourceKind {
+        let supportsRemoteURL: Bool = transcriber.supportedSourceKinds.contains(.remoteURL)
+        let supportsLocalFile: Bool = transcriber.supportedSourceKinds.contains(.localFile)
+
+        if appSettings.bucketMirroringEnabled && supportsRemoteURL {
+            return .remoteURL
+        }
+        if supportsLocalFile {
+            return .localFile
+        }
+        if supportsRemoteURL {
+            return .remoteURL
+        }
+        return .localFile
+    }
+
+    private func uploadSourceFile(
+        fileURL: URL,
+        fileExtension: String,
+        appSettings: AppSettings,
+        onStageChange: (@Sendable (ProcessingStage) -> Void)?,
+        onUploadProgress: (@Sendable (Double) -> Void)?
+    ) async throws -> URL {
+        let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(fileExtension)"
+        onStageChange?(.uploading)
+        AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
+        let uploadStartedAt: Date = Date()
+        let uploadedURL: URL = try await retry(
+            operationName: "upload",
+            maxAttempts: 3,
+            initialBackoffNanoseconds: 250_000_000
+        ) {
+            try await storage.upload(
+                fileURL: fileURL,
+                key: key,
+                onProgress: onUploadProgress
+            )
+        }
+        let uploadElapsedMs: Int = Int((Date().timeIntervalSince(uploadStartedAt) * 1000).rounded())
+        AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public) in \(uploadElapsedMs, privacy: .public) ms")
+        return uploadedURL
     }
 
     /// Retries an async operation with exponential backoff.
@@ -276,4 +333,9 @@ public final class ProcessFileUseCase: Sendable {
         }
         return attributes[.size] as? Int
     }
+}
+
+private struct PreparedSource {
+    let processingURL: URL
+    let presignedSourceURL: URL?
 }

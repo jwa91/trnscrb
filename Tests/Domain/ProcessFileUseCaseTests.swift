@@ -192,6 +192,10 @@ struct ProcessFileUseCaseTests {
 
     @Test func cloudWithoutMirroringSkipsUploadAndProcessesLocalFileForMistral() async throws {
         let storage: MockStorageGateway = MockStorageGateway()
+        let audioTranscriber: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            supportedSourceKinds: [.localFile, .remoteURL]
+        )
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 bucketMirroringEnabled: false,
@@ -200,8 +204,9 @@ struct ProcessFileUseCaseTests {
                 imageProviderMode: .mistral
             )
         )
-        let (useCase, _, audioTranscriber, _, _, _) = makeMistralUseCase(
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(
             storage: storage,
+            audioTranscriber: audioTranscriber,
             settings: settings
         )
         let fileURL: URL = URL(filePath: "/tmp/direct-upload.mp3")
@@ -214,6 +219,10 @@ struct ProcessFileUseCaseTests {
     }
 
     @Test func cloudWithoutMirroringReportsProcessingStageWithoutUploadingStage() async throws {
+        let audioTranscriber: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            supportedSourceKinds: [.localFile, .remoteURL]
+        )
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 bucketMirroringEnabled: false,
@@ -222,7 +231,10 @@ struct ProcessFileUseCaseTests {
                 imageProviderMode: .mistral
             )
         )
-        let (useCase, _, _, _, _, _) = makeMistralUseCase(settings: settings)
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(
+            audioTranscriber: audioTranscriber,
+            settings: settings
+        )
         let recorder: LockedStageRecorder = LockedStageRecorder()
 
         _ = try await useCase.execute(
@@ -232,6 +244,34 @@ struct ProcessFileUseCaseTests {
         }
 
         #expect(recorder.recordedStages() == [.processing])
+    }
+
+    @Test func cloudWithMirroringEnabledUploadsWhenProviderSupportsBothSourceKinds() async throws {
+        let storage: MockStorageGateway = MockStorageGateway()
+        let audioTranscriber: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            supportedSourceKinds: [.localFile, .remoteURL]
+        )
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: true,
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
+            )
+        )
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(
+            storage: storage,
+            audioTranscriber: audioTranscriber,
+            settings: settings
+        )
+        let fileURL: URL = URL(filePath: "/tmp/mirror-on.mp3")
+
+        let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
+        let uploadedSourceURL: URL = try #require(result.presignedSourceURL)
+
+        #expect(await storage.recordedUploadAttemptCount() == 1)
+        #expect(await audioTranscriber.recordedProcessedURLs() == [uploadedSourceURL])
     }
 
     @Test func reportsUploadProgress() async throws {
