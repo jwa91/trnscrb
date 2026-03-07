@@ -190,6 +190,50 @@ struct ProcessFileUseCaseTests {
         #expect(recorder.recordedStages() == [.uploading, .processing])
     }
 
+    @Test func cloudWithoutMirroringSkipsUploadAndProcessesLocalFileForMistral() async throws {
+        let storage: MockStorageGateway = MockStorageGateway()
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: false,
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
+            )
+        )
+        let (useCase, _, audioTranscriber, _, _, _) = makeMistralUseCase(
+            storage: storage,
+            settings: settings
+        )
+        let fileURL: URL = URL(filePath: "/tmp/direct-upload.mp3")
+
+        let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
+
+        #expect(await storage.recordedUploadAttemptCount() == 0)
+        #expect(await audioTranscriber.recordedProcessedURLs() == [fileURL])
+        #expect(result.presignedSourceURL == nil)
+    }
+
+    @Test func cloudWithoutMirroringReportsProcessingStageWithoutUploadingStage() async throws {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: false,
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
+            )
+        )
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(settings: settings)
+        let recorder: LockedStageRecorder = LockedStageRecorder()
+
+        _ = try await useCase.execute(
+            fileURL: URL(filePath: "/tmp/direct-upload.mp3")
+        ) { stage in
+            recorder.append(stage)
+        }
+
+        #expect(recorder.recordedStages() == [.processing])
+    }
+
     @Test func reportsUploadProgress() async throws {
         let (useCase, _, _, _, _, _) = makeMistralUseCase()
         let recorder: LockedProgressRecorder = LockedProgressRecorder()

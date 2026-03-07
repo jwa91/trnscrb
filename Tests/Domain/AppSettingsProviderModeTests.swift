@@ -62,7 +62,7 @@ struct AppSettingsProviderModeTests {
         #expect(settings.requiresS3Credentials)
     }
 
-    @Test func requiresS3CredentialsWhenCloudActiveAndMirroringDisabled() {
+    @Test func doesNotRequireS3CredentialsWhenCloudActiveAndMirroringDisabled() {
         let settings: AppSettings = AppSettings(
             bucketMirroringEnabled: false,
             audioProviderMode: .mistral,
@@ -70,7 +70,7 @@ struct AppSettingsProviderModeTests {
             imageProviderMode: .localApple
         )
 
-        #expect(settings.requiresS3Credentials)
+        #expect(!settings.requiresS3Credentials)
     }
 
     @Test func doesNotRequireS3CredentialsWhenAllLocalAndMirroringDisabled() {
