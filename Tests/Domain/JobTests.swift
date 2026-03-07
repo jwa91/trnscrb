@@ -29,41 +29,50 @@ struct JobStatusTests {
 }
 
 struct JobStateTransitionTests {
-    // MARK: - Happy path: pending -> uploading -> processing -> completed
+    // MARK: - Happy path: pending -> processing -> mirroring? -> delivering -> completed
 
-    @Test func pendingToUploading() {
+    @Test func pendingToProcessing() {
         var job: Job = makeJob()
-        job.startUpload()
-        #expect(job.status == .uploading(progress: 0))
-    }
-
-    @Test func uploadProgress() {
-        var job: Job = makeJob()
-        job.startUpload()
-        job.updateUploadProgress(0.5)
-        #expect(job.status == .uploading(progress: 0.5))
-    }
-
-    @Test func uploadProgressClampsTo0And1() {
-        var job: Job = makeJob()
-        job.startUpload()
-        job.updateUploadProgress(-0.5)
-        #expect(job.status == .uploading(progress: 0))
-        job.updateUploadProgress(1.5)
-        #expect(job.status == .uploading(progress: 1))
-    }
-
-    @Test func uploadingToProcessing() {
-        var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
         #expect(job.status == .processing)
     }
 
-    @Test func processingToCompleted() {
+    @Test func processingToMirroring() {
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
+        job.startMirroring()
+        #expect(job.status == .mirroring(progress: 0))
+    }
+
+    @Test func mirroringProgress() {
+        var job: Job = makeJob()
+        job.startProcessing()
+        job.startMirroring()
+        job.updateMirroringProgress(0.5)
+        #expect(job.status == .mirroring(progress: 0.5))
+    }
+
+    @Test func mirroringProgressClampsTo0And1() {
+        var job: Job = makeJob()
+        job.startProcessing()
+        job.startMirroring()
+        job.updateMirroringProgress(-0.5)
+        #expect(job.status == .mirroring(progress: 0))
+        job.updateMirroringProgress(1.5)
+        #expect(job.status == .mirroring(progress: 1))
+    }
+
+    @Test func processingToDelivering() {
+        var job: Job = makeJob()
+        job.startProcessing()
+        job.startDelivery()
+        #expect(job.status == .delivering)
+    }
+
+    @Test func deliveringToCompleted() {
+        var job: Job = makeJob()
+        job.startProcessing()
+        job.startDelivery()
         job.complete(markdown: "# Hello")
         #expect(job.status == .completed)
         #expect(job.markdown == "# Hello")
@@ -72,10 +81,10 @@ struct JobStateTransitionTests {
         #expect(job.completedAt != nil)
     }
 
-    @Test func processingToCompletedWithWarnings() {
+    @Test func deliveringToCompletedWithWarnings() {
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(
             markdown: "# Hello",
             mirrorWarnings: ["Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"],
@@ -93,12 +102,12 @@ struct JobStateTransitionTests {
         )
     }
 
-    @Test func processingToCompletedStoresDeliveryMetadata() {
+    @Test func deliveringToCompletedStoresDeliveryMetadata() {
         let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
         let presignedSourceURL: URL = URL(string: "https://s3.example.com/presigned")!
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(
             markdown: "# Hello",
             savedFileURL: savedFileURL,
@@ -118,41 +127,55 @@ struct JobStateTransitionTests {
         #expect(job.completedAt != nil)
     }
 
-    @Test func uploadingToFailed() {
+    @Test func mirroringToFailed() {
         var job: Job = makeJob()
-        job.startUpload()
-        job.fail(error: "S3 upload failed")
-        #expect(job.status == .failed(error: "S3 upload failed"))
+        job.startProcessing()
+        job.startMirroring()
+        job.fail(error: "S3 mirroring failed")
+        #expect(job.status == .failed(error: "S3 mirroring failed"))
     }
 
     @Test func processingToFailed() {
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
         job.fail(error: "API error")
         #expect(job.status == .failed(error: "API error"))
     }
 
+    @Test func deliveringToFailed() {
+        var job: Job = makeJob()
+        job.startProcessing()
+        job.startDelivery()
+        job.fail(error: "Write failed")
+        #expect(job.status == .failed(error: "Write failed"))
+    }
+
     // MARK: - Invalid transitions (no-ops)
 
-    @Test func cannotSkipUploadingState() {
+    @Test func cannotSkipProcessingState() {
         var job: Job = makeJob()
-        job.startProcessing()  // invalid: must upload first
+        job.startMirroring()  // invalid: must process first
         #expect(job.status == .pending)
     }
 
-    @Test func cannotCompleteFromUploading() {
+    @Test func cannotStartDeliveryFromPending() {
         var job: Job = makeJob()
-        job.startUpload()
-        job.complete(markdown: "nope")  // invalid: must process first
-        #expect(job.status == .uploading(progress: 0))
+        job.startDelivery()
+        #expect(job.status == .pending)
+    }
+
+    @Test func cannotCompleteFromProcessing() {
+        var job: Job = makeJob()
+        job.startProcessing()
+        job.complete(markdown: "nope")  // invalid: must deliver first
+        #expect(job.status == .processing)
         #expect(job.markdown == nil)
     }
 
     @Test func cannotFailFromCompleted() {
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(markdown: "# Done")
         job.fail(error: "too late")  // invalid: already completed
         #expect(job.status == .completed)
@@ -167,8 +190,8 @@ struct JobStateTransitionTests {
 
     @Test func requeueResetsFailedJobToPending() {
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.fail(error: "offline")
 
         job.requeue()
@@ -185,8 +208,8 @@ struct JobStateTransitionTests {
     @Test func completedJobDoesNotRequeue() {
         let savedFileURL: URL = URL(filePath: "/tmp/out.md")
         var job: Job = makeJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(
             markdown: "# Done",
             deliveryWarnings: ["warning"],

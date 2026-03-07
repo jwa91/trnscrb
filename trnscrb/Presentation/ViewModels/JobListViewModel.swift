@@ -125,7 +125,7 @@ public final class JobListViewModel: ObservableObject {
     public var activeJobs: [Job] {
         jobs.filter { job in
             switch job.status {
-            case .pending, .uploading, .processing:
+            case .pending, .processing, .mirroring, .delivering:
                 return true
             case .completed, .failed:
                 return false
@@ -140,7 +140,7 @@ public final class JobListViewModel: ObservableObject {
                 switch job.status {
                 case .completed, .failed:
                     return true
-                case .pending, .uploading, .processing:
+                case .pending, .processing, .mirroring, .delivering:
                     return false
                 }
             }
@@ -303,7 +303,7 @@ public final class JobListViewModel: ObservableObject {
             switch job.status {
             case .completed, .failed:
                 return false
-            case .pending, .uploading, .processing:
+            case .pending, .processing, .mirroring, .delivering:
                 return true
             }
         }
@@ -431,7 +431,7 @@ public final class JobListViewModel: ObservableObject {
                 return
             }
 
-            updateJob(id: id) { $0.startUpload() }
+            updateJob(id: id) { $0.startProcessing() }
 
             let result: TranscriptionResult = try await useCase.execute(
                 fileURL: fileURL
@@ -440,17 +440,19 @@ public final class JobListViewModel: ObservableObject {
                 Task { @MainActor in
                     guard self.runningTasks[id] != nil else { return }
                     switch stage {
-                    case .uploading:
-                        break // Already set above
                     case .processing:
-                        self.updateJob(id: id) { $0.startProcessing() }
+                        break // Already set above
+                    case .mirroring:
+                        self.updateJob(id: id) { $0.startMirroring() }
+                    case .delivery:
+                        self.updateJob(id: id) { $0.startDelivery() }
                     }
                 }
-            } onUploadProgress: { [weak self] progress in
+            } onMirroringProgress: { [weak self] progress in
                 guard let self else { return }
                 Task { @MainActor in
                     guard self.runningTasks[id] != nil else { return }
-                    self.updateJob(id: id) { $0.updateUploadProgress(progress) }
+                    self.updateJob(id: id) { $0.updateMirroringProgress(progress) }
                 }
             }
 
@@ -538,9 +540,10 @@ public final class JobListViewModel: ObservableObject {
 
     /// Finalizes a successfully processed job even if async stage callbacks arrive late.
     ///
-    /// The processing stage is currently reported via an async hop back to the main actor.
-    /// If the pipeline completes before that hop runs, the job can still be in `uploading`
-    /// and a direct call to `Job.complete()` would be ignored by the state machine.
+    /// Stage updates are reported via async hops back to the main actor. If the
+    /// pipeline completes before the final delivery-stage hop runs, the job can
+    /// still be in an earlier active state and a direct call to `Job.complete()`
+    /// would be ignored by the state machine.
     private func completeJob(
         id: UUID,
         markdown: String,
@@ -554,11 +557,12 @@ public final class JobListViewModel: ObservableObject {
 
         switch updatedJobs[index].status {
         case .pending:
-            updatedJobs[index].startUpload()
-            updatedJobs[index].startProcessing()
-        case .uploading:
             updatedJobs[index].startProcessing()
         case .processing:
+            updatedJobs[index].startDelivery()
+        case .mirroring:
+            updatedJobs[index].startDelivery()
+        case .delivering:
             break
         case .completed:
             return true

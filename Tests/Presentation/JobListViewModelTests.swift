@@ -584,15 +584,15 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
 
         var older: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/older.mp3"))
-        older.startUpload()
         older.startProcessing()
+        older.startDelivery()
         older.complete(markdown: "# older")
 
         try await Task.sleep(for: .milliseconds(10))
 
         var newer: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/newer.mp3"))
-        newer.startUpload()
         newer.startProcessing()
+        newer.startDelivery()
         newer.complete(markdown: "# newer")
 
         vm.jobs = [older, newer]
@@ -895,8 +895,8 @@ struct JobListViewModelTests {
     @Test func copyToClipboardSetsTransientCopiedFeedback() async {
         let (vm, _, _, _, _, _) = makeMistralViewModel(copyFeedbackDuration: .milliseconds(20))
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied.mp3"))
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(markdown: "# Copied")
         vm.jobs = [job]
 
@@ -918,8 +918,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel(copyFeedbackDuration: .milliseconds(20))
         let sourceURL: URL = URL(string: "https://s3.example.com/transcript-source")!
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied-source.mp3"))
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(markdown: "# Copied Source", presignedSourceURL: sourceURL)
         vm.jobs = [job]
 
@@ -1016,8 +1016,8 @@ struct JobListViewModelTests {
             fileURL: URL(filePath: "/tmp/third.png"),
             createdAt: Date(timeIntervalSince1970: 3)
         )
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [firstActive, secondActive, completedJob]
 
@@ -1038,8 +1038,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [activeJob, completedJob]
 
@@ -1057,8 +1057,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [activeJob, completedJob]
         vm.selectJob(id: activeJob.id)
@@ -1073,8 +1073,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [activeJob, completedJob]
 

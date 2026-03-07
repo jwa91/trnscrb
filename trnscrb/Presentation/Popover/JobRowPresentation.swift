@@ -7,7 +7,7 @@ struct JobRowPresentation {
         case blue
     }
 
-    enum UploadActivity: Equatable {
+    enum MirroringActivity: Equatable {
         case progress(percent: Int, value: Double)
         case finalizing
     }
@@ -24,7 +24,7 @@ struct JobRowPresentation {
     let subtitleText: String
     let subtitleKind: SubtitleKind
     let subtitleTooltip: String?
-    let uploadActivity: UploadActivity?
+    let mirroringActivity: MirroringActivity?
     let showsCompletionActions: Bool
     let showsPassiveCompletionState: Bool
     let showsMarkdownAction: Bool
@@ -39,7 +39,7 @@ struct JobRowPresentation {
         subtitleText = subtitle.text
         subtitleKind = subtitle.kind
         subtitleTooltip = subtitle.tooltip
-        uploadActivity = Self.uploadActivity(for: job.status)
+        mirroringActivity = Self.mirroringActivity(for: job.status)
 
         if case .completed = job.status {
             showsMarkdownAction = true
@@ -117,26 +117,32 @@ struct JobRowPresentation {
                 kind: .metadata,
                 tooltip: "Waiting"
             )
-        case .uploading(let progress):
-            if isFinalizingUpload(progress) {
+        case .mirroring(let progress):
+            if isFinalizingMirroring(progress) {
                 return Subtitle(
-                    text: "\(typeLabel) • Finalizing upload",
+                    text: "\(typeLabel) • Finalizing mirroring",
                     kind: .metadata,
-                    tooltip: "Finalizing upload"
+                    tooltip: "Finalizing mirroring"
                 )
             }
 
-            let percent: Int = uploadPercent(for: progress)
+            let percent: Int = mirroringPercent(for: progress)
             return Subtitle(
-                text: "\(typeLabel) • Uploading \(percent)%",
+                text: "\(typeLabel) • Mirroring \(percent)%",
                 kind: .metadata,
-                tooltip: "Uploading"
+                tooltip: "Mirroring"
             )
         case .processing:
             return Subtitle(
                 text: "\(typeLabel) • Processing",
                 kind: .metadata,
                 tooltip: "Processing"
+            )
+        case .delivering:
+            return Subtitle(
+                text: "\(typeLabel) • Delivering",
+                kind: .metadata,
+                tooltip: "Delivering"
             )
         case .completed:
             guard let completedAt: Date = job.completedAt else {
@@ -169,19 +175,19 @@ struct JobRowPresentation {
         }
     }
 
-    private static func uploadActivity(for status: JobStatus) -> UploadActivity? {
-        guard case .uploading(let progress) = status else { return nil }
-        if isFinalizingUpload(progress) {
+    private static func mirroringActivity(for status: JobStatus) -> MirroringActivity? {
+        guard case .mirroring(let progress) = status else { return nil }
+        if isFinalizingMirroring(progress) {
             return .finalizing
         }
-        return .progress(percent: uploadPercent(for: progress), value: progress)
+        return .progress(percent: mirroringPercent(for: progress), value: progress)
     }
 
-    private static func isFinalizingUpload(_ progress: Double) -> Bool {
+    private static func isFinalizingMirroring(_ progress: Double) -> Bool {
         min(max(progress, 0), 1) >= 1
     }
 
-    private static func uploadPercent(for progress: Double) -> Int {
+    private static func mirroringPercent(for progress: Double) -> Int {
         min(Int((min(max(progress, 0), 1) * 100).rounded()), 99)
     }
 

@@ -21,10 +21,12 @@ extension ProcessFileError: LocalizedError {
 
 /// Stages of the processing pipeline, reported via callback.
 public enum ProcessingStage: Sendable, Equatable {
-    /// File is being uploaded to object storage.
-    case uploading
-    /// File uploaded, transcription/OCR in progress.
+    /// Transcription/OCR work is in progress.
     case processing
+    /// Optional S3 mirroring is in progress.
+    case mirroring
+    /// Result delivery is in progress.
+    case delivery
 }
 
 /// Orchestrates the full file processing pipeline: prepare -> transcribe -> optional mirror -> deliver.
@@ -69,12 +71,12 @@ public final class ProcessFileUseCase: Sendable {
     /// - Parameters:
     ///   - fileURL: Local path to the file.
     ///   - onStageChange: Optional callback reporting pipeline stage transitions.
-    ///   - onUploadProgress: Optional callback with upload progress in 0...1.
+    ///   - onMirroringProgress: Optional callback with mirroring progress in 0...1.
     /// - Returns: The transcription result with markdown content.
     public func execute(
         fileURL: URL,
         onStageChange: (@Sendable (ProcessingStage) -> Void)? = nil,
-        onUploadProgress: (@Sendable (Double) -> Void)? = nil
+        onMirroringProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> TranscriptionResult {
         try await waitForInputFileIfNeeded(fileURL)
 
@@ -98,18 +100,16 @@ public final class ProcessFileUseCase: Sendable {
         } catch is TranscriptionRoutingError {
             throw ProcessFileError.unsupportedFileType(ext)
         }
+        onStageChange?(.processing)
         let preparedSource: PreparedSource = try await prepareSource(
             fileURL: fileURL,
             fileExtension: ext,
             appSettings: appSettings,
-            transcriber: route.transcriber,
-            onStageChange: onStageChange,
-            onUploadProgress: onUploadProgress
+            transcriber: route.transcriber
         )
         let sourceURL: URL = preparedSource.processingURL
         var presignedURL: URL? = preparedSource.presignedSourceURL
 
-        onStageChange?(.processing)
         AppLog.pipeline.info(
             "Calling transcriber for \(fileURL.lastPathComponent, privacy: .public) as \(String(describing: fileType), privacy: .public) in \(route.effectiveMode.rawValue, privacy: .public) mode"
         )
@@ -133,10 +133,12 @@ public final class ProcessFileUseCase: Sendable {
         var mirrorWarnings: [String] = []
         if preparedSource.requiresMirroringUpload {
             do {
+                onStageChange?(.mirroring)
                 presignedURL = try await mirrorSourceFile(
                     fileURL: fileURL,
                     fileExtension: ext,
-                    appSettings: appSettings
+                    appSettings: appSettings,
+                    onMirroringProgress: onMirroringProgress
                 )
             } catch {
                 let warning: String = mirrorWarningMessage(for: error)
@@ -147,6 +149,7 @@ public final class ProcessFileUseCase: Sendable {
             }
         }
 
+        onStageChange?(.delivery)
         AppLog.pipeline.info("Starting delivery for \(fileURL.lastPathComponent, privacy: .public)")
         let deliveryStartedAt: Date = Date()
         let deliveryReport: DeliveryReport = try await delivery.deliver(result: result)
@@ -196,9 +199,7 @@ public final class ProcessFileUseCase: Sendable {
         fileURL: URL,
         fileExtension: String,
         appSettings: AppSettings,
-        transcriber: any TranscriptionGateway,
-        onStageChange: (@Sendable (ProcessingStage) -> Void)?,
-        onUploadProgress: (@Sendable (Double) -> Void)?
+        transcriber: any TranscriptionGateway
     ) async throws -> PreparedSource {
         let sourceKind: TranscriptionSourceKind = sourceKindForProcessing(transcriber: transcriber)
 
@@ -213,9 +214,7 @@ public final class ProcessFileUseCase: Sendable {
             let uploadedURL: URL = try await uploadSourceFile(
                 fileURL: fileURL,
                 fileExtension: fileExtension,
-                appSettings: appSettings,
-                onStageChange: onStageChange,
-                onUploadProgress: onUploadProgress
+                appSettings: appSettings
             )
             return PreparedSource(
                 processingURL: uploadedURL,
@@ -241,12 +240,9 @@ public final class ProcessFileUseCase: Sendable {
     private func uploadSourceFile(
         fileURL: URL,
         fileExtension: String,
-        appSettings: AppSettings,
-        onStageChange: (@Sendable (ProcessingStage) -> Void)?,
-        onUploadProgress: (@Sendable (Double) -> Void)?
+        appSettings: AppSettings
     ) async throws -> URL {
         let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(fileExtension)"
-        onStageChange?(.uploading)
         AppLog.pipeline.info("Uploading \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
         let uploadStartedAt: Date = Date()
         let uploadedURL: URL = try await retry(
@@ -257,7 +253,7 @@ public final class ProcessFileUseCase: Sendable {
             try await storage.upload(
                 fileURL: fileURL,
                 key: key,
-                onProgress: onUploadProgress
+                onProgress: nil
             )
         }
         let uploadElapsedMs: Int = Int((Date().timeIntervalSince(uploadStartedAt) * 1000).rounded())
@@ -268,7 +264,8 @@ public final class ProcessFileUseCase: Sendable {
     private func mirrorSourceFile(
         fileURL: URL,
         fileExtension: String,
-        appSettings: AppSettings
+        appSettings: AppSettings,
+        onMirroringProgress: (@Sendable (Double) -> Void)?
     ) async throws -> URL {
         let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(fileExtension)"
         AppLog.pipeline.info("Mirroring \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
@@ -278,7 +275,11 @@ public final class ProcessFileUseCase: Sendable {
             maxAttempts: 3,
             initialBackoffNanoseconds: 250_000_000
         ) {
-            try await storage.upload(fileURL: fileURL, key: key)
+            try await storage.upload(
+                fileURL: fileURL,
+                key: key,
+                onProgress: onMirroringProgress
+            )
         }
         let mirrorElapsedMs: Int = Int((Date().timeIntervalSince(mirrorStartedAt) * 1000).rounded())
         AppLog.pipeline.info("Mirroring complete for \(fileURL.lastPathComponent, privacy: .public) in \(mirrorElapsedMs, privacy: .public) ms")

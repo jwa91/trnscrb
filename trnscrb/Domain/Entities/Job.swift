@@ -4,10 +4,12 @@ import Foundation
 public enum JobStatus: Sendable, Equatable {
     /// Job created, waiting to start.
     case pending
-    /// File is being uploaded to storage.
-    case uploading(progress: Double)
-    /// File uploaded, transcription/OCR in progress.
+    /// Transcription/OCR work is in progress.
     case processing
+    /// Optional S3 mirroring of the source file is in progress.
+    case mirroring(progress: Double)
+    /// Result delivery is in progress.
+    case delivering
     /// Processing finished successfully.
     case completed
     /// Processing failed with an error message.
@@ -16,8 +18,8 @@ public enum JobStatus: Sendable, Equatable {
 
 /// A single file processing job that tracks its lifecycle from drop to delivery.
 ///
-/// State machine: `pending -> uploading -> processing -> completed`
-/// Failure is possible from `pending`, `uploading`, or `processing`.
+/// State machine: `pending -> processing -> mirroring? -> delivering -> completed`
+/// Failure is possible from any active stage.
 public struct Job: Sendable, Identifiable, Equatable {
     /// Unique identifier for this job.
     public let id: UUID
@@ -64,25 +66,35 @@ public struct Job: Sendable, Identifiable, Equatable {
         self.completedAt = nil
     }
 
-    /// Transitions from `pending` to `uploading`.
-    public mutating func startUpload() {
-        guard case .pending = status else { return }
-        status = .uploading(progress: 0)
-    }
-
-    /// Updates upload progress (clamped to 0...1).
-    public mutating func updateUploadProgress(_ progress: Double) {
-        guard case .uploading = status else { return }
-        status = .uploading(progress: min(max(progress, 0), 1))
-    }
-
-    /// Transitions from `uploading` to `processing`.
+    /// Transitions from `pending` to `processing`.
     public mutating func startProcessing() {
-        guard case .uploading = status else { return }
+        guard case .pending = status else { return }
         status = .processing
     }
 
-    /// Transitions from `processing` to `completed` with markdown output.
+    /// Transitions from `processing` to `mirroring`.
+    public mutating func startMirroring() {
+        guard case .processing = status else { return }
+        status = .mirroring(progress: 0)
+    }
+
+    /// Updates mirroring progress (clamped to 0...1).
+    public mutating func updateMirroringProgress(_ progress: Double) {
+        guard case .mirroring = status else { return }
+        status = .mirroring(progress: min(max(progress, 0), 1))
+    }
+
+    /// Transitions from an active work stage to `delivering`.
+    public mutating func startDelivery() {
+        switch status {
+        case .processing, .mirroring:
+            status = .delivering
+        case .pending, .delivering, .completed, .failed:
+            break
+        }
+    }
+
+    /// Transitions from `delivering` to `completed` with markdown output.
     public mutating func complete(
         markdown: String,
         mirrorWarnings: [String] = [],
@@ -90,7 +102,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         savedFileURL: URL? = nil,
         presignedSourceURL: URL? = nil
     ) {
-        guard case .processing = status else { return }
+        guard case .delivering = status else { return }
         self.markdown = markdown
         self.mirrorWarnings = mirrorWarnings
         self.deliveryWarnings = deliveryWarnings
@@ -103,7 +115,7 @@ public struct Job: Sendable, Identifiable, Equatable {
     /// Transitions to `failed` from any active state.
     public mutating func fail(error: String) {
         switch status {
-        case .pending, .uploading, .processing:
+        case .pending, .processing, .mirroring, .delivering:
             self.status = .failed(error: error)
             self.markdown = nil
             self.mirrorWarnings = []
@@ -119,7 +131,7 @@ public struct Job: Sendable, Identifiable, Equatable {
     /// Requeues a job by returning it to the pending state.
     public mutating func requeue() {
         switch status {
-        case .pending, .uploading, .processing, .failed:
+        case .pending, .processing, .mirroring, .delivering, .failed:
             status = .pending
             markdown = nil
             mirrorWarnings = []

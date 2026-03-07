@@ -189,7 +189,7 @@ struct ProcessFileUseCaseTests {
             recorder.append(stage)
         }
 
-        #expect(recorder.recordedStages() == [.uploading, .processing])
+        #expect(recorder.recordedStages() == [.processing, .delivery])
     }
 
     @Test func cloudWithoutMirroringSkipsUploadAndProcessesLocalFileForMistral() async throws {
@@ -220,7 +220,7 @@ struct ProcessFileUseCaseTests {
         #expect(result.presignedSourceURL == nil)
     }
 
-    @Test func cloudWithoutMirroringReportsProcessingStageWithoutUploadingStage() async throws {
+    @Test func cloudWithoutMirroringReportsProcessingAndDeliveryStagesWithoutMirroring() async throws {
         let audioTranscriber: MockTranscriptionGateway = MockTranscriptionGateway(
             supportedExtensions: FileType.audioExtensions,
             supportedSourceKinds: [.localFile, .remoteURL]
@@ -245,7 +245,7 @@ struct ProcessFileUseCaseTests {
             recorder.append(stage)
         }
 
-        #expect(recorder.recordedStages() == [.processing])
+        #expect(recorder.recordedStages() == [.processing, .delivery])
     }
 
     @Test func cloudWithMirroringEnabledUploadsWhenProviderSupportsBothSourceKinds() async throws {
@@ -307,6 +307,35 @@ struct ProcessFileUseCaseTests {
         #expect(result.mirrorWarnings.isEmpty)
         #expect(await storage.recordedUploadAttemptCount() == 1)
         #expect(await localAudio.recordedProcessedURLs() == [fileURL])
+    }
+
+    @Test func localWithMirroringReportsProcessingMirroringAndDeliveryStages() async throws {
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: MockStorageGateway(),
+            transcribers: [localAudio],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(
+                settings: AppSettings(
+                    bucketMirroringEnabled: true,
+                    audioProviderMode: .localApple
+                )
+            )
+        )
+        let recorder: LockedStageRecorder = LockedStageRecorder()
+
+        _ = try await useCase.execute(
+            fileURL: URL(filePath: "/tmp/local-stage.mp3")
+        ) { stage in
+            recorder.append(stage)
+        }
+
+        #expect(recorder.recordedStages() == [.processing, .mirroring, .delivery])
     }
 
     @Test func mirroringFailureReturnsWarningAndStillDeliversResult() async throws {
@@ -373,13 +402,29 @@ struct ProcessFileUseCaseTests {
         #expect(await delivery.recordedDeliveredResults().isEmpty)
     }
 
-    @Test func reportsUploadProgress() async throws {
-        let (useCase, _, _, _, _, _) = makeMistralUseCase()
+    @Test func reportsMirroringProgressWhenMirroringRuns() async throws {
         let recorder: LockedProgressRecorder = LockedProgressRecorder()
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: MockStorageGateway(),
+            transcribers: [localAudio],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(
+                settings: AppSettings(
+                    bucketMirroringEnabled: true,
+                    audioProviderMode: .localApple
+                )
+            )
+        )
 
         _ = try await useCase.execute(
             fileURL: URL(filePath: "/tmp/test.mp3"),
-            onUploadProgress: { value in
+            onMirroringProgress: { value in
                 recorder.append(value)
             }
         )

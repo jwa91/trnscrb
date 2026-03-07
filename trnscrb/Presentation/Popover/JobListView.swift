@@ -73,10 +73,12 @@ struct JobListView: View {
         switch status {
         case .pending:
             return "pending"
-        case .uploading:
-            return "uploading"
         case .processing:
             return "processing"
+        case .mirroring:
+            return "mirroring"
+        case .delivering:
+            return "delivering"
         case .completed:
             return "completed"
         case .failed:
