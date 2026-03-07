@@ -41,3 +41,13 @@ trnscrb is the **Mac desktop capture layer** in this pipeline.
 **Status:** To Do
 
 ---
+
+## Check for updates feature
+
+---
+
+## Yaml frontmatter for markdown feature
+
+---
+
+## More filename configs
