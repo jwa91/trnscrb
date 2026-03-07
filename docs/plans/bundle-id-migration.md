@@ -4,6 +4,14 @@
 
 Rename the app bundle identifier from `com.trnscrb.app` to a long-term stable identifier before wider distribution, without disrupting the current direct distribution, signing, notarization, Homebrew install flow, or local configuration.
 
+## Migration Policy
+
+This project is currently treated as pre-release and effectively single-user.
+
+Decision:
+- Prefer clean breaks over backward-compatibility layers during migration work.
+- If an old local config or secret store conflicts with the new implementation, reset the local data instead of adding compatibility code.
+
 ## Recommended Target
 
 Use `com.janwillemaltink.trnscrb`.
