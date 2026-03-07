@@ -32,7 +32,7 @@ The version is read from the `VERSION` file at the project root. The build numbe
    git push origin main "v$VERSION"
    ```
 
-3. Build the DMG (signed with Developer ID):
+3. Build the DMG (signed with Developer ID). Tests run automatically before packaging:
 
    ```bash
    make clean && make dmg IDENTITY="Developer ID Application: Jan Willem Altink (U3ST8HC98U)"
@@ -123,7 +123,8 @@ brew install --cask trnscrb
 | `make build`   | Compile release binary               |
 | `make app`     | Assemble `.app` bundle               |
 | `make sign`    | Codesign the `.app`                  |
-| `make dmg`     | Create and sign `.dmg` for distribution |
+| `make test`    | Run the test suite (30 s per-test timeout) |
+| `make dmg`     | Run tests, then create and sign `.dmg` for distribution |
 | `make install` | Copy `.app` to `/Applications`       |
 | `make verify`  | Verify codesign integrity            |
 | `make clean`   | Remove build artifacts               |

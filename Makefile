@@ -1,4 +1,4 @@
-.PHONY: all build app sign dmg install clean verify
+.PHONY: all build app sign dmg install clean verify test
 
 APP_NAME     := trnscrb
 VERSION      := $(shell cat VERSION)
@@ -31,7 +31,7 @@ sign: app
 		$(APP_BUNDLE)
 	@echo "Signed $(APP_BUNDLE) with identity: $(IDENTITY)"
 
-dmg: sign
+dmg: test sign
 	hdiutil create -volname "$(APP_NAME)" \
 		-srcfolder $(APP_BUNDLE) \
 		-ov -format UDZO \
@@ -51,6 +51,12 @@ install: sign
 clean:
 	rm -rf build/
 	swift package clean
+
+test:
+	xcodebuild test -scheme $(APP_NAME) \
+		-destination 'platform=macOS,arch=arm64' \
+		-test-timeouts-enabled YES \
+		-default-test-execution-time-allowance 30
 
 verify: sign
 	codesign --verify --deep --strict --verbose=2 $(APP_BUNDLE)
