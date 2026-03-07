@@ -13,7 +13,7 @@ public struct MistralOCRProvider: TranscriptionGateway {
     /// This provider is selected when mode is Mistral.
     public let providerMode: ProviderMode = .mistral
     /// Mistral expects a remotely reachable URL.
-    public let sourceKind: TranscriptionSourceKind = .remoteURL
+    public let supportedSourceKinds: Set<TranscriptionSourceKind> = [.remoteURL]
 
     /// PDF and image file extensions this provider handles.
     public var supportedExtensions: Set<String> {

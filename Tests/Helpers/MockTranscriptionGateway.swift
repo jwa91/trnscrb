@@ -4,7 +4,7 @@ import Foundation
 
 actor MockTranscriptionGateway: TranscriptionGateway {
     let providerMode: ProviderMode
-    let sourceKind: TranscriptionSourceKind
+    let supportedSourceKinds: Set<TranscriptionSourceKind>
     let supportedExtensions: Set<String>
     /// Markdown returned by process.
     private var processResult: String
@@ -22,13 +22,33 @@ actor MockTranscriptionGateway: TranscriptionGateway {
     init(
         supportedExtensions: Set<String>,
         providerMode: ProviderMode = .mistral,
-        sourceKind: TranscriptionSourceKind = .remoteURL,
+        supportedSourceKinds: Set<TranscriptionSourceKind> = [.remoteURL],
         processResult: String = "# Transcribed",
         processError: (any Error & Sendable)? = nil,
         processingDelay: Duration? = nil
     ) {
         self.providerMode = providerMode
-        self.sourceKind = sourceKind
+        self.supportedSourceKinds = supportedSourceKinds
+        self.supportedExtensions = supportedExtensions
+        self.processResult = processResult
+        self.processError = processError
+        self.transientProcessError = nil
+        self.transientProcessFailuresRemaining = 0
+        self.processingDelay = processingDelay
+        self.processedURLs = []
+        self.processAttemptCount = 0
+    }
+
+    init(
+        supportedExtensions: Set<String>,
+        providerMode: ProviderMode = .mistral,
+        sourceKind: TranscriptionSourceKind,
+        processResult: String = "# Transcribed",
+        processError: (any Error & Sendable)? = nil,
+        processingDelay: Duration? = nil
+    ) {
+        self.providerMode = providerMode
+        self.supportedSourceKinds = [sourceKind]
         self.supportedExtensions = supportedExtensions
         self.processResult = processResult
         self.processError = processError

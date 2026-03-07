@@ -17,8 +17,8 @@ public protocol TranscriptionGateway: Sendable {
     /// Provider mode represented by this transcriber.
     var providerMode: ProviderMode { get }
 
-    /// Which source URL kind this transcriber requires.
-    var sourceKind: TranscriptionSourceKind { get }
+    /// Which source URL kinds this transcriber can process.
+    var supportedSourceKinds: Set<TranscriptionSourceKind> { get }
 
     /// The file extensions this provider can process.
     var supportedExtensions: Set<String> { get }
@@ -28,4 +28,14 @@ public protocol TranscriptionGateway: Sendable {
     ///   may require a local file URL, while OCR providers can use a presigned URL.
     /// - Returns: Markdown string produced by transcription or OCR.
     func process(sourceURL: URL) async throws -> String
+}
+
+public extension TranscriptionGateway {
+    /// Backward-compatible primary source preference used by older call sites.
+    var sourceKind: TranscriptionSourceKind {
+        if supportedSourceKinds.contains(.remoteURL) {
+            return .remoteURL
+        }
+        return .localFile
+    }
 }
