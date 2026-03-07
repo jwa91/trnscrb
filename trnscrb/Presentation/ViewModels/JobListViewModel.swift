@@ -401,18 +401,6 @@ public final class JobListViewModel: ObservableObject {
                 }
             }
 
-            if settings.requiresS3Credentials {
-                guard settings.isS3Configured else {
-                    configurationError = "Configure S3 mirroring in Settings."
-                    return nil
-                }
-                guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
-                      !s3SecretKey.trimmedCredentialValue.isEmpty else {
-                    configurationError = "Configure your S3 secret key in Settings."
-                    return nil
-                }
-            }
-
             do {
                 _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
             } catch {
@@ -475,6 +463,7 @@ public final class JobListViewModel: ObservableObject {
             guard completeJob(
                 id: id,
                 markdown: result.markdown,
+                mirrorWarnings: result.mirrorWarnings,
                 deliveryWarnings: result.deliveryWarnings,
                 savedFileURL: savedFileURL,
                 presignedSourceURL: result.presignedSourceURL
@@ -490,7 +479,8 @@ public final class JobListViewModel: ObservableObject {
                 jobID: id,
                 savedFileURL: savedFileURL,
                 copyToClipboard: copyToClipboard,
-                warningMessage: result.deliveryWarnings.joined(separator: " ")
+                mirrorWarnings: result.mirrorWarnings,
+                deliveryWarnings: result.deliveryWarnings
             )
             jobCopyToClipboardPreferences[id] = nil
         } catch is CancellationError {
@@ -554,6 +544,7 @@ public final class JobListViewModel: ObservableObject {
     private func completeJob(
         id: UUID,
         markdown: String,
+        mirrorWarnings: [String],
         deliveryWarnings: [String],
         savedFileURL: URL?,
         presignedSourceURL: URL?
@@ -577,6 +568,7 @@ public final class JobListViewModel: ObservableObject {
 
         updatedJobs[index].complete(
             markdown: markdown,
+            mirrorWarnings: mirrorWarnings,
             deliveryWarnings: deliveryWarnings,
             savedFileURL: savedFileURL,
             presignedSourceURL: presignedSourceURL
@@ -662,25 +654,19 @@ public final class JobListViewModel: ObservableObject {
         jobID: UUID,
         savedFileURL: URL,
         copyToClipboard: Bool,
-        warningMessage: String
+        mirrorWarnings: [String],
+        deliveryWarnings: [String]
     ) async {
-        let body: String
-        let savedPath: String = savedFileURL.path()
-        if warningMessage.isEmpty {
-            if copyToClipboard {
-                body = "\(fileName) saved to \(savedPath) and copied to clipboard."
-            } else {
-                body = "\(fileName) saved to \(savedPath)."
-            }
-        } else if copyToClipboard {
-            body = "\(fileName) saved to \(savedPath), but copying to the clipboard failed."
-        } else {
-            body = "\(fileName) saved to \(savedPath). \(warningMessage)"
-        }
         await postNotification(
             identifier: jobID.uuidString,
             title: "trnscrb",
-            body: body
+            body: successNotificationBody(
+                fileName: fileName,
+                savedFileURL: savedFileURL,
+                copyToClipboard: copyToClipboard,
+                mirrorWarnings: mirrorWarnings,
+                deliveryWarnings: deliveryWarnings
+            )
         )
     }
 
@@ -695,6 +681,33 @@ public final class JobListViewModel: ObservableObject {
     private func postNotification(identifier: String, title: String, body: String) async {
         guard let notificationUseCase else { return }
         await notificationUseCase.notify(title: title, body: body, identifier: identifier)
+    }
+
+    private func successNotificationBody(
+        fileName: String,
+        savedFileURL: URL,
+        copyToClipboard: Bool,
+        mirrorWarnings: [String],
+        deliveryWarnings: [String]
+    ) -> String {
+        let savedPath: String = savedFileURL.path()
+        var components: [String] = []
+
+        if deliveryWarnings.isEmpty {
+            if copyToClipboard {
+                components.append("\(fileName) saved to \(savedPath) and copied to clipboard.")
+            } else {
+                components.append("\(fileName) saved to \(savedPath).")
+            }
+        } else if copyToClipboard {
+            components.append("\(fileName) saved to \(savedPath), but copying to the clipboard failed.")
+        } else {
+            components.append("\(fileName) saved to \(savedPath).")
+            components.append(contentsOf: deliveryWarnings)
+        }
+
+        components.append(contentsOf: mirrorWarnings)
+        return components.joined(separator: " ")
     }
 
     private struct ProcessingConfiguration {

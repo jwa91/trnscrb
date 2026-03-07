@@ -31,6 +31,8 @@ public struct Job: Sendable, Identifiable, Equatable {
     public private(set) var status: JobStatus
     /// Markdown output, set on completion.
     public private(set) var markdown: String?
+    /// Non-fatal warnings surfaced after successful mirroring attempts.
+    public private(set) var mirrorWarnings: [String]
     /// Non-fatal warnings surfaced after successful completion.
     public private(set) var deliveryWarnings: [String]
     /// Local file URL when the markdown was saved to disk.
@@ -54,6 +56,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         self.fileURL = fileURL
         self.status = .pending
         self.markdown = nil
+        self.mirrorWarnings = []
         self.deliveryWarnings = []
         self.savedFileURL = nil
         self.presignedSourceURL = nil
@@ -82,12 +85,14 @@ public struct Job: Sendable, Identifiable, Equatable {
     /// Transitions from `processing` to `completed` with markdown output.
     public mutating func complete(
         markdown: String,
+        mirrorWarnings: [String] = [],
         deliveryWarnings: [String] = [],
         savedFileURL: URL? = nil,
         presignedSourceURL: URL? = nil
     ) {
         guard case .processing = status else { return }
         self.markdown = markdown
+        self.mirrorWarnings = mirrorWarnings
         self.deliveryWarnings = deliveryWarnings
         self.savedFileURL = savedFileURL
         self.presignedSourceURL = presignedSourceURL
@@ -101,6 +106,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         case .pending, .uploading, .processing:
             self.status = .failed(error: error)
             self.markdown = nil
+            self.mirrorWarnings = []
             self.deliveryWarnings = []
             self.savedFileURL = nil
             self.presignedSourceURL = nil
@@ -116,6 +122,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         case .pending, .uploading, .processing, .failed:
             status = .pending
             markdown = nil
+            mirrorWarnings = []
             deliveryWarnings = []
             savedFileURL = nil
             presignedSourceURL = nil
@@ -127,7 +134,8 @@ public struct Job: Sendable, Identifiable, Equatable {
 
     /// User-facing warning summary, if delivery completed with warnings.
     public var warningMessage: String? {
-        guard !deliveryWarnings.isEmpty else { return nil }
-        return deliveryWarnings.joined(separator: " ")
+        let warnings: [String] = mirrorWarnings + deliveryWarnings
+        guard !warnings.isEmpty else { return nil }
+        return warnings.joined(separator: " ")
     }
 }

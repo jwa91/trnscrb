@@ -17,6 +17,7 @@ struct JobStatusTests {
         let job: Job = makeJob()
         #expect(job.status == .pending)
         #expect(job.markdown == nil)
+        #expect(job.mirrorWarnings.isEmpty)
         #expect(job.deliveryWarnings.isEmpty)
         #expect(job.completedAt == nil)
     }
@@ -66,6 +67,7 @@ struct JobStateTransitionTests {
         job.complete(markdown: "# Hello")
         #expect(job.status == .completed)
         #expect(job.markdown == "# Hello")
+        #expect(job.mirrorWarnings.isEmpty)
         #expect(job.deliveryWarnings.isEmpty)
         #expect(job.completedAt != nil)
     }
@@ -76,12 +78,19 @@ struct JobStateTransitionTests {
         job.startProcessing()
         job.complete(
             markdown: "# Hello",
+            mirrorWarnings: ["Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"],
             deliveryWarnings: ["Copied markdown to the clipboard, but saving the file failed."]
         )
         #expect(job.status == .completed)
         #expect(job.markdown == "# Hello")
+        #expect(job.mirrorWarnings == [
+            "Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"
+        ])
         #expect(job.deliveryWarnings == ["Copied markdown to the clipboard, but saving the file failed."])
-        #expect(job.warningMessage == "Copied markdown to the clipboard, but saving the file failed.")
+        #expect(
+            job.warningMessage
+                == "Processed file successfully, but mirroring to S3 failed: S3 secret key not configured Copied markdown to the clipboard, but saving the file failed."
+        )
     }
 
     @Test func processingToCompletedStoresDeliveryMetadata() {
@@ -166,6 +175,7 @@ struct JobStateTransitionTests {
 
         #expect(job.status == .pending)
         #expect(job.markdown == nil)
+        #expect(job.mirrorWarnings.isEmpty)
         #expect(job.deliveryWarnings.isEmpty)
         #expect(job.savedFileURL == nil)
         #expect(job.presignedSourceURL == nil)
@@ -188,6 +198,7 @@ struct JobStateTransitionTests {
 
         #expect(job.status == .completed)
         #expect(job.markdown == "# Done")
+        #expect(job.mirrorWarnings.isEmpty)
         #expect(job.deliveryWarnings == ["warning"])
         #expect(job.savedFileURL == savedFileURL)
         #expect(job.completedAt != nil)
