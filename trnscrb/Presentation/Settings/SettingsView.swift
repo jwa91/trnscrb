@@ -259,10 +259,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .disabled(
-                    !viewModel.settings.bucketMirroringEnabled
-                        && !viewModel.settings.requiresCloudCredentials
-                )
+                .disabled(!viewModel.settings.requiresS3Credentials)
             }
         }
     }

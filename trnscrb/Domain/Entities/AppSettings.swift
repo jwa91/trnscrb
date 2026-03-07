@@ -112,8 +112,8 @@ public struct AppSettings: Sendable, Equatable {
             || imageProviderMode == .mistral
     }
 
-    /// Whether S3 credentials must be validated (mirroring enabled or cloud processing active).
+    /// Whether S3 credentials must be validated.
     public var requiresS3Credentials: Bool {
-        bucketMirroringEnabled || requiresCloudCredentials
+        bucketMirroringEnabled
     }
 }
