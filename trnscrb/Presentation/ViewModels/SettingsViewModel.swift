@@ -73,7 +73,7 @@ public final class SettingsViewModel: ObservableObject {
     @discardableResult
     public func save() async -> Bool {
         do {
-            settings = settings.normalizedForUse
+            settings = try settings.validatedForPersistence()
             mistralAPIKey = mistralAPIKey.trimmedCredentialValue
             s3SecretKey = s3SecretKey.trimmedCredentialValue
             _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)

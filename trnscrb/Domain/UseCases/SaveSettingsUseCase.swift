@@ -21,7 +21,7 @@ public struct SaveSettingsUseCase: Sendable {
         mistralAPIKey: String,
         s3SecretKey: String
     ) async throws {
-        let normalizedSettings: AppSettings = settings.normalizedForUse
+        let normalizedSettings: AppSettings = try settings.validatedForPersistence()
         let normalizedMistralAPIKey: String = mistralAPIKey.trimmedCredentialValue
         let normalizedS3SecretKey: String = s3SecretKey.trimmedCredentialValue
 

@@ -1,4 +1,21 @@
 import Foundation
+import Speech
+
+enum SettingsValidationError: Error, Sendable {
+    case negativeFileRetentionHours(Int)
+    case unsupportedAppleAudioLocaleIdentifier(String)
+}
+
+extension SettingsValidationError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .negativeFileRetentionHours(let value):
+            return "File retention hours must be 0 or greater. Received \(value)."
+        case .unsupportedAppleAudioLocaleIdentifier(let identifier):
+            return "Apple audio locale '\(identifier)' is not supported on this Mac."
+        }
+    }
+}
 
 extension AppSettings {
     var normalizedForUse: AppSettings {
@@ -21,6 +38,21 @@ extension AppSettings {
             pdfProviderMode: pdfProviderMode,
             imageProviderMode: imageProviderMode
         )
+    }
+
+    func validatedForPersistence() throws -> AppSettings {
+        let normalized: AppSettings = normalizedForUse
+        guard normalized.fileRetentionHours >= 0 else {
+            throw SettingsValidationError.negativeFileRetentionHours(
+                normalized.fileRetentionHours
+            )
+        }
+        guard normalized.normalizedAppleAudioLocaleIdentifier.isSupportedAppleSpeechLocale else {
+            throw SettingsValidationError.unsupportedAppleAudioLocaleIdentifier(
+                normalized.normalizedAppleAudioLocaleIdentifier
+            )
+        }
+        return normalized
     }
 
     var normalizedAppleAudioLocaleIdentifier: String {
@@ -55,5 +87,9 @@ extension String {
             return trimmed
         }
         return "\(trimmed)/"
+    }
+
+    var isSupportedAppleSpeechLocale: Bool {
+        SFSpeechRecognizer.supportedLocales().contains { $0.identifier == self }
     }
 }

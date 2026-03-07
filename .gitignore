@@ -20,6 +20,3 @@ rule_docs/
 
 # Secrets
 Support/check-notarization.sh
-
-# Planning
-docs/TODO.md
