@@ -25,6 +25,11 @@ struct TOMLConfigDocument {
     }
 
     private static let fieldDefinitions: [FieldDefinition] = [
+        FieldDefinition(
+            fullKey: "pipeline.mirroring.enabled",
+            valueType: .bool,
+            group: "pipeline"
+        ),
         FieldDefinition(fullKey: "storage.s3.endpoint_url", valueType: .string, group: "storage"),
         FieldDefinition(fullKey: "storage.s3.access_key", valueType: .string, group: "storage"),
         FieldDefinition(fullKey: "storage.s3.bucket_name", valueType: .string, group: "storage"),
@@ -85,6 +90,7 @@ struct TOMLConfigDocument {
 
     init(settings: AppSettings) {
         values = [
+            "pipeline.mirroring.enabled": .bool(settings.bucketMirroringEnabled),
             "storage.s3.endpoint_url": .string(settings.s3EndpointURL),
             "storage.s3.access_key": .string(settings.s3AccessKey),
             "storage.s3.bucket_name": .string(settings.s3BucketName),
@@ -135,6 +141,8 @@ struct TOMLConfigDocument {
         let defaults: AppSettings = AppSettings()
 
         let settings: AppSettings = AppSettings(
+            bucketMirroringEnabled: boolValue("pipeline.mirroring.enabled")
+                ?? defaults.bucketMirroringEnabled,
             s3EndpointURL: stringValue("storage.s3.endpoint_url") ?? defaults.s3EndpointURL,
             s3AccessKey: stringValue("storage.s3.access_key") ?? defaults.s3AccessKey,
             s3BucketName: stringValue("storage.s3.bucket_name") ?? defaults.s3BucketName,

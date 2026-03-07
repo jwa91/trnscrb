@@ -143,6 +143,8 @@ struct TOMLConfigManagerTests {
         # trnscrb configuration
         # Passwords are stored in Keychain and are not written here.
 
+        pipeline.mirroring.enabled = false
+
         storage.s3.endpoint_url = "https://s3.example.com"
         storage.s3.access_key = "AKID"
         storage.s3.bucket_name = "bucket"
@@ -217,6 +219,60 @@ struct TOMLConfigManagerTests {
         #expect(loaded.outputFileNameTemplate == "{prefix}{originalFilename}")
         #expect(loaded.copyToClipboard == true)
         #expect(loaded.launchAtLogin == false)
+    }
+
+    @Test func roundTripPreservesBucketMirroringEnabled() async throws {
+        let (manager, tempDir) = try makeManager()
+        defer { cleanupDir(tempDir) }
+
+        let original: AppSettings = AppSettings(
+            bucketMirroringEnabled: true,
+            appleAudioLocaleIdentifier: supportedLocaleIdentifier()
+        )
+        try await manager.saveSettings(original)
+        let loaded: AppSettings = try await manager.loadSettings()
+
+        #expect(loaded.bucketMirroringEnabled == true)
+    }
+
+    @Test func missingBucketMirroringKeyDefaultsToFalse() async throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = """
+        storage.s3.endpoint_url = "https://test.com"
+        """
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let keychainStore: KeychainStore = KeychainStore(
+            service: "com.janwillemaltink.trnscrb.test.toml.\(UUID().uuidString)"
+        )
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: tempDir,
+            keychainStore: keychainStore
+        )
+
+        let loaded: AppSettings = try await manager.loadSettings()
+        #expect(loaded.bucketMirroringEnabled == false)
+    }
+
+    @Test func savedFileIncludesBucketMirroringKey() async throws {
+        let (manager, tempDir) = try makeManager()
+        defer { cleanupDir(tempDir) }
+
+        let settings: AppSettings = AppSettings(
+            bucketMirroringEnabled: true,
+            appleAudioLocaleIdentifier: supportedLocaleIdentifier()
+        )
+        try await manager.saveSettings(settings)
+
+        let fileURL: URL = tempDir.appending(path: "config.toml")
+        let content: String = try String(contentsOf: fileURL, encoding: .utf8)
+
+        #expect(content.contains("pipeline.mirroring.enabled = true"))
     }
 
     @Test func loadRejectsSectionHeaders() async throws {
