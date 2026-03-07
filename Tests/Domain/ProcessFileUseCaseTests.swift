@@ -100,7 +100,7 @@ struct ProcessFileUseCaseTests {
         #expect(result.sourceFileType == .audio)
         #expect(result.deliveryWarnings.isEmpty)
         #expect(result.mirrorWarnings.isEmpty)
-        #expect(result.presignedSourceURL == presignedURL)
+        #expect(result.remoteSourceURL == presignedURL)
         #expect(result.savedFileURL == nil)
         let uploadedKeys: [String] = await storage.recordedUploadedKeys()
         #expect(uploadedKeys.count == 1)
@@ -124,7 +124,7 @@ struct ProcessFileUseCaseTests {
             fileURL: URL(filePath: "/tmp/meeting.mp3")
         )
 
-        #expect(result.presignedSourceURL == presignedURL)
+        #expect(result.remoteSourceURL == presignedURL)
         #expect(result.savedFileURL == savedFileURL)
         #expect(result.mirrorWarnings.isEmpty)
     }
@@ -217,7 +217,7 @@ struct ProcessFileUseCaseTests {
 
         #expect(await storage.recordedUploadAttemptCount() == 0)
         #expect(await audioTranscriber.recordedProcessedURLs() == [fileURL])
-        #expect(result.presignedSourceURL == nil)
+        #expect(result.remoteSourceURL == nil)
     }
 
     @Test func cloudWithoutMirroringReportsProcessingAndDeliveryStagesWithoutMirroring() async throws {
@@ -270,7 +270,7 @@ struct ProcessFileUseCaseTests {
         let fileURL: URL = URL(filePath: "/tmp/mirror-on.mp3")
 
         let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
-        let uploadedSourceURL: URL = try #require(result.presignedSourceURL)
+        let uploadedSourceURL: URL = try #require(result.remoteSourceURL)
 
         #expect(await storage.recordedUploadAttemptCount() == 1)
         #expect(await audioTranscriber.recordedProcessedURLs() == [fileURL])
@@ -303,7 +303,7 @@ struct ProcessFileUseCaseTests {
         let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
 
         #expect(result.markdown == "# Local Audio")
-        #expect(result.presignedSourceURL == presignedURL)
+        #expect(result.remoteSourceURL == presignedURL)
         #expect(result.mirrorWarnings.isEmpty)
         #expect(await storage.recordedUploadAttemptCount() == 1)
         #expect(await localAudio.recordedProcessedURLs() == [fileURL])
@@ -369,7 +369,7 @@ struct ProcessFileUseCaseTests {
 
         #expect(result.markdown == "# Local Audio")
         #expect(result.deliveryWarnings.isEmpty)
-        #expect(result.presignedSourceURL == nil)
+        #expect(result.remoteSourceURL == nil)
         #expect(result.mirrorWarnings == [
             "Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"
         ])
@@ -735,7 +735,7 @@ struct ProcessFileUseCaseTests {
         let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
 
         #expect(result.markdown == "# Local Audio")
-        #expect(result.presignedSourceURL == nil)
+        #expect(result.remoteSourceURL == nil)
         #expect(await storage.recordedUploadAttemptCount() == 0)
         #expect(await localAudio.recordedProcessedURLs() == [fileURL])
         #expect(await mistralAudio.recordedProcessedURLs().isEmpty)
@@ -769,7 +769,7 @@ struct ProcessFileUseCaseTests {
         let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
 
         #expect(result.sourceFileType == .pdf)
-        #expect(result.presignedSourceURL == nil)
+        #expect(result.remoteSourceURL == nil)
         #expect(await storage.recordedUploadAttemptCount() == 0)
         #expect(await localOCR.recordedProcessedURLs() == [fileURL])
         #expect(await mistralOCR.recordedProcessedURLs().isEmpty)
@@ -803,7 +803,7 @@ struct ProcessFileUseCaseTests {
         let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
 
         #expect(result.sourceFileType == .image)
-        #expect(result.presignedSourceURL == nil)
+        #expect(result.remoteSourceURL == nil)
         #expect(await storage.recordedUploadAttemptCount() == 0)
         #expect(await localOCR.recordedProcessedURLs() == [fileURL])
         #expect(await mistralOCR.recordedProcessedURLs().isEmpty)

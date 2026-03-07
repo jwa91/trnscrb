@@ -43,7 +43,7 @@ struct JobRowPresentation {
 
         if case .completed = job.status {
             showsMarkdownAction = true
-            showsSourceLinkAction = job.presignedSourceURL != nil
+            showsSourceLinkAction = job.remoteSourceURL != nil
         } else {
             showsMarkdownAction = false
             showsSourceLinkAction = false

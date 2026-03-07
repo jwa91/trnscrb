@@ -38,6 +38,8 @@ public final class JobListViewModel: ObservableObject {
     @Published public var offlineStatusMessage: String?
     /// Job copy feedback currently shown in the UI.
     @Published public private(set) var copyFeedback: CopyFeedback?
+    /// Compact summary of the current processing pipeline settings.
+    @Published public private(set) var pipelineSummary: String = AppSettings().pipelineSummary
 
     /// Maximum number of completed jobs to retain.
     private let maxCompletedJobs: Int = 10
@@ -337,11 +339,21 @@ public final class JobListViewModel: ObservableObject {
         writeToPasteboard(markdown, jobID: jobID, target: .markdown)
     }
 
-    /// Copies the source URL from a completed cloud job to the clipboard.
+    /// Copies the remote source URL from a completed job to the clipboard.
     /// - Parameter jobID: ID of the completed job.
     public func copySourceURLToClipboard(jobID: UUID) {
-        guard let sourceURL: URL = jobs.first(where: { $0.id == jobID })?.presignedSourceURL else { return }
+        guard let sourceURL: URL = jobs.first(where: { $0.id == jobID })?.remoteSourceURL else { return }
         writeToPasteboard(sourceURL.absoluteString, jobID: jobID, target: .sourceURL)
+    }
+
+    /// Reloads the compact pipeline summary from persisted settings.
+    public func refreshPipelineSummary() async {
+        do {
+            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+            pipelineSummary = settings.pipelineSummary
+        } catch {
+            pipelineSummary = AppSettings().pipelineSummary
+        }
     }
 
     private func writeToPasteboard(_ value: String, jobID: UUID, target: CopyFeedbackTarget) {
@@ -392,6 +404,7 @@ public final class JobListViewModel: ObservableObject {
     private func checkConfiguration() async -> ProcessingConfiguration? {
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+            pipelineSummary = settings.pipelineSummary
 
             if settings.requiresCloudCredentials {
                 guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
@@ -468,7 +481,7 @@ public final class JobListViewModel: ObservableObject {
                 mirrorWarnings: result.mirrorWarnings,
                 deliveryWarnings: result.deliveryWarnings,
                 savedFileURL: savedFileURL,
-                presignedSourceURL: result.presignedSourceURL
+                remoteSourceURL: result.remoteSourceURL
             ) else {
                 AppLog.ui.error("Job \(id.uuidString, privacy: .public) finished, but UI state could not be finalized")
                 return
@@ -550,7 +563,7 @@ public final class JobListViewModel: ObservableObject {
         mirrorWarnings: [String],
         deliveryWarnings: [String],
         savedFileURL: URL?,
-        presignedSourceURL: URL?
+        remoteSourceURL: URL?
     ) -> Bool {
         guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return false }
         var updatedJobs: [Job] = jobs
@@ -575,7 +588,7 @@ public final class JobListViewModel: ObservableObject {
             mirrorWarnings: mirrorWarnings,
             deliveryWarnings: deliveryWarnings,
             savedFileURL: savedFileURL,
-            presignedSourceURL: presignedSourceURL
+            remoteSourceURL: remoteSourceURL
         )
         jobs = updatedJobs
 

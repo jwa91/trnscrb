@@ -298,6 +298,24 @@ struct JobListViewModelTests {
 
     // MARK: - Configuration checks
 
+    @Test func refreshPipelineSummaryLoadsCompactSummaryFromSettings() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: true,
+                saveFolderPath: "~/Documents/trnscrb",
+                audioProviderMode: .mistral,
+                pdfProviderMode: .mistral,
+                imageProviderMode: .mistral
+            ),
+            secrets: [.mistralAPIKey: "mk-test"]
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        await vm.refreshPipelineSummary()
+
+        #expect(vm.pipelineSummary == "Cloud processing • S3 mirroring on • Save to ~/Documents/trnscrb")
+    }
+
     @Test func cloudWithoutMirroringAllowsProcessingWhenS3NotConfigured() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
@@ -889,7 +907,7 @@ struct JobListViewModelTests {
 
         #expect(completed)
         #expect(vm.completedJobs.first?.savedFileURL == savedFileURL)
-        #expect(vm.completedJobs.first?.presignedSourceURL == sourceURL)
+        #expect(vm.completedJobs.first?.remoteSourceURL == sourceURL)
     }
 
     @Test func copyToClipboardSetsTransientCopiedFeedback() async {
@@ -920,7 +938,7 @@ struct JobListViewModelTests {
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied-source.mp3"))
         job.startProcessing()
         job.startDelivery()
-        job.complete(markdown: "# Copied Source", presignedSourceURL: sourceURL)
+        job.complete(markdown: "# Copied Source", remoteSourceURL: sourceURL)
         vm.jobs = [job]
 
         vm.copySourceURLToClipboard(jobID: job.id)

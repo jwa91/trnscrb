@@ -67,7 +67,7 @@ struct JobRowPresentationTests {
         job.startDelivery()
         job.complete(
             markdown: "# Transcript",
-            presignedSourceURL: sourceURL
+            remoteSourceURL: sourceURL
         )
 
         let presentation: JobRowPresentation = JobRowPresentation(

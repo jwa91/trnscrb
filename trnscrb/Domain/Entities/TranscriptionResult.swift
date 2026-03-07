@@ -14,8 +14,8 @@ public struct TranscriptionResult: Sendable, Equatable {
     public let deliveryWarnings: [String]
     /// Local file URL when markdown was saved to disk.
     public let savedFileURL: URL?
-    /// Presigned source URL used to process the file remotely.
-    public let presignedSourceURL: URL?
+    /// Externally reachable source URL created for remote processing or mirroring.
+    public let remoteSourceURL: URL?
 
     /// Creates a transcription result.
     public init(
@@ -25,7 +25,7 @@ public struct TranscriptionResult: Sendable, Equatable {
         mirrorWarnings: [String] = [],
         deliveryWarnings: [String] = [],
         savedFileURL: URL? = nil,
-        presignedSourceURL: URL? = nil
+        remoteSourceURL: URL? = nil
     ) {
         self.markdown = markdown
         self.sourceFileName = sourceFileName
@@ -33,6 +33,6 @@ public struct TranscriptionResult: Sendable, Equatable {
         self.mirrorWarnings = mirrorWarnings
         self.deliveryWarnings = deliveryWarnings
         self.savedFileURL = savedFileURL
-        self.presignedSourceURL = presignedSourceURL
+        self.remoteSourceURL = remoteSourceURL
     }
 }

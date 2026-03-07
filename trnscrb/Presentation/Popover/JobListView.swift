@@ -57,7 +57,7 @@ struct JobListView: View {
                 ? { viewModel.openSavedFile(jobID: job.id) }
                 : nil,
             onCopyMarkdown: allowsCopy ? { viewModel.copyToClipboard(jobID: job.id) } : nil,
-            onCopySourceURL: allowsCopy && job.presignedSourceURL != nil
+            onCopySourceURL: allowsCopy && job.remoteSourceURL != nil
                 ? { viewModel.copySourceURLToClipboard(jobID: job.id) }
                 : nil,
             onDelete: { viewModel.removeJob(id: job.id) }

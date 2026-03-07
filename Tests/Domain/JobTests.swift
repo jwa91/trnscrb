@@ -104,18 +104,18 @@ struct JobStateTransitionTests {
 
     @Test func deliveringToCompletedStoresDeliveryMetadata() {
         let savedFileURL: URL = URL(filePath: "/tmp/meeting.md")
-        let presignedSourceURL: URL = URL(string: "https://s3.example.com/presigned")!
+        let remoteSourceURL: URL = URL(string: "https://s3.example.com/presigned")!
         var job: Job = makeJob()
         job.startProcessing()
         job.startDelivery()
         job.complete(
             markdown: "# Hello",
             savedFileURL: savedFileURL,
-            presignedSourceURL: presignedSourceURL
+            remoteSourceURL: remoteSourceURL
         )
 
         #expect(job.savedFileURL == savedFileURL)
-        #expect(job.presignedSourceURL == presignedSourceURL)
+        #expect(job.remoteSourceURL == remoteSourceURL)
     }
 
     // MARK: - Failure transitions
@@ -201,7 +201,7 @@ struct JobStateTransitionTests {
         #expect(job.mirrorWarnings.isEmpty)
         #expect(job.deliveryWarnings.isEmpty)
         #expect(job.savedFileURL == nil)
-        #expect(job.presignedSourceURL == nil)
+        #expect(job.remoteSourceURL == nil)
         #expect(job.completedAt == nil)
     }
 
@@ -214,7 +214,7 @@ struct JobStateTransitionTests {
             markdown: "# Done",
             deliveryWarnings: ["warning"],
             savedFileURL: savedFileURL,
-            presignedSourceURL: URL(string: "https://s3.example.com/source")!
+            remoteSourceURL: URL(string: "https://s3.example.com/source")!
         )
 
         job.requeue()

@@ -39,8 +39,8 @@ public struct Job: Sendable, Identifiable, Equatable {
     public private(set) var deliveryWarnings: [String]
     /// Local file URL when the markdown was saved to disk.
     public private(set) var savedFileURL: URL?
-    /// Presigned source URL used for remote processing.
-    public private(set) var presignedSourceURL: URL?
+    /// Externally reachable source URL created for remote processing or mirroring.
+    public private(set) var remoteSourceURL: URL?
     /// When the job was created.
     public let createdAt: Date
     /// When the job completed or failed.
@@ -61,7 +61,7 @@ public struct Job: Sendable, Identifiable, Equatable {
         self.mirrorWarnings = []
         self.deliveryWarnings = []
         self.savedFileURL = nil
-        self.presignedSourceURL = nil
+        self.remoteSourceURL = nil
         self.createdAt = createdAt
         self.completedAt = nil
     }
@@ -100,14 +100,14 @@ public struct Job: Sendable, Identifiable, Equatable {
         mirrorWarnings: [String] = [],
         deliveryWarnings: [String] = [],
         savedFileURL: URL? = nil,
-        presignedSourceURL: URL? = nil
+        remoteSourceURL: URL? = nil
     ) {
         guard case .delivering = status else { return }
         self.markdown = markdown
         self.mirrorWarnings = mirrorWarnings
         self.deliveryWarnings = deliveryWarnings
         self.savedFileURL = savedFileURL
-        self.presignedSourceURL = presignedSourceURL
+        self.remoteSourceURL = remoteSourceURL
         self.status = .completed
         self.completedAt = Date()
     }
@@ -121,7 +121,7 @@ public struct Job: Sendable, Identifiable, Equatable {
             self.mirrorWarnings = []
             self.deliveryWarnings = []
             self.savedFileURL = nil
-            self.presignedSourceURL = nil
+            self.remoteSourceURL = nil
             self.completedAt = Date()
         case .completed, .failed:
             break
@@ -137,7 +137,7 @@ public struct Job: Sendable, Identifiable, Equatable {
             mirrorWarnings = []
             deliveryWarnings = []
             savedFileURL = nil
-            presignedSourceURL = nil
+            remoteSourceURL = nil
             completedAt = nil
         case .completed:
             break

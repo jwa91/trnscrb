@@ -25,3 +25,12 @@ Split job feedback into separate stages (2-3h). Show processing, mirroring, and 
 Add a compact pipeline summary in the UI (1-2h). Something like Cloud processing • S3 mirroring off • Save to ~/Documents/trnscrb reduces configuration ambiguity.
 
 Final pass on wording naming conventions etc. also in code. it should be aligned with Product model
+
+## Current status
+
+Implemented on `feature/s3-decoupling-phase1`:
+
+- Processing source selection is independent from bucket mirroring.
+- Mirroring is best-effort and surfaces warnings instead of failing the job.
+- Job feedback is split into processing, mirroring, and delivery stages.
+- The popover shows a compact pipeline summary using Local/Cloud wording.

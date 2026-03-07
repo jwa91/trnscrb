@@ -108,7 +108,7 @@ public final class ProcessFileUseCase: Sendable {
             transcriber: route.transcriber
         )
         let sourceURL: URL = preparedSource.processingURL
-        var presignedURL: URL? = preparedSource.presignedSourceURL
+        var remoteSourceURL: URL? = preparedSource.remoteSourceURL
 
         AppLog.pipeline.info(
             "Calling transcriber for \(fileURL.lastPathComponent, privacy: .public) as \(String(describing: fileType), privacy: .public) in \(route.effectiveMode.rawValue, privacy: .public) mode"
@@ -134,7 +134,7 @@ public final class ProcessFileUseCase: Sendable {
         if preparedSource.requiresMirroringUpload {
             do {
                 onStageChange?(.mirroring)
-                presignedURL = try await mirrorSourceFile(
+                remoteSourceURL = try await mirrorSourceFile(
                     fileURL: fileURL,
                     fileExtension: ext,
                     appSettings: appSettings,
@@ -163,7 +163,7 @@ public final class ProcessFileUseCase: Sendable {
             mirrorWarnings: mirrorWarnings,
             deliveryWarnings: deliveryReport.warnings,
             savedFileURL: deliveryReport.savedFileURL,
-            presignedSourceURL: presignedURL
+            remoteSourceURL: remoteSourceURL
         )
     }
 
@@ -207,7 +207,7 @@ public final class ProcessFileUseCase: Sendable {
         case .localFile:
             return PreparedSource(
                 processingURL: fileURL,
-                presignedSourceURL: nil,
+                remoteSourceURL: nil,
                 requiresMirroringUpload: appSettings.bucketMirroringEnabled
             )
         case .remoteURL:
@@ -218,7 +218,7 @@ public final class ProcessFileUseCase: Sendable {
             )
             return PreparedSource(
                 processingURL: uploadedURL,
-                presignedSourceURL: uploadedURL,
+                remoteSourceURL: uploadedURL,
                 requiresMirroringUpload: false
             )
         }
@@ -380,6 +380,6 @@ public final class ProcessFileUseCase: Sendable {
 
 private struct PreparedSource {
     let processingURL: URL
-    let presignedSourceURL: URL?
+    let remoteSourceURL: URL?
     let requiresMirroringUpload: Bool
 }

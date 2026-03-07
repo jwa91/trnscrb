@@ -310,7 +310,7 @@ struct SettingsView: View {
                 settingsGrid {
                     settingsRow(
                         "Language",
-                        help: "Used only when Audio is set to Local Apple. Match this to the recording language for better recognition quality."
+                        help: "Used only when Audio is set to Local. Match this to the recording language for better recognition quality."
                     ) {
                         appleAudioLocalePicker()
                             .disabled(viewModel.settings.audioProviderMode != .localApple)
@@ -626,8 +626,8 @@ struct SettingsView: View {
 
     private func providerModePicker(selection: Binding<ProviderMode>) -> some View {
         Picker("", selection: selection) {
-            Text("Mistral").tag(ProviderMode.mistral)
-            Text("Local Apple").tag(ProviderMode.localApple)
+            Text("Cloud").tag(ProviderMode.mistral)
+            Text("Local").tag(ProviderMode.localApple)
         }
         .labelsHidden()
         .pickerStyle(.menu)
