@@ -41,9 +41,3 @@ trnscrb is the **Mac desktop capture layer** in this pipeline.
 **Status:** To Do
 
 ---
-
-## Bundle ID migration
-
-**Goal:** rename the app identity from `com.trnscrb.app` to `com.janwillemaltink.trnscrb`, reset the keychain namespace cleanly, and verify signing/notarization behavior after the change.
-
-**Status:** In Progress
