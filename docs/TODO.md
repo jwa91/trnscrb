@@ -8,6 +8,8 @@ Drop anything from anywhere (Mac, iPhone, browser, Raycast) into a single ecosys
 
 trnscrb is the **Mac desktop capture layer** in this pipeline.
 
+Near-term priority: improve the robustness and quality of the core local and cloud processing pipelines before expanding deeper pipeline features.
+
 ---
 
 ## Global Hotkey
@@ -31,6 +33,14 @@ trnscrb is the **Mac desktop capture layer** in this pipeline.
 **Goal:** directly upload files to Mistral, instead of via S3, make S3 optional, Add S3 upload as a more standalone feature as well
 
 **Status:** To Do
+
+---
+
+## Shared inbox
+
+**Goal:** support an S3-backed shared inbox / landing zone that exists independently from a single immediate transcription request, so multiple producers and downstream consumers can use the same bucket workflow.
+
+**Status:** Later
 
 ---
 
