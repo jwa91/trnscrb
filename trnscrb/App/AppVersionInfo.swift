@@ -77,11 +77,14 @@ enum AppVersionInfo {
 
     private static func ancestorDirectories(of startURL: URL) -> [URL] {
         var directories: [URL] = []
-        var currentURL: URL = startURL.hasDirectoryPath ? startURL : startURL.deletingLastPathComponent()
+        var currentURL: URL = (
+            startURL.hasDirectoryPath ? startURL : startURL.deletingLastPathComponent()
+        ).standardizedFileURL
 
         while true {
             directories.append(currentURL)
-            let parentURL: URL = currentURL.deletingLastPathComponent()
+            // Keep the URL canonicalized so "/" does not turn into "/..", "/../..", and so on.
+            let parentURL: URL = currentURL.deletingLastPathComponent().standardizedFileURL
             if parentURL.path == currentURL.path {
                 break
             }
