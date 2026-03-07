@@ -27,14 +27,15 @@ public enum ProcessingStage: Sendable, Equatable {
     case processing
 }
 
-/// Orchestrates the full file processing pipeline: upload -> transcribe -> deliver.
+/// Orchestrates the full file processing pipeline: prepare -> transcribe -> optional mirror -> deliver.
 ///
 /// This is the core use case. It:
 /// 1. Validates the file extension and determines the file type
-/// 2. Uploads the dropped file to S3 via `StorageGateway`
-/// 3. Finds the right `TranscriptionGateway` for the file type
-/// 4. Calls the transcription/OCR API with the presigned URL
-/// 5. Delivers the markdown result via `DeliveryGateway`
+/// 2. Finds the right `TranscriptionGateway` for the file type
+/// 3. Prepares the best available processing source for that transcriber
+/// 4. Calls the transcription/OCR API
+/// 5. Optionally mirrors the original file to S3-compatible storage
+/// 6. Delivers the markdown result via `DeliveryGateway`
 public final class ProcessFileUseCase: Sendable {
     /// Object storage for uploading files.
     private let storage: any StorageGateway
@@ -106,7 +107,7 @@ public final class ProcessFileUseCase: Sendable {
             onUploadProgress: onUploadProgress
         )
         let sourceURL: URL = preparedSource.processingURL
-        let presignedURL: URL? = preparedSource.presignedSourceURL
+        var presignedURL: URL? = preparedSource.presignedSourceURL
 
         onStageChange?(.processing)
         AppLog.pipeline.info(
@@ -129,6 +130,23 @@ public final class ProcessFileUseCase: Sendable {
             sourceFileType: fileType
         )
 
+        var mirrorWarnings: [String] = []
+        if preparedSource.requiresMirroringUpload {
+            do {
+                presignedURL = try await mirrorSourceFile(
+                    fileURL: fileURL,
+                    fileExtension: ext,
+                    appSettings: appSettings
+                )
+            } catch {
+                let warning: String = mirrorWarningMessage(for: error)
+                mirrorWarnings = [warning]
+                AppLog.pipeline.error(
+                    "Mirroring failed for \(fileURL.lastPathComponent, privacy: .public): \(warning, privacy: .public)"
+                )
+            }
+        }
+
         AppLog.pipeline.info("Starting delivery for \(fileURL.lastPathComponent, privacy: .public)")
         let deliveryStartedAt: Date = Date()
         let deliveryReport: DeliveryReport = try await delivery.deliver(result: result)
@@ -139,6 +157,7 @@ public final class ProcessFileUseCase: Sendable {
             markdown: result.markdown,
             sourceFileName: result.sourceFileName,
             sourceFileType: result.sourceFileType,
+            mirrorWarnings: mirrorWarnings,
             deliveryWarnings: deliveryReport.warnings,
             savedFileURL: deliveryReport.savedFileURL,
             presignedSourceURL: presignedURL
@@ -181,14 +200,15 @@ public final class ProcessFileUseCase: Sendable {
         onStageChange: (@Sendable (ProcessingStage) -> Void)?,
         onUploadProgress: (@Sendable (Double) -> Void)?
     ) async throws -> PreparedSource {
-        let sourceKind: TranscriptionSourceKind = sourceKindForProcessing(
-            transcriber: transcriber,
-            appSettings: appSettings
-        )
+        let sourceKind: TranscriptionSourceKind = sourceKindForProcessing(transcriber: transcriber)
 
         switch sourceKind {
         case .localFile:
-            return PreparedSource(processingURL: fileURL, presignedSourceURL: nil)
+            return PreparedSource(
+                processingURL: fileURL,
+                presignedSourceURL: nil,
+                requiresMirroringUpload: appSettings.bucketMirroringEnabled
+            )
         case .remoteURL:
             let uploadedURL: URL = try await uploadSourceFile(
                 fileURL: fileURL,
@@ -197,20 +217,18 @@ public final class ProcessFileUseCase: Sendable {
                 onStageChange: onStageChange,
                 onUploadProgress: onUploadProgress
             )
-            return PreparedSource(processingURL: uploadedURL, presignedSourceURL: uploadedURL)
+            return PreparedSource(
+                processingURL: uploadedURL,
+                presignedSourceURL: uploadedURL,
+                requiresMirroringUpload: false
+            )
         }
     }
 
-    private func sourceKindForProcessing(
-        transcriber: any TranscriptionGateway,
-        appSettings: AppSettings
-    ) -> TranscriptionSourceKind {
+    private func sourceKindForProcessing(transcriber: any TranscriptionGateway) -> TranscriptionSourceKind {
         let supportsRemoteURL: Bool = transcriber.supportedSourceKinds.contains(.remoteURL)
         let supportsLocalFile: Bool = transcriber.supportedSourceKinds.contains(.localFile)
 
-        if appSettings.bucketMirroringEnabled && supportsRemoteURL {
-            return .remoteURL
-        }
         if supportsLocalFile {
             return .localFile
         }
@@ -245,6 +263,30 @@ public final class ProcessFileUseCase: Sendable {
         let uploadElapsedMs: Int = Int((Date().timeIntervalSince(uploadStartedAt) * 1000).rounded())
         AppLog.pipeline.info("Upload complete for \(fileURL.lastPathComponent, privacy: .public) in \(uploadElapsedMs, privacy: .public) ms")
         return uploadedURL
+    }
+
+    private func mirrorSourceFile(
+        fileURL: URL,
+        fileExtension: String,
+        appSettings: AppSettings
+    ) async throws -> URL {
+        let key: String = "\(appSettings.s3PathPrefix)\(UUID().uuidString).\(fileExtension)"
+        AppLog.pipeline.info("Mirroring \(fileURL.lastPathComponent, privacy: .public) to key \(key, privacy: .public)")
+        let mirrorStartedAt: Date = Date()
+        let mirroredURL: URL = try await retry(
+            operationName: "mirroring",
+            maxAttempts: 3,
+            initialBackoffNanoseconds: 250_000_000
+        ) {
+            try await storage.upload(fileURL: fileURL, key: key)
+        }
+        let mirrorElapsedMs: Int = Int((Date().timeIntervalSince(mirrorStartedAt) * 1000).rounded())
+        AppLog.pipeline.info("Mirroring complete for \(fileURL.lastPathComponent, privacy: .public) in \(mirrorElapsedMs, privacy: .public) ms")
+        return mirroredURL
+    }
+
+    private func mirrorWarningMessage(for error: any Error) -> String {
+        "Processed file successfully, but mirroring to S3 failed: \(error.localizedDescription)"
     }
 
     /// Retries an async operation with exponential backoff.
@@ -338,4 +380,5 @@ public final class ProcessFileUseCase: Sendable {
 private struct PreparedSource {
     let processingURL: URL
     let presignedSourceURL: URL?
+    let requiresMirroringUpload: Bool
 }

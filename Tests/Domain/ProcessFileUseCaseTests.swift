@@ -99,6 +99,7 @@ struct ProcessFileUseCaseTests {
         #expect(result.sourceFileName == "meeting.mp3")
         #expect(result.sourceFileType == .audio)
         #expect(result.deliveryWarnings.isEmpty)
+        #expect(result.mirrorWarnings.isEmpty)
         #expect(result.presignedSourceURL == presignedURL)
         #expect(result.savedFileURL == nil)
         let uploadedKeys: [String] = await storage.recordedUploadedKeys()
@@ -125,6 +126,7 @@ struct ProcessFileUseCaseTests {
 
         #expect(result.presignedSourceURL == presignedURL)
         #expect(result.savedFileURL == savedFileURL)
+        #expect(result.mirrorWarnings.isEmpty)
     }
 
     @Test func processPDFFile() async throws {
@@ -271,7 +273,104 @@ struct ProcessFileUseCaseTests {
         let uploadedSourceURL: URL = try #require(result.presignedSourceURL)
 
         #expect(await storage.recordedUploadAttemptCount() == 1)
-        #expect(await audioTranscriber.recordedProcessedURLs() == [uploadedSourceURL])
+        #expect(await audioTranscriber.recordedProcessedURLs() == [fileURL])
+        #expect(result.mirrorWarnings.isEmpty)
+        #expect(uploadedSourceURL != fileURL)
+    }
+
+    @Test func localWithMirroringEnabledProcessesLocallyAndMirrorsSourceFile() async throws {
+        let presignedURL: URL = URL(string: "https://s3.example.com/mirrored/local-audio.mp3")!
+        let storage: MockStorageGateway = MockStorageGateway(uploadResult: presignedURL)
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [localAudio],
+            delivery: MockDeliveryGateway(),
+            settings: MockSettingsGateway(
+                settings: AppSettings(
+                    bucketMirroringEnabled: true,
+                    audioProviderMode: .localApple
+                )
+            )
+        )
+        let fileURL: URL = URL(filePath: "/tmp/local-mirror.mp3")
+
+        let result: TranscriptionResult = try await useCase.execute(fileURL: fileURL)
+
+        #expect(result.markdown == "# Local Audio")
+        #expect(result.presignedSourceURL == presignedURL)
+        #expect(result.mirrorWarnings.isEmpty)
+        #expect(await storage.recordedUploadAttemptCount() == 1)
+        #expect(await localAudio.recordedProcessedURLs() == [fileURL])
+    }
+
+    @Test func mirroringFailureReturnsWarningAndStillDeliversResult() async throws {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadError: S3Error.invalidConfiguration("S3 secret key not configured")
+        )
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(
+            savedFileURL: URL(filePath: "/tmp/mirrored-warning.md")
+        )
+        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local Audio"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [localAudio],
+            delivery: delivery,
+            settings: MockSettingsGateway(
+                settings: AppSettings(
+                    bucketMirroringEnabled: true,
+                    audioProviderMode: .localApple
+                )
+            )
+        )
+
+        let result: TranscriptionResult = try await useCase.execute(
+            fileURL: URL(filePath: "/tmp/mirror-warning.mp3")
+        )
+
+        #expect(result.markdown == "# Local Audio")
+        #expect(result.deliveryWarnings.isEmpty)
+        #expect(result.presignedSourceURL == nil)
+        #expect(result.mirrorWarnings == [
+            "Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"
+        ])
+        #expect(await delivery.recordedDeliveredResults().count == 1)
+    }
+
+    @Test func remoteOnlyProviderStillFailsWhenRequiredUploadFails() async throws {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadError: S3Error.invalidConfiguration("S3 secret key not configured")
+        )
+        let remoteOnlyAudio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .mistral,
+            sourceKind: .remoteURL
+        )
+        let delivery: MockDeliveryGateway = MockDeliveryGateway()
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [remoteOnlyAudio],
+            delivery: delivery,
+            settings: MockSettingsGateway(
+                settings: AppSettings(audioProviderMode: .mistral)
+            )
+        )
+
+        await #expect(throws: S3Error.self) {
+            try await useCase.execute(fileURL: URL(filePath: "/tmp/remote-only.mp3"))
+        }
+        #expect(await storage.recordedUploadAttemptCount() == 1)
+        #expect(await delivery.recordedDeliveredResults().isEmpty)
     }
 
     @Test func reportsUploadProgress() async throws {
@@ -548,6 +647,7 @@ struct ProcessFileUseCaseTests {
         )
 
         #expect(result.deliveryWarnings == ["Copied markdown to the clipboard, but saving the file failed."])
+        #expect(result.mirrorWarnings.isEmpty)
     }
 
     // MARK: - Extension case insensitivity
