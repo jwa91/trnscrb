@@ -120,30 +120,15 @@ public struct MistralOCRProvider: TranscriptionGateway {
     }
 
     private func uploadFileForOCR(apiKey: String, fileURL: URL) async throws -> String {
-        let boundary: String = "Boundary-\(UUID().uuidString)"
-        var request: URLRequest = URLRequest(url: Self.filesEndpoint)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(
-            "multipart/form-data; boundary=\(boundary)",
-            forHTTPHeaderField: "Content-Type"
+        let preparedRequest: (request: URLRequest, bodyFile: FileBackedMultipartBody) = try makeFileUploadRequest(
+            apiKey: apiKey,
+            fileURL: fileURL
         )
-        let fileData: Data = try loadFileData(fileURL: fileURL)
-        let fileName: String = fileURL.lastPathComponent.isEmpty ? "document" : fileURL.lastPathComponent
-        let filePart: OCRMultipartFilePart = OCRMultipartFilePart(
-            name: "file",
-            fileName: fileName,
-            mimeType: mimeType(for: fileURL.pathExtension),
-            data: fileData
-        )
-        request.httpBody = multipartBody(
-            boundary: boundary,
-            fields: [("purpose", "ocr")],
-            fileParts: [filePart]
-        )
-        request.timeoutInterval = 120
+        defer {
+            preparedRequest.bodyFile.cleanup()
+        }
 
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await urlSession.data(for: preparedRequest.request)
         guard let http = response as? HTTPURLResponse else {
             throw MistralError.invalidResponse("Not an HTTP response")
         }
@@ -160,44 +145,34 @@ public struct MistralOCRProvider: TranscriptionGateway {
         return fileID
     }
 
-    private func multipartBody(
-        boundary: String,
-        fields: [(name: String, value: String)],
-        fileParts: [OCRMultipartFilePart]
-    ) -> Data {
-        var data: Data = Data()
-        for field in fields {
-            data.append("--\(boundary)\r\n")
-            data.append("Content-Disposition: form-data; name=\"\(field.name)\"\r\n\r\n")
-            data.append("\(field.value)\r\n")
-        }
-        for filePart in fileParts {
-            data.append("--\(boundary)\r\n")
-            data.append(
-                "Content-Disposition: form-data; name=\"\(filePart.name)\"; filename=\"\(filePart.fileName)\"\r\n"
-            )
-            data.append("Content-Type: \(filePart.mimeType)\r\n\r\n")
-            data.append(filePart.data)
-            data.append("\r\n")
-        }
-        data.append("--\(boundary)--\r\n")
-        return data
-    }
+    private func makeFileUploadRequest(
+        apiKey: String,
+        fileURL: URL
+    ) throws -> (request: URLRequest, bodyFile: FileBackedMultipartBody) {
+        let boundary: String = "Boundary-\(UUID().uuidString)"
+        var request: URLRequest = URLRequest(url: Self.filesEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
 
-    private func loadFileData(fileURL: URL) throws -> Data {
-        let startedAccessing: Bool = fileAccess.startAccessing(fileURL)
-        defer {
-            if startedAccessing {
-                fileAccess.stopAccessing(fileURL)
-            }
-        }
-        do {
-            return try Data(contentsOf: fileURL)
-        } catch {
-            throw MistralError.invalidResponse(
-                "Could not read local OCR file at \(fileURL.lastPathComponent)."
-            )
-        }
+        let fileName: String = fileURL.lastPathComponent.isEmpty ? "document" : fileURL.lastPathComponent
+        let bodyFile: FileBackedMultipartBody = try FileBackedMultipartBodyBuilder.create(
+            boundary: boundary,
+            fields: [("purpose", "ocr")],
+            fileFieldName: "file",
+            fileURL: fileURL,
+            fileName: fileName,
+            mimeType: mimeType(for: fileURL.pathExtension),
+            fileAccess: fileAccess,
+            filePreparationErrorMessage: "Could not prepare local OCR file at \(fileName) for upload."
+        )
+        request.setValue(String(bodyFile.contentLength), forHTTPHeaderField: "Content-Length")
+        request.httpBodyStream = try bodyFile.makeInputStream()
+        request.timeoutInterval = 120
+        return (request, bodyFile)
     }
 
     private func mimeType(for fileExtension: String) -> String {
@@ -234,18 +209,5 @@ public struct MistralOCRProvider: TranscriptionGateway {
             throw MistralError.invalidResponse("No markdown content in OCR response pages")
         }
         return markdowns.joined(separator: "\n\n")
-    }
-}
-
-private struct OCRMultipartFilePart {
-    let name: String
-    let fileName: String
-    let mimeType: String
-    let data: Data
-}
-
-private extension Data {
-    mutating func append(_ string: String) {
-        self.append(Data(string.utf8))
     }
 }

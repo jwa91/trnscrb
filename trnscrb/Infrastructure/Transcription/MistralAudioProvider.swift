@@ -45,9 +45,15 @@ public struct MistralAudioProvider: TranscriptionGateway {
         let requestStartedAt: Date = Date()
         AppLog.network.info("Starting audio transcription request for \(LogRedaction.sourceURLSummary(sourceURL), privacy: .public)")
 
-        let request: URLRequest = try makeRequest(apiKey: apiKey, sourceURL: sourceURL)
+        let preparedRequest: (request: URLRequest, bodyFile: FileBackedMultipartBody?) = try makeRequest(
+            apiKey: apiKey,
+            sourceURL: sourceURL
+        )
+        defer {
+            preparedRequest.bodyFile?.cleanup()
+        }
 
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await urlSession.data(for: preparedRequest.request)
 
         guard let http = response as? HTTPURLResponse else {
             throw MistralError.invalidResponse("Not an HTTP response")
@@ -79,7 +85,10 @@ public struct MistralAudioProvider: TranscriptionGateway {
         return apiKey
     }
 
-    private func makeRequest(apiKey: String, sourceURL: URL) throws -> URLRequest {
+    private func makeRequest(
+        apiKey: String,
+        sourceURL: URL
+    ) throws -> (request: URLRequest, bodyFile: FileBackedMultipartBody?) {
         guard let endpointURL: URL = URL(string: Self.endpointString) else {
             throw MistralError.invalidResponse("Invalid endpoint URL")
         }
@@ -93,34 +102,40 @@ public struct MistralAudioProvider: TranscriptionGateway {
             forHTTPHeaderField: "Content-Type"
         )
 
-        var fields: [(name: String, value: String)] = [("model", "voxtral-mini-latest")]
-        var fileParts: [MultipartFilePart] = []
         if sourceURL.isFileURL {
-            let fileData: Data = try loadFileData(fileURL: sourceURL)
             let fileName: String = sourceURL.lastPathComponent.isEmpty
                 ? "audio"
                 : sourceURL.lastPathComponent
-            fileParts.append(
-                MultipartFilePart(
-                    name: "file",
-                    fileName: fileName,
-                    mimeType: audioMimeType(for: sourceURL.pathExtension),
-                    data: fileData
-                )
+            let bodyFile: FileBackedMultipartBody = try FileBackedMultipartBodyBuilder.create(
+                boundary: boundary,
+                fields: [("model", "voxtral-mini-latest")],
+                fileFieldName: "file",
+                fileURL: sourceURL,
+                fileName: fileName,
+                mimeType: audioMimeType(for: sourceURL.pathExtension),
+                fileAccess: fileAccess,
+                filePreparationErrorMessage: "Could not prepare local audio file at \(fileName) for upload."
             )
+            request.setValue(String(bodyFile.contentLength), forHTTPHeaderField: "Content-Length")
+            request.httpBodyStream = try bodyFile.makeInputStream()
+            request.timeoutInterval = 300
+            return (request, bodyFile)
         } else {
-            fields.append(("file_url", sourceURL.absoluteString))
+            request.httpBody = multipartBody(
+                boundary: boundary,
+                fields: [
+                    ("model", "voxtral-mini-latest"),
+                    ("file_url", sourceURL.absoluteString)
+                ]
+            )
+            request.timeoutInterval = 300
+            return (request, nil)
         }
-
-        request.httpBody = multipartBody(boundary: boundary, fields: fields, fileParts: fileParts)
-        request.timeoutInterval = 300
-        return request
     }
 
     private func multipartBody(
         boundary: String,
-        fields: [(name: String, value: String)],
-        fileParts: [MultipartFilePart]
+        fields: [(name: String, value: String)]
     ) -> Data {
         var data: Data = Data()
 
@@ -130,34 +145,8 @@ public struct MistralAudioProvider: TranscriptionGateway {
             data.append("\(field.value)\r\n")
         }
 
-        for filePart in fileParts {
-            data.append("--\(boundary)\r\n")
-            data.append(
-                "Content-Disposition: form-data; name=\"\(filePart.name)\"; filename=\"\(filePart.fileName)\"\r\n"
-            )
-            data.append("Content-Type: \(filePart.mimeType)\r\n\r\n")
-            data.append(filePart.data)
-            data.append("\r\n")
-        }
-
         data.append("--\(boundary)--\r\n")
         return data
-    }
-
-    private func loadFileData(fileURL: URL) throws -> Data {
-        let startedAccessing: Bool = fileAccess.startAccessing(fileURL)
-        defer {
-            if startedAccessing {
-                fileAccess.stopAccessing(fileURL)
-            }
-        }
-        do {
-            return try Data(contentsOf: fileURL)
-        } catch {
-            throw MistralError.invalidResponse(
-                "Could not read local audio file at \(fileURL.lastPathComponent)."
-            )
-        }
     }
 
     private func audioMimeType(for fileExtension: String) -> String {
@@ -178,13 +167,6 @@ public struct MistralAudioProvider: TranscriptionGateway {
             return "application/octet-stream"
         }
     }
-}
-
-private struct MultipartFilePart {
-    let name: String
-    let fileName: String
-    let mimeType: String
-    let data: Data
 }
 
 private extension Data {

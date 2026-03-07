@@ -401,6 +401,20 @@ public final class JobListViewModel: ObservableObject {
                 }
             }
 
+            if settings.requiresS3Credentials {
+                guard settings.isS3Configured else {
+                    configurationError = "Configure your S3 endpoint, access key, and bucket in Settings."
+                    shouldOpenSettings = true
+                    return nil
+                }
+                guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
+                      !s3SecretKey.trimmedCredentialValue.isEmpty else {
+                    configurationError = "Configure your S3 secret key in Settings."
+                    shouldOpenSettings = true
+                    return nil
+                }
+            }
+
             do {
                 _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
             } catch {

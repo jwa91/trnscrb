@@ -127,11 +127,13 @@ struct MistralOCRProviderTests {
         mock.handler = { request in
             requestCount += 1
             if request.url?.absoluteString == "https://api.mistral.ai/v1/files" {
-                let body: String = String(data: try #require(request.httpBody), encoding: .utf8) ?? ""
+                let bodyData: Data = try #require(request.httpBody)
+                let body: String = String(data: bodyData, encoding: .utf8) ?? ""
                 #expect(body.contains("name=\"purpose\""))
                 #expect(body.contains("ocr"))
                 #expect(body.contains("name=\"file\"; filename=\"scan.pdf\""))
                 #expect(body.contains("Content-Type: application/pdf"))
+                #expect(request.value(forHTTPHeaderField: "Content-Length") == String(bodyData.count))
                 let response: HTTPURLResponse = HTTPURLResponse(
                     url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
                 )!

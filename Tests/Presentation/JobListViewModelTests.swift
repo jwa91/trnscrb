@@ -385,7 +385,7 @@ struct JobListViewModelTests {
         #expect(vm.configurationError == "Configure your Mistral API key in Settings.")
     }
 
-    @Test func localOnlyWithMirroringEnabledSurfacesMirrorWarningInsteadOfConfigError() async {
+    @Test func localOnlyWithMirroringEnabledRequiresS3SettingsBeforeProcessing() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 bucketMirroringEnabled: true,
@@ -394,100 +394,43 @@ struct JobListViewModelTests {
                 imageProviderMode: .localApple
             )
         )
-        let storage: MockStorageGateway = MockStorageGateway(
-            uploadError: S3Error.invalidConfiguration("S3 endpoint, access key, or bucket not configured")
-        )
-        let delivery: MockDeliveryGateway = MockDeliveryGateway(
-            savedFileURL: URL(filePath: "/tmp/local-mirroring.md")
-        )
-        let localAudio: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.audioExtensions,
-            providerMode: .localApple,
-            sourceKind: .localFile,
-            processResult: "# Local Audio"
-        )
-        let localOCR: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions),
-            providerMode: .localApple,
-            sourceKind: .localFile,
-            processResult: "# Local OCR"
-        )
-        let useCase: ProcessFileUseCase = ProcessFileUseCase(
-            storage: storage,
-            transcribers: [localAudio, localOCR],
-            delivery: delivery,
-            settings: settings
-        )
-        let vm: JobListViewModel = JobListViewModel(
-            useCase: useCase,
-            settingsGateway: settings,
-            outputFolderGateway: MockOutputFolderGateway(),
-            shouldStartNetworkMonitoring: false
-        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
-        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
-            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
         }
 
         #expect(completed)
-        #expect(vm.configurationError == nil)
-        #expect(vm.completedJobs.first?.mirrorWarnings == [
-            "Processed file successfully, but mirroring to S3 failed: S3 endpoint, access key, or bucket not configured"
-        ])
+        #expect(vm.configurationError == "Configure your S3 endpoint, access key, and bucket in Settings.")
+        #expect(vm.shouldOpenSettings)
+        #expect(vm.jobs.isEmpty)
     }
 
-    @Test func cloudWithMirroringEnabledSurfacesMirrorWarningInsteadOfConfigError() async {
+    @Test func cloudWithMirroringEnabledRequiresS3SecretBeforeProcessing() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 bucketMirroringEnabled: true,
+                s3EndpointURL: "https://s3.example.com",
+                s3AccessKey: "AKID",
+                s3BucketName: "bucket",
                 audioProviderMode: .mistral,
                 pdfProviderMode: .localApple,
                 imageProviderMode: .localApple
             ),
             secrets: [.mistralAPIKey: "mk-test"]
         )
-        let storage: MockStorageGateway = MockStorageGateway(
-            uploadError: S3Error.invalidConfiguration("S3 secret key not configured")
-        )
-        let delivery: MockDeliveryGateway = MockDeliveryGateway(
-            savedFileURL: URL(filePath: "/tmp/cloud-mirroring.md")
-        )
-        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.audioExtensions,
-            providerMode: .mistral,
-            supportedSourceKinds: [.localFile, .remoteURL],
-            processResult: "# Cloud Audio"
-        )
-        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
-            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions),
-            providerMode: .localApple,
-            sourceKind: .localFile,
-            processResult: "# Local OCR"
-        )
-        let useCase: ProcessFileUseCase = ProcessFileUseCase(
-            storage: storage,
-            transcribers: [audio, ocr],
-            delivery: delivery,
-            settings: settings
-        )
-        let vm: JobListViewModel = JobListViewModel(
-            useCase: useCase,
-            settingsGateway: settings,
-            outputFolderGateway: MockOutputFolderGateway(),
-            shouldStartNetworkMonitoring: false
-        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
-        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
-            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
         }
 
         #expect(completed)
-        #expect(vm.configurationError == nil)
-        #expect(vm.completedJobs.first?.mirrorWarnings == [
-            "Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"
-        ])
+        #expect(vm.configurationError == "Configure your S3 secret key in Settings.")
+        #expect(vm.shouldOpenSettings)
+        #expect(vm.jobs.isEmpty)
     }
 
     @Test func localOnlyConfigurationSkipsCloudChecks() async {
@@ -805,7 +748,7 @@ struct JobListViewModelTests {
 
     @Test func successfulProcessingWithMirrorWarningKeepsJobCompletedAndPreservesNotificationBody() async {
         let storage: MockStorageGateway = MockStorageGateway(
-            uploadError: S3Error.invalidConfiguration("S3 secret key not configured")
+            uploadError: S3Error.requestFailed(statusCode: 503, body: "temporary outage")
         )
         let delivery: MockDeliveryGateway = MockDeliveryGateway(
             savedFileURL: URL(filePath: "/tmp/mirror-warning.md")
@@ -813,11 +756,17 @@ struct JobListViewModelTests {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 bucketMirroringEnabled: true,
+                s3EndpointURL: "https://s3.example.com",
+                s3AccessKey: "AKID",
+                s3BucketName: "bucket",
                 audioProviderMode: .mistral,
                 pdfProviderMode: .localApple,
                 imageProviderMode: .localApple
             ),
-            secrets: [.mistralAPIKey: "mk-test"]
+            secrets: [
+                .mistralAPIKey: "mk-test",
+                .s3SecretKey: "sk-test"
+            ]
         )
         let notificationGateway: MockNotificationGateway = MockNotificationGateway()
         let audio: MockTranscriptionGateway = MockTranscriptionGateway(
@@ -854,7 +803,7 @@ struct JobListViewModelTests {
         #expect(completed)
         #expect(vm.completedJobs.first?.status == .completed)
         #expect(vm.completedJobs.first?.mirrorWarnings == [
-            "Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"
+            "Processed file successfully, but mirroring to S3 failed: S3 request failed with HTTP 503: temporary outage"
         ])
         #expect(vm.completedJobs.first?.deliveryWarnings.isEmpty == true)
 
@@ -865,7 +814,7 @@ struct JobListViewModelTests {
         let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
         #expect(
             notifications[0].body
-                == "mirror-warning.mp3 saved to /tmp/mirror-warning.md and copied to clipboard. Processed file successfully, but mirroring to S3 failed: S3 secret key not configured"
+                == "mirror-warning.mp3 saved to /tmp/mirror-warning.md and copied to clipboard. Processed file successfully, but mirroring to S3 failed: S3 request failed with HTTP 503: temporary outage"
         )
     }
 

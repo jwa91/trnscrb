@@ -105,12 +105,14 @@ struct MistralAudioProviderTests {
         let (provider, mock) = makeProvider(fileAccess: fileAccessSpy)
 
         mock.handler = { request in
-            let body: String = String(data: try #require(request.httpBody), encoding: .utf8) ?? ""
+            let bodyData: Data = try #require(request.httpBody)
+            let body: String = String(data: bodyData, encoding: .utf8) ?? ""
             #expect(body.contains("name=\"model\""))
             #expect(body.contains("voxtral-mini-latest"))
             #expect(body.contains("name=\"file\"; filename=\"sample.mp3\""))
             #expect(body.contains("Content-Type: audio/mpeg"))
             #expect(!body.contains("name=\"file_url\""))
+            #expect(request.value(forHTTPHeaderField: "Content-Length") == String(bodyData.count))
 
             let responseJSON: String = """
             {"text": "Uploaded local audio"}
