@@ -397,14 +397,6 @@ struct SettingsView: View {
 
             settingsSection("Configuration") {
                 settingsGrid {
-                    settingsRow(
-                        "Passwords",
-                        help: "Mistral API keys and S3 secret keys are stored in Keychain only and never written to config.toml."
-                    ) {
-                        Text("Stored securely in Keychain")
-                            .foregroundStyle(.secondary)
-                    }
-
                     settingsRow("Config File") {
                         Text(configFileURL.path())
                             .font(.system(.body, design: .monospaced))
