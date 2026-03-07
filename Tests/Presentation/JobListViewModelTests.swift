@@ -365,8 +365,47 @@ struct JobListViewModelTests {
         }
 
         #expect(completed)
-        #expect(vm.configurationError == "Configure your S3 secret key in settings.")
+        #expect(vm.configurationError == "Configure your S3 secret key in Settings.")
         #expect(vm.jobs.isEmpty)
+    }
+
+    @Test func setsConfigErrorForMistralKeyBeforeS3WhenBothMissing() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                audioProviderMode: .mistral,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            )
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/test.mp3")])
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == "Configure your Mistral API key in Settings.")
+    }
+
+    @Test func localOnlyWithMirroringEnabledRequiresS3() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: true,
+                audioProviderMode: .localApple,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            )
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/test.mp3")])
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == "Configure S3 mirroring in Settings.")
     }
 
     @Test func localOnlyConfigurationSkipsCloudChecks() async {

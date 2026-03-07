@@ -387,27 +387,32 @@ public final class JobListViewModel: ObservableObject {
 
     // MARK: - Private
 
-    /// Checks that S3 and Mistral API key are configured.
+    /// Validates credentials and output folder before processing.
     /// - Returns: Processing configuration if valid, `nil` otherwise.
     private func checkConfiguration() async -> ProcessingConfiguration? {
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
-            if requiresCloudCredentials(for: settings) {
+
+            if settings.requiresCloudCredentials {
+                guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
+                      !apiKey.trimmedCredentialValue.isEmpty else {
+                    configurationError = "Configure your Mistral API key in Settings."
+                    return nil
+                }
+            }
+
+            if settings.requiresS3Credentials {
                 guard settings.isS3Configured else {
-                    configurationError = "Configure your S3 storage in settings."
+                    configurationError = "Configure S3 mirroring in Settings."
                     return nil
                 }
                 guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
                       !s3SecretKey.trimmedCredentialValue.isEmpty else {
-                    configurationError = "Configure your S3 secret key in settings."
-                    return nil
-                }
-                guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
-                      !apiKey.trimmedCredentialValue.isEmpty else {
-                    configurationError = "Configure your Mistral API key in settings."
+                    configurationError = "Configure your S3 secret key in Settings."
                     return nil
                 }
             }
+
             do {
                 _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
             } catch {
@@ -420,10 +425,6 @@ public final class JobListViewModel: ObservableObject {
             configurationError = error.localizedDescription
             return nil
         }
-    }
-
-    private func requiresCloudCredentials(for settings: AppSettings) -> Bool {
-        settings.requiresCloudCredentials
     }
 
     /// Processes a single job through the pipeline.
