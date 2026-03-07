@@ -42,4 +42,45 @@ struct AppSettingsProviderModeTests {
 
         #expect(!settings.requiresCloudCredentials)
     }
+
+    // MARK: - Bucket mirroring
+
+    @Test func bucketMirroringDefaultsToDisabled() {
+        let settings: AppSettings = AppSettings()
+
+        #expect(!settings.bucketMirroringEnabled)
+    }
+
+    @Test func requiresS3CredentialsWhenMirroringEnabledWithAllLocalProviders() {
+        let settings: AppSettings = AppSettings(
+            bucketMirroringEnabled: true,
+            audioProviderMode: .localApple,
+            pdfProviderMode: .localApple,
+            imageProviderMode: .localApple
+        )
+
+        #expect(settings.requiresS3Credentials)
+    }
+
+    @Test func requiresS3CredentialsWhenCloudActiveAndMirroringDisabled() {
+        let settings: AppSettings = AppSettings(
+            bucketMirroringEnabled: false,
+            audioProviderMode: .mistral,
+            pdfProviderMode: .localApple,
+            imageProviderMode: .localApple
+        )
+
+        #expect(settings.requiresS3Credentials)
+    }
+
+    @Test func doesNotRequireS3CredentialsWhenAllLocalAndMirroringDisabled() {
+        let settings: AppSettings = AppSettings(
+            bucketMirroringEnabled: false,
+            audioProviderMode: .localApple,
+            pdfProviderMode: .localApple,
+            imageProviderMode: .localApple
+        )
+
+        #expect(!settings.requiresS3Credentials)
+    }
 }

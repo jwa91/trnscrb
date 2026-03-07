@@ -20,6 +20,7 @@ extension SettingsValidationError: LocalizedError {
 extension AppSettings {
     var normalizedForUse: AppSettings {
         AppSettings(
+            bucketMirroringEnabled: bucketMirroringEnabled,
             s3EndpointURL: s3EndpointURL.normalizedEndpointURLString,
             s3AccessKey: s3AccessKey.trimmedCredentialValue,
             s3BucketName: s3BucketName.trimmedCredentialValue,

@@ -18,6 +18,8 @@ public struct AppSettings: Sendable, Equatable {
     /// Default speech locale used by Apple's on-device audio transcription.
     public static let defaultAppleAudioLocaleIdentifier: String = "en-US"
 
+    /// Whether bucket mirroring to S3-compatible storage is enabled.
+    public var bucketMirroringEnabled: Bool
     /// S3-compatible endpoint URL (e.g., "https://nbg1.your-objectstorage.com").
     public var s3EndpointURL: String
     /// S3 access key identifier.
@@ -51,6 +53,7 @@ public struct AppSettings: Sendable, Equatable {
 
     /// Creates settings with defaults matching SPEC.md.
     public init(
+        bucketMirroringEnabled: Bool = false,
         s3EndpointURL: String = "",
         s3AccessKey: String = "",
         s3BucketName: String = "",
@@ -67,6 +70,7 @@ public struct AppSettings: Sendable, Equatable {
         pdfProviderMode: ProviderMode = .localApple,
         imageProviderMode: ProviderMode = .localApple
     ) {
+        self.bucketMirroringEnabled = bucketMirroringEnabled
         self.s3EndpointURL = s3EndpointURL
         self.s3AccessKey = s3AccessKey
         self.s3BucketName = s3BucketName
@@ -106,5 +110,10 @@ public struct AppSettings: Sendable, Equatable {
         audioProviderMode == .mistral
             || pdfProviderMode == .mistral
             || imageProviderMode == .mistral
+    }
+
+    /// Whether S3 credentials must be validated (mirroring enabled or cloud processing active).
+    public var requiresS3Credentials: Bool {
+        bucketMirroringEnabled || requiresCloudCredentials
     }
 }
