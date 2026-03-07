@@ -22,9 +22,6 @@ struct MenuPanelView: View {
             onOpenSettings()
             jobListViewModel.consumeSettingsNavigation()
         }
-        .task {
-            await jobListViewModel.refreshPipelineSummary()
-        }
     }
 
     /// Main content shown when settings is not active.
@@ -38,8 +35,6 @@ struct MenuPanelView: View {
         return VStack(spacing: 0) {
             header
             VStack(spacing: PopoverDesign.sectionSpacing) {
-                pipelineSummaryView
-
                 if let error: String = jobListViewModel.configurationError {
                     banner(
                         error,
@@ -103,16 +98,6 @@ struct MenuPanelView: View {
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
-    }
-
-    private var pipelineSummaryView: some View {
-        Text(jobListViewModel.pipelineSummary)
-            .font(PopoverDesign.secondaryTextFont)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .help(jobListViewModel.pipelineSummary)
     }
 
     private var header: some View {

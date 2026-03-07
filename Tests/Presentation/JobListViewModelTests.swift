@@ -298,24 +298,6 @@ struct JobListViewModelTests {
 
     // MARK: - Configuration checks
 
-    @Test func refreshPipelineSummaryLoadsCompactSummaryFromSettings() async {
-        let settings: MockSettingsGateway = MockSettingsGateway(
-            settings: AppSettings(
-                bucketMirroringEnabled: true,
-                saveFolderPath: "~/Documents/trnscrb",
-                audioProviderMode: .mistral,
-                pdfProviderMode: .mistral,
-                imageProviderMode: .mistral
-            ),
-            secrets: [.mistralAPIKey: "mk-test"]
-        )
-        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
-
-        await vm.refreshPipelineSummary()
-
-        #expect(vm.pipelineSummary == "Cloud processing • S3 mirroring on • Save to ~/Documents/trnscrb")
-    }
-
     @Test func cloudWithoutMirroringAllowsProcessingWhenS3NotConfigured() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(

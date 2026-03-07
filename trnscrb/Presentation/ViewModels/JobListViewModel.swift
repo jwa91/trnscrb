@@ -38,8 +38,6 @@ public final class JobListViewModel: ObservableObject {
     @Published public var offlineStatusMessage: String?
     /// Job copy feedback currently shown in the UI.
     @Published public private(set) var copyFeedback: CopyFeedback?
-    /// Compact summary of the current processing pipeline settings.
-    @Published public private(set) var pipelineSummary: String = AppSettings().pipelineSummary
 
     /// Maximum number of completed jobs to retain.
     private let maxCompletedJobs: Int = 10
@@ -346,16 +344,6 @@ public final class JobListViewModel: ObservableObject {
         writeToPasteboard(sourceURL.absoluteString, jobID: jobID, target: .sourceURL)
     }
 
-    /// Reloads the compact pipeline summary from persisted settings.
-    public func refreshPipelineSummary() async {
-        do {
-            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
-            pipelineSummary = settings.pipelineSummary
-        } catch {
-            pipelineSummary = AppSettings().pipelineSummary
-        }
-    }
-
     private func writeToPasteboard(_ value: String, jobID: UUID, target: CopyFeedbackTarget) {
         let pasteboard: NSPasteboard = .general
         pasteboard.clearContents()
@@ -404,7 +392,6 @@ public final class JobListViewModel: ObservableObject {
     private func checkConfiguration() async -> ProcessingConfiguration? {
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
-            pipelineSummary = settings.pipelineSummary
 
             if settings.requiresCloudCredentials {
                 guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
