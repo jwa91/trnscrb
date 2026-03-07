@@ -10,49 +10,9 @@ trnscrb is the **Mac desktop capture layer** in this pipeline.
 
 ---
 
-## Cmd+V Paste Support
-
-**Goal:** Pasting copied files from Finder or `pbcopy` content into the popover triggers the same processing pipeline as drag-and-drop.
-
-**Status:** Implemented
-
----
-
 ## Global Hotkey
 
 **Goal:** A user-configurable keyboard shortcut that activates trnscrb from anywhere.
-
-**Status:** To Do
-
----
-
-## Standard Mac Keyboard Shortcuts
-
-**Goal:** Cmd+, opens settings. Other standard shortcuts work as expected.
-
-**Status:** Implemented
-
----
-
-## Raycast Extension
-
-**Goal:** A Raycast extension that sends files or clipboard content to trnscrb for processing.
-
-**Status:** To Do
-
----
-
-## Browser Extension
-
-**Goal:** Right-click an image or PDF in a browser, send it to trnscrb.
-
-**Status:** To Do
-
----
-
-## Synergy with Capture (iPhone app)
-
-**Goal:** Unify the capture-to-markdown pipeline across Mac and iPhone so both feed into the same vault/folder structure.
 
 **Status:** To Do
 
