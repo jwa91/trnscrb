@@ -73,22 +73,20 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
 struct SettingsView: View {
     /// View model providing settings data and persistence.
     @ObservedObject var viewModel: SettingsViewModel
-    /// Called when the user closes the settings window.
-    var onClose: () -> Void
     @State private var selectedPane: SettingsPane = .general
 
     var body: some View {
         TabView(selection: $selectedPane) {
             Tab("General", systemImage: SettingsPane.general.systemImage, value: .general) {
-                detailContent(for: .general)
+                pageContent(for: .general)
             }
 
             Tab("Processing", systemImage: SettingsPane.processing.systemImage, value: .processing) {
-                detailContent(for: .processing)
+                pageContent(for: .processing)
             }
 
             Tab("Connections", systemImage: SettingsPane.connections.systemImage, value: .connections) {
-                detailContent(for: .connections)
+                pageContent(for: .connections)
             }
 
             Tab(
@@ -96,15 +94,15 @@ struct SettingsView: View {
                 systemImage: SettingsPane.pipeline.systemImage,
                 value: .pipeline
             ) {
-                detailContent(for: .pipeline)
+                pageContent(for: .pipeline)
             }
 
             Tab("Output", systemImage: SettingsPane.output.systemImage, value: .output) {
-                detailContent(for: .output)
+                pageContent(for: .output)
             }
 
             Tab("About", systemImage: SettingsPane.about.systemImage, value: .about) {
-                detailContent(for: .about)
+                pageContent(for: .about)
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -115,16 +113,20 @@ struct SettingsView: View {
             minHeight: SettingsWindowDesign.minSize.height
         )
         .task { await viewModel.load() }
-    }
-
-    private func detailContent(for pane: SettingsPane) -> some View {
-        VStack(spacing: 0) {
-            pageContent(for: pane)
-
-            Divider()
-            footer
+        .onChange(of: viewModel.settings) {
+            viewModel.debouncedSaveSettings()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onDisappear {
+            Task { await viewModel.saveSettings() }
+        }
+        .alert("Settings Error", isPresented: .init(
+            get: { viewModel.error != nil },
+            set: { if !$0 { viewModel.error = nil } }
+        )) {
+            Button("OK") { viewModel.error = nil }
+        } message: {
+            Text(viewModel.error ?? "")
+        }
     }
 
     @ViewBuilder
@@ -189,7 +191,8 @@ struct SettingsView: View {
                     secretField(
                         "Secret Key",
                         text: $viewModel.s3SecretKey,
-                        isVisible: $viewModel.isS3SecretKeyVisible
+                        isVisible: $viewModel.isS3SecretKeyVisible,
+                        secretKey: .s3SecretKey
                     )
                 }
 
@@ -242,7 +245,8 @@ struct SettingsView: View {
                     secretField(
                         "API Key",
                         text: $viewModel.mistralAPIKey,
-                        isVisible: $viewModel.isMistralAPIKeyVisible
+                        isVisible: $viewModel.isMistralAPIKeyVisible,
+                        secretKey: .mistralAPIKey
                     )
                 }
 
@@ -434,44 +438,6 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var footer: some View {
-        HStack(spacing: 12) {
-            if let error = viewModel.error {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
-            } else {
-                Text("Changes apply when you save.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            saveButton
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.regularMaterial)
-    }
-
-    @ViewBuilder
-    private var saveButton: some View {
-        Button("Save") {
-            Task {
-                let didSave: Bool = await viewModel.save()
-                if didSave {
-                    onClose()
-                }
-            }
-        }
-        .buttonStyle(.glassProminent)
-        .tint(.accentColor)
-        .keyboardShortcut("s", modifiers: .command)
-        .pointingHandCursor()
-    }
-
     private var appVersionSummary: String {
         AppVersionInfo.summary()
     }
@@ -518,7 +484,8 @@ struct SettingsView: View {
     private func secretField(
         _ title: String,
         text: Binding<String>,
-        isVisible: Binding<Bool>
+        isVisible: Binding<Bool>,
+        secretKey: SecretKey
     ) -> some View {
         HStack(spacing: 8) {
             Group {
@@ -533,6 +500,9 @@ struct SettingsView: View {
             .font(.system(.body, design: .monospaced))
             .lineLimit(1)
             .truncationMode(.middle)
+            .onSubmit {
+                Task { await viewModel.saveCredential(text.wrappedValue, for: secretKey) }
+            }
 
             Button {
                 isVisible.wrappedValue.toggle()
@@ -543,6 +513,18 @@ struct SettingsView: View {
             .foregroundStyle(.secondary)
             .pointingHandCursor()
             .help(isVisible.wrappedValue ? "Hide value" : "Show value")
+
+            if viewModel.credentialSaved[secretKey] == true {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .transition(.opacity)
+            } else {
+                Button("Save") {
+                    Task { await viewModel.saveCredential(text.wrappedValue, for: secretKey) }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
         }
     }
 

@@ -229,10 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeSettingsWindowController() -> NSWindowController {
         let rootView: SettingsView = SettingsView(
-            viewModel: settingsViewModel,
-            onClose: { [weak self] in
-                self?.closeSettingsWindow()
-            }
+            viewModel: settingsViewModel
         )
 
         let window: NSWindow = NSWindow(

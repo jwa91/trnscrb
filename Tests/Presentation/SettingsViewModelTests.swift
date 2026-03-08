@@ -99,15 +99,15 @@ struct SettingsViewModelTests {
 
     // MARK: - Saving
 
-    @Test func savePersistsSettingsToGateway() async {
+    @Test func saveSettingsPersistsToGateway() async {
         let (vm, gateway, _, _, _) = makeViewModel()
         vm.settings.s3EndpointURL = "https://saved.com"
         vm.settings.s3BucketName = "saved-bucket"
         vm.settings.outputFileNamePrefix = "notes-"
         vm.settings.outputFileNameTemplate = "{prefix}{fileType}"
         vm.settings.appleAudioLocaleIdentifier = supportedLocaleIdentifier()
-        let didSave: Bool = await vm.save()
-        #expect(didSave)
+        await vm.saveSettings()
+        #expect(vm.error == nil)
         let savedSettings: AppSettings = await gateway.snapshotSettings()
         #expect(savedSettings.s3EndpointURL == "https://saved.com")
         #expect(savedSettings.s3BucketName == "saved-bucket")
@@ -116,41 +116,39 @@ struct SettingsViewModelTests {
         #expect(savedSettings.appleAudioLocaleIdentifier == supportedLocaleIdentifier())
     }
 
-    @Test func savePersistsProviderModesToGateway() async {
+    @Test func saveSettingsPersistsProviderModesToGateway() async {
         let (vm, gateway, _, _, _) = makeViewModel()
         vm.settings.audioProviderMode = .localApple
         vm.settings.pdfProviderMode = .mistral
         vm.settings.imageProviderMode = .localApple
 
-        let didSave: Bool = await vm.save()
+        await vm.saveSettings()
         let savedSettings: AppSettings = await gateway.snapshotSettings()
 
-        #expect(didSave)
+        #expect(vm.error == nil)
         #expect(savedSettings.audioProviderMode == .localApple)
         #expect(savedSettings.pdfProviderMode == .mistral)
         #expect(savedSettings.imageProviderMode == .localApple)
     }
 
-    @Test func savePersistsSecretsToKeychain() async {
+    @Test func saveCredentialPersistsToKeychain() async {
         let (vm, gateway, _, _, _) = makeViewModel()
-        vm.mistralAPIKey = "new-mk"
-        vm.s3SecretKey = "new-sk"
-        await vm.save()
+        await vm.saveCredential("new-mk", for: .mistralAPIKey)
+        await vm.saveCredential("new-sk", for: .s3SecretKey)
         let secrets: [SecretKey: String] = await gateway.snapshotSecrets()
         #expect(secrets[.mistralAPIKey] == "new-mk")
         #expect(secrets[.s3SecretKey] == "new-sk")
     }
 
-    @Test func saveRemovesEmptySecrets() async {
+    @Test func saveCredentialRemovesEmptySecrets() async {
         let secrets: [SecretKey: String] = [
             .mistralAPIKey: "existing",
             .s3SecretKey: "existing"
         ]
         let (vm, gateway, _, _, _) = makeViewModel(secrets: secrets)
         await vm.load()
-        vm.mistralAPIKey = ""
-        vm.s3SecretKey = ""
-        await vm.save()
+        await vm.saveCredential("", for: .mistralAPIKey)
+        await vm.saveCredential("", for: .s3SecretKey)
         let savedSecrets: [SecretKey: String] = await gateway.snapshotSecrets()
         #expect(savedSecrets[.mistralAPIKey] == nil)
         #expect(savedSecrets[.s3SecretKey] == nil)
@@ -169,24 +167,24 @@ struct SettingsViewModelTests {
             secrets: [.mistralAPIKey: "rt-key"]
         )
         await vm.load()
-        await vm.save()
+        await vm.saveSettings()
+        await vm.saveCredential(vm.mistralAPIKey, for: .mistralAPIKey)
         #expect(await gateway.snapshotSettings() == original)
         #expect(await gateway.snapshotSecrets()[.mistralAPIKey] == "rt-key")
     }
 
-    @Test func saveRejectsBlankSaveFolder() async {
-        let (vm, gateway, _, launchAtLoginGateway, outputFolderGateway) = makeViewModel()
+    @Test func saveSettingsRejectsBlankSaveFolder() async {
+        let (vm, gateway, _, _, outputFolderGateway) = makeViewModel()
         vm.settings.saveFolderPath = "   "
         outputFolderGateway.setError(OutputFolderError.missingPath)
 
-        let didSave: Bool = await vm.save()
+        await vm.saveSettings()
 
-        #expect(!didSave)
+        #expect(vm.error != nil)
         #expect(await gateway.snapshotSettings() == AppSettings())
-        #expect(await launchAtLoginGateway.recordedCallCount() == 0)
     }
 
-    @Test func saveAllowsClipboardDisabled() async {
+    @Test func saveSettingsAllowsClipboardDisabled() async {
         let tempDir: URL = FileManager.default.temporaryDirectory
             .appending(path: "trnscrb-settings-vm-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -195,9 +193,9 @@ struct SettingsViewModelTests {
         vm.settings.saveFolderPath = tempDir.path()
         outputFolderGateway.setPreparedURL(tempDir)
 
-        let didSave: Bool = await vm.save()
+        await vm.saveSettings()
 
-        #expect(didSave)
+        #expect(vm.error == nil)
         #expect((await gateway.snapshotSettings()).copyToClipboard == false)
         #expect((await gateway.snapshotSettings()).saveFolderPath == tempDir.path())
     }
