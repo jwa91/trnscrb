@@ -35,7 +35,7 @@ The version is read from the `VERSION` file at the project root. The build numbe
 3. Build the DMG (signed with Developer ID). Tests run automatically before packaging:
 
    ```bash
-   make clean && make dmg IDENTITY="Developer ID Application: $(op read 'op://Personal/AppleDev/add more/apple-id') ($(op read 'op://Personal/AppleDev/add more/apple-team-id'))"
+   make clean && make dmg IDENTITY="$(op read 'op://Personal/AppleDev/add more/make-dmg-identity')"
    ```
 
    Verify the app bundle identifier before notarizing:
@@ -132,7 +132,7 @@ brew install --cask trnscrb
 By default the app is signed ad-hoc (local use). For distribution, sign with the Developer ID:
 
 ```bash
-make IDENTITY="Developer ID Application: $(op read 'op://Personal/AppleDev/add more/apple-id') ($(op read 'op://Personal/AppleDev/add more/apple-team-id'))"
+make IDENTITY="$(op read 'op://Personal/AppleDev/add more/make-dmg-identity')"
 ```
 
 Store notarytool credentials once (avoids passing Apple ID/password each time):
