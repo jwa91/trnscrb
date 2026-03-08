@@ -181,6 +181,7 @@ struct SettingsView: View {
                         "Mirror originals to S3",
                         isOn: $viewModel.settings.bucketMirroringEnabled
                     )
+                    .toggleStyle(.switch)
                 }
             }
 
