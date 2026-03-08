@@ -106,8 +106,6 @@ struct SettingsView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .toolbar(removing: .title)
         .frame(
             minWidth: SettingsWindowDesign.minSize.width,
             minHeight: SettingsWindowDesign.minSize.height

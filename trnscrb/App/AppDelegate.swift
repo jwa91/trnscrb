@@ -243,9 +243,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.title = "Settings"
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.toolbarStyle = .unifiedCompact
+        let toolbar: NSToolbar = NSToolbar(identifier: "SettingsToolbar")
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
         window.contentViewController = NSHostingController(rootView: rootView)
         window.minSize = SettingsWindowDesign.minSize
         window.setFrameAutosaveName("trnscrb-settings")
