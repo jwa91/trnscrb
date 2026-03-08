@@ -7,7 +7,7 @@ import Vision
 /// Performs local OCR for PDFs and images using Apple frameworks.
 public struct AppleDocumentOCRProvider: TranscriptionGateway {
     public let providerMode: ProviderMode = .localApple
-    public let sourceKind: TranscriptionSourceKind = .localFile
+    public let supportedSourceKinds: Set<TranscriptionSourceKind> = [.localFile]
     public var supportedExtensions: Set<String> {
         FileType.pdfExtensions.union(FileType.imageExtensions)
     }

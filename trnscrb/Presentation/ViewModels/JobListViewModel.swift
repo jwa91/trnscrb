@@ -125,7 +125,7 @@ public final class JobListViewModel: ObservableObject {
     public var activeJobs: [Job] {
         jobs.filter { job in
             switch job.status {
-            case .pending, .uploading, .processing:
+            case .pending, .processing, .mirroring, .delivering:
                 return true
             case .completed, .failed:
                 return false
@@ -140,7 +140,7 @@ public final class JobListViewModel: ObservableObject {
                 switch job.status {
                 case .completed, .failed:
                     return true
-                case .pending, .uploading, .processing:
+                case .pending, .processing, .mirroring, .delivering:
                     return false
                 }
             }
@@ -303,7 +303,7 @@ public final class JobListViewModel: ObservableObject {
             switch job.status {
             case .completed, .failed:
                 return false
-            case .pending, .uploading, .processing:
+            case .pending, .processing, .mirroring, .delivering:
                 return true
             }
         }
@@ -337,10 +337,10 @@ public final class JobListViewModel: ObservableObject {
         writeToPasteboard(markdown, jobID: jobID, target: .markdown)
     }
 
-    /// Copies the source URL from a completed cloud job to the clipboard.
+    /// Copies the remote source URL from a completed job to the clipboard.
     /// - Parameter jobID: ID of the completed job.
     public func copySourceURLToClipboard(jobID: UUID) {
-        guard let sourceURL: URL = jobs.first(where: { $0.id == jobID })?.presignedSourceURL else { return }
+        guard let sourceURL: URL = jobs.first(where: { $0.id == jobID })?.remoteSourceURL else { return }
         writeToPasteboard(sourceURL.absoluteString, jobID: jobID, target: .sourceURL)
     }
 
@@ -387,27 +387,34 @@ public final class JobListViewModel: ObservableObject {
 
     // MARK: - Private
 
-    /// Checks that S3 and Mistral API key are configured.
+    /// Validates credentials and output folder before processing.
     /// - Returns: Processing configuration if valid, `nil` otherwise.
     private func checkConfiguration() async -> ProcessingConfiguration? {
         do {
             let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
-            if requiresCloudCredentials(for: settings) {
+
+            if settings.requiresCloudCredentials {
+                guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
+                      !apiKey.trimmedCredentialValue.isEmpty else {
+                    configurationError = "Configure your Mistral API key in Settings."
+                    return nil
+                }
+            }
+
+            if settings.requiresS3Credentials {
                 guard settings.isS3Configured else {
-                    configurationError = "Configure your S3 storage in settings."
+                    configurationError = "Configure your S3 endpoint, access key, and bucket in Settings."
+                    shouldOpenSettings = true
                     return nil
                 }
                 guard let s3SecretKey: String = try await settingsGateway.getSecret(for: .s3SecretKey),
                       !s3SecretKey.trimmedCredentialValue.isEmpty else {
-                    configurationError = "Configure your S3 secret key in settings."
-                    return nil
-                }
-                guard let apiKey: String = try await settingsGateway.getSecret(for: .mistralAPIKey),
-                      !apiKey.trimmedCredentialValue.isEmpty else {
-                    configurationError = "Configure your Mistral API key in settings."
+                    configurationError = "Configure your S3 secret key in Settings."
+                    shouldOpenSettings = true
                     return nil
                 }
             }
+
             do {
                 _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
             } catch {
@@ -420,10 +427,6 @@ public final class JobListViewModel: ObservableObject {
             configurationError = error.localizedDescription
             return nil
         }
-    }
-
-    private func requiresCloudCredentials(for settings: AppSettings) -> Bool {
-        settings.requiresCloudCredentials
     }
 
     /// Processes a single job through the pipeline.
@@ -442,7 +445,7 @@ public final class JobListViewModel: ObservableObject {
                 return
             }
 
-            updateJob(id: id) { $0.startUpload() }
+            updateJob(id: id) { $0.startProcessing() }
 
             let result: TranscriptionResult = try await useCase.execute(
                 fileURL: fileURL
@@ -451,17 +454,19 @@ public final class JobListViewModel: ObservableObject {
                 Task { @MainActor in
                     guard self.runningTasks[id] != nil else { return }
                     switch stage {
-                    case .uploading:
-                        break // Already set above
                     case .processing:
-                        self.updateJob(id: id) { $0.startProcessing() }
+                        break // Already set above
+                    case .mirroring:
+                        self.updateJob(id: id) { $0.startMirroring() }
+                    case .delivery:
+                        self.updateJob(id: id) { $0.startDelivery() }
                     }
                 }
-            } onUploadProgress: { [weak self] progress in
+            } onMirroringProgress: { [weak self] progress in
                 guard let self else { return }
                 Task { @MainActor in
                     guard self.runningTasks[id] != nil else { return }
-                    self.updateJob(id: id) { $0.updateUploadProgress(progress) }
+                    self.updateJob(id: id) { $0.updateMirroringProgress(progress) }
                 }
             }
 
@@ -474,9 +479,10 @@ public final class JobListViewModel: ObservableObject {
             guard completeJob(
                 id: id,
                 markdown: result.markdown,
+                mirrorWarnings: result.mirrorWarnings,
                 deliveryWarnings: result.deliveryWarnings,
                 savedFileURL: savedFileURL,
-                presignedSourceURL: result.presignedSourceURL
+                remoteSourceURL: result.remoteSourceURL
             ) else {
                 AppLog.ui.error("Job \(id.uuidString, privacy: .public) finished, but UI state could not be finalized")
                 return
@@ -489,7 +495,8 @@ public final class JobListViewModel: ObservableObject {
                 jobID: id,
                 savedFileURL: savedFileURL,
                 copyToClipboard: copyToClipboard,
-                warningMessage: result.deliveryWarnings.joined(separator: " ")
+                mirrorWarnings: result.mirrorWarnings,
+                deliveryWarnings: result.deliveryWarnings
             )
             jobCopyToClipboardPreferences[id] = nil
         } catch is CancellationError {
@@ -547,26 +554,29 @@ public final class JobListViewModel: ObservableObject {
 
     /// Finalizes a successfully processed job even if async stage callbacks arrive late.
     ///
-    /// The processing stage is currently reported via an async hop back to the main actor.
-    /// If the pipeline completes before that hop runs, the job can still be in `uploading`
-    /// and a direct call to `Job.complete()` would be ignored by the state machine.
+    /// Stage updates are reported via async hops back to the main actor. If the
+    /// pipeline completes before the final delivery-stage hop runs, the job can
+    /// still be in an earlier active state and a direct call to `Job.complete()`
+    /// would be ignored by the state machine.
     private func completeJob(
         id: UUID,
         markdown: String,
+        mirrorWarnings: [String],
         deliveryWarnings: [String],
         savedFileURL: URL?,
-        presignedSourceURL: URL?
+        remoteSourceURL: URL?
     ) -> Bool {
         guard let index: Int = jobs.firstIndex(where: { $0.id == id }) else { return false }
         var updatedJobs: [Job] = jobs
 
         switch updatedJobs[index].status {
         case .pending:
-            updatedJobs[index].startUpload()
-            updatedJobs[index].startProcessing()
-        case .uploading:
             updatedJobs[index].startProcessing()
         case .processing:
+            updatedJobs[index].startDelivery()
+        case .mirroring:
+            updatedJobs[index].startDelivery()
+        case .delivering:
             break
         case .completed:
             return true
@@ -576,9 +586,10 @@ public final class JobListViewModel: ObservableObject {
 
         updatedJobs[index].complete(
             markdown: markdown,
+            mirrorWarnings: mirrorWarnings,
             deliveryWarnings: deliveryWarnings,
             savedFileURL: savedFileURL,
-            presignedSourceURL: presignedSourceURL
+            remoteSourceURL: remoteSourceURL
         )
         jobs = updatedJobs
 
@@ -661,25 +672,19 @@ public final class JobListViewModel: ObservableObject {
         jobID: UUID,
         savedFileURL: URL,
         copyToClipboard: Bool,
-        warningMessage: String
+        mirrorWarnings: [String],
+        deliveryWarnings: [String]
     ) async {
-        let body: String
-        let savedPath: String = savedFileURL.path()
-        if warningMessage.isEmpty {
-            if copyToClipboard {
-                body = "\(fileName) saved to \(savedPath) and copied to clipboard."
-            } else {
-                body = "\(fileName) saved to \(savedPath)."
-            }
-        } else if copyToClipboard {
-            body = "\(fileName) saved to \(savedPath), but copying to the clipboard failed."
-        } else {
-            body = "\(fileName) saved to \(savedPath). \(warningMessage)"
-        }
         await postNotification(
             identifier: jobID.uuidString,
             title: "trnscrb",
-            body: body
+            body: successNotificationBody(
+                fileName: fileName,
+                savedFileURL: savedFileURL,
+                copyToClipboard: copyToClipboard,
+                mirrorWarnings: mirrorWarnings,
+                deliveryWarnings: deliveryWarnings
+            )
         )
     }
 
@@ -694,6 +699,33 @@ public final class JobListViewModel: ObservableObject {
     private func postNotification(identifier: String, title: String, body: String) async {
         guard let notificationUseCase else { return }
         await notificationUseCase.notify(title: title, body: body, identifier: identifier)
+    }
+
+    private func successNotificationBody(
+        fileName: String,
+        savedFileURL: URL,
+        copyToClipboard: Bool,
+        mirrorWarnings: [String],
+        deliveryWarnings: [String]
+    ) -> String {
+        let savedPath: String = savedFileURL.path()
+        var components: [String] = []
+
+        if deliveryWarnings.isEmpty {
+            if copyToClipboard {
+                components.append("\(fileName) saved to \(savedPath) and copied to clipboard.")
+            } else {
+                components.append("\(fileName) saved to \(savedPath).")
+            }
+        } else if copyToClipboard {
+            components.append("\(fileName) saved to \(savedPath), but copying to the clipboard failed.")
+        } else {
+            components.append("\(fileName) saved to \(savedPath).")
+            components.append(contentsOf: deliveryWarnings)
+        }
+
+        components.append(contentsOf: mirrorWarnings)
+        return components.joined(separator: " ")
     }
 
     private struct ProcessingConfiguration {

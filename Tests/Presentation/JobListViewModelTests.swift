@@ -298,7 +298,7 @@ struct JobListViewModelTests {
 
     // MARK: - Configuration checks
 
-    @Test func setsConfigErrorWhenS3NotConfigured() async {
+    @Test func cloudWithoutMirroringAllowsProcessingWhenS3NotConfigured() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 audioProviderMode: .mistral,
@@ -307,17 +307,15 @@ struct JobListViewModelTests {
             ),
             secrets: [.mistralAPIKey: "mk-test"]
         )
-        // s3EndpointURL is empty by default — not configured
         let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
-        let completed: Bool = await waitUntil {
-            vm.configurationError != nil && vm.jobs.isEmpty
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
         }
 
         #expect(completed)
-        #expect(vm.configurationError != nil)
-        #expect(vm.jobs.isEmpty)
+        #expect(vm.configurationError == nil)
     }
 
     @Test func setsConfigErrorWhenAPIKeyMissing() async {
@@ -345,7 +343,7 @@ struct JobListViewModelTests {
         #expect(vm.jobs.isEmpty)
     }
 
-    @Test func setsConfigErrorWhenS3SecretMissing() async {
+    @Test func cloudWithoutMirroringAllowsProcessingWhenS3SecretMissing() async {
         let settings: MockSettingsGateway = MockSettingsGateway(
             settings: AppSettings(
                 s3EndpointURL: "https://s3.example.com",
@@ -360,12 +358,78 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
 
         vm.processFiles([URL(filePath: "/tmp/test.mp3")])
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == nil)
+    }
+
+    @Test func setsConfigErrorForMistralKeyBeforeS3WhenBothMissing() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                audioProviderMode: .mistral,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            )
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/test.mp3")])
         let completed: Bool = await waitUntil {
             vm.configurationError != nil && vm.jobs.isEmpty
         }
 
         #expect(completed)
-        #expect(vm.configurationError == "Configure your S3 secret key in settings.")
+        #expect(vm.configurationError == "Configure your Mistral API key in Settings.")
+    }
+
+    @Test func localOnlyWithMirroringEnabledRequiresS3SettingsBeforeProcessing() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: true,
+                audioProviderMode: .localApple,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            )
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/test.mp3")])
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == "Configure your S3 endpoint, access key, and bucket in Settings.")
+        #expect(vm.shouldOpenSettings)
+        #expect(vm.jobs.isEmpty)
+    }
+
+    @Test func cloudWithMirroringEnabledRequiresS3SecretBeforeProcessing() async {
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: true,
+                s3EndpointURL: "https://s3.example.com",
+                s3AccessKey: "AKID",
+                s3BucketName: "bucket",
+                audioProviderMode: .mistral,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            ),
+            secrets: [.mistralAPIKey: "mk-test"]
+        )
+        let (vm, _, _, _, _, _) = makeViewModel(settings: settings)
+
+        vm.processFiles([URL(filePath: "/tmp/test.mp3")])
+        let completed: Bool = await waitUntil {
+            vm.configurationError != nil && vm.jobs.isEmpty
+        }
+
+        #expect(completed)
+        #expect(vm.configurationError == "Configure your S3 secret key in Settings.")
+        #expect(vm.shouldOpenSettings)
         #expect(vm.jobs.isEmpty)
     }
 
@@ -463,15 +527,15 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
 
         var older: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/older.mp3"))
-        older.startUpload()
         older.startProcessing()
+        older.startDelivery()
         older.complete(markdown: "# older")
 
         try await Task.sleep(for: .milliseconds(10))
 
         var newer: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/newer.mp3"))
-        newer.startUpload()
         newer.startProcessing()
+        newer.startDelivery()
         newer.complete(markdown: "# newer")
 
         vm.jobs = [older, newer]
@@ -668,6 +732,7 @@ struct JobListViewModelTests {
         }
         #expect(completed)
         #expect(vm.completedJobs.first?.status == .completed)
+        #expect(vm.completedJobs.first?.mirrorWarnings.isEmpty == true)
         #expect(vm.completedJobs.first?.deliveryWarnings == [
             "Saved markdown to the output folder, but copying to the clipboard failed."
         ])
@@ -679,6 +744,78 @@ struct JobListViewModelTests {
         #expect(notified)
         let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
         #expect(notifications[0].body == "warned.mp3 saved to /tmp/warned.md, but copying to the clipboard failed.")
+    }
+
+    @Test func successfulProcessingWithMirrorWarningKeepsJobCompletedAndPreservesNotificationBody() async {
+        let storage: MockStorageGateway = MockStorageGateway(
+            uploadError: S3Error.requestFailed(statusCode: 503, body: "temporary outage")
+        )
+        let delivery: MockDeliveryGateway = MockDeliveryGateway(
+            savedFileURL: URL(filePath: "/tmp/mirror-warning.md")
+        )
+        let settings: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                bucketMirroringEnabled: true,
+                s3EndpointURL: "https://s3.example.com",
+                s3AccessKey: "AKID",
+                s3BucketName: "bucket",
+                audioProviderMode: .mistral,
+                pdfProviderMode: .localApple,
+                imageProviderMode: .localApple
+            ),
+            secrets: [
+                .mistralAPIKey: "mk-test",
+                .s3SecretKey: "sk-test"
+            ]
+        )
+        let notificationGateway: MockNotificationGateway = MockNotificationGateway()
+        let audio: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.audioExtensions,
+            providerMode: .mistral,
+            supportedSourceKinds: [.localFile, .remoteURL],
+            processResult: "# Cloud Audio"
+        )
+        let ocr: MockTranscriptionGateway = MockTranscriptionGateway(
+            supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions),
+            providerMode: .localApple,
+            sourceKind: .localFile,
+            processResult: "# Local OCR"
+        )
+        let useCase: ProcessFileUseCase = ProcessFileUseCase(
+            storage: storage,
+            transcribers: [audio, ocr],
+            delivery: delivery,
+            settings: settings
+        )
+        let vm: JobListViewModel = JobListViewModel(
+            useCase: useCase,
+            settingsGateway: settings,
+            outputFolderGateway: MockOutputFolderGateway(),
+            notificationUseCase: NotifyUserUseCase(gateway: notificationGateway),
+            shouldStartNetworkMonitoring: false
+        )
+
+        vm.processFiles([URL(filePath: "/tmp/mirror-warning.mp3")])
+
+        let completed: Bool = await waitUntil(timeout: .seconds(2)) {
+            vm.activeJobs.isEmpty && vm.completedJobs.count == 1
+        }
+        #expect(completed)
+        #expect(vm.completedJobs.first?.status == .completed)
+        #expect(vm.completedJobs.first?.mirrorWarnings == [
+            "Processed file successfully, but mirroring to S3 failed: S3 request failed with HTTP 503: temporary outage"
+        ])
+        #expect(vm.completedJobs.first?.deliveryWarnings.isEmpty == true)
+
+        let notified: Bool = await waitUntil(timeout: .seconds(2)) {
+            !(await notificationGateway.recordedNotifications().isEmpty)
+        }
+        #expect(notified)
+        let notifications: [(identifier: String, title: String, body: String)] = await notificationGateway.recordedNotifications()
+        #expect(
+            notifications[0].body
+                == "mirror-warning.mp3 saved to /tmp/mirror-warning.md and copied to clipboard. Processed file successfully, but mirroring to S3 failed: S3 request failed with HTTP 503: temporary outage"
+        )
     }
 
     @Test func successfulProcessingStoresRevealAndSourceMetadata() async {
@@ -701,14 +838,14 @@ struct JobListViewModelTests {
 
         #expect(completed)
         #expect(vm.completedJobs.first?.savedFileURL == savedFileURL)
-        #expect(vm.completedJobs.first?.presignedSourceURL == sourceURL)
+        #expect(vm.completedJobs.first?.remoteSourceURL == sourceURL)
     }
 
     @Test func copyToClipboardSetsTransientCopiedFeedback() async {
         let (vm, _, _, _, _, _) = makeMistralViewModel(copyFeedbackDuration: .milliseconds(20))
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied.mp3"))
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(markdown: "# Copied")
         vm.jobs = [job]
 
@@ -730,9 +867,9 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel(copyFeedbackDuration: .milliseconds(20))
         let sourceURL: URL = URL(string: "https://s3.example.com/transcript-source")!
         var job: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/copied-source.mp3"))
-        job.startUpload()
         job.startProcessing()
-        job.complete(markdown: "# Copied Source", presignedSourceURL: sourceURL)
+        job.startDelivery()
+        job.complete(markdown: "# Copied Source", remoteSourceURL: sourceURL)
         vm.jobs = [job]
 
         vm.copySourceURLToClipboard(jobID: job.id)
@@ -828,8 +965,8 @@ struct JobListViewModelTests {
             fileURL: URL(filePath: "/tmp/third.png"),
             createdAt: Date(timeIntervalSince1970: 3)
         )
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [firstActive, secondActive, completedJob]
 
@@ -850,8 +987,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [activeJob, completedJob]
 
@@ -869,8 +1006,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [activeJob, completedJob]
         vm.selectJob(id: activeJob.id)
@@ -885,8 +1022,8 @@ struct JobListViewModelTests {
         let (vm, _, _, _, _, _) = makeMistralViewModel()
         let activeJob: Job = Job(fileType: .audio, fileURL: URL(filePath: "/tmp/active.mp3"))
         var completedJob: Job = Job(fileType: .pdf, fileURL: URL(filePath: "/tmp/completed.pdf"))
-        completedJob.startUpload()
         completedJob.startProcessing()
+        completedJob.startDelivery()
         completedJob.complete(markdown: "# Done")
         vm.jobs = [activeJob, completedJob]
 

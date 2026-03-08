@@ -54,7 +54,7 @@ struct JobRowView: View {
                     onCopyMarkdown?()
                 }
                 if onCopySourceURL != nil {
-                    Button("Copy S3 URL") {
+                    Button("Copy Source URL") {
                         onCopySourceURL?()
                     }
                 }
@@ -128,15 +128,23 @@ struct JobRowView: View {
         switch job.status {
         case .pending:
             statusPill("Waiting")
-        case .uploading:
-            if let uploadActivity = presentation.uploadActivity {
-                uploadActivityView(uploadActivity)
+        case .mirroring:
+            if let mirroringActivity = presentation.mirroringActivity {
+                mirroringActivityView(mirroringActivity)
             }
         case .processing:
             HStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.small)
                 Text("Processing")
+                    .font(PopoverDesign.secondaryTextFont)
+                    .foregroundStyle(.secondary)
+            }
+        case .delivering:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Delivering")
                     .font(PopoverDesign.secondaryTextFont)
                     .foregroundStyle(.secondary)
             }
@@ -156,7 +164,7 @@ struct JobRowView: View {
         switch job.status {
         case .completed:
             completionTrailingView(for: presentation)
-        case .pending, .uploading, .processing, .failed:
+        case .pending, .processing, .mirroring, .delivering, .failed:
             if let onDelete {
                 deleteActionButton(action: onDelete)
             }
@@ -164,7 +172,7 @@ struct JobRowView: View {
     }
 
     @ViewBuilder
-    private func uploadActivityView(_ activity: JobRowPresentation.UploadActivity) -> some View {
+    private func mirroringActivityView(_ activity: JobRowPresentation.MirroringActivity) -> some View {
         switch activity {
         case .progress(let percent, let value):
             VStack(alignment: .trailing, spacing: 4) {
@@ -203,8 +211,8 @@ struct JobRowView: View {
             if presentation.showsSourceLinkAction, let onCopySourceURL {
                 rowActionButton(
                     systemName: "link",
-                    title: "Copy S3 URL",
-                    successTitle: "Copied S3 URL",
+                    title: "Copy Source URL",
+                    successTitle: "Copied Source URL",
                     isConfirmed: showsSourceCopyConfirmation,
                     action: onCopySourceURL
                 )

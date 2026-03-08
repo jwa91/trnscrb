@@ -45,8 +45,8 @@ struct JobRowPresentationTests {
 
     @Test func warningSubtitleOverridesCompletionMetadata() {
         var job: Job = makePresentationJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(
             markdown: "# Notes",
             deliveryWarnings: ["Copied markdown, but saving failed."]
@@ -63,11 +63,11 @@ struct JobRowPresentationTests {
     @Test func completedJobsUseCompletionMetadataAndExposeActions() {
         let sourceURL: URL = URL(string: "https://s3.example.com/source")!
         var job: Job = makePresentationJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(
             markdown: "# Transcript",
-            presignedSourceURL: sourceURL
+            remoteSourceURL: sourceURL
         )
 
         let presentation: JobRowPresentation = JobRowPresentation(
@@ -85,8 +85,8 @@ struct JobRowPresentationTests {
 
     @Test func completedLocalJobsStillShowVisibleActionsWithoutPassiveStatusFallback() {
         var job: Job = makePresentationJob()
-        job.startUpload()
         job.startProcessing()
+        job.startDelivery()
         job.complete(markdown: "# Transcript")
 
         let presentation: JobRowPresentation = JobRowPresentation(job: job)
@@ -97,26 +97,28 @@ struct JobRowPresentationTests {
         #expect(!presentation.showsSourceLinkAction)
     }
 
-    @Test func completedUploadShowsFinalizingInsteadOfStuck100Percent() {
+    @Test func completedMirroringShowsFinalizingInsteadOfStuck100Percent() {
         var job: Job = makePresentationJob()
-        job.startUpload()
-        job.updateUploadProgress(1)
+        job.startProcessing()
+        job.startMirroring()
+        job.updateMirroringProgress(1)
 
         let presentation: JobRowPresentation = JobRowPresentation(job: job)
 
         #expect(presentation.subtitleKind == .metadata)
-        #expect(presentation.subtitleText == "Audio • Finalizing upload")
-        #expect(presentation.uploadActivity == .finalizing)
+        #expect(presentation.subtitleText == "Audio • Finalizing mirroring")
+        #expect(presentation.mirroringActivity == .finalizing)
     }
 
-    @Test func nearCompleteUploadClampsDisplayedPercentBelow100() {
+    @Test func nearCompleteMirroringClampsDisplayedPercentBelow100() {
         var job: Job = makePresentationJob()
-        job.startUpload()
-        job.updateUploadProgress(0.996)
+        job.startProcessing()
+        job.startMirroring()
+        job.updateMirroringProgress(0.996)
 
         let presentation: JobRowPresentation = JobRowPresentation(job: job)
 
-        #expect(presentation.subtitleText == "Audio • Uploading 99%")
-        #expect(presentation.uploadActivity == .progress(percent: 99, value: 0.996))
+        #expect(presentation.subtitleText == "Audio • Mirroring 99%")
+        #expect(presentation.mirroringActivity == .progress(percent: 99, value: 0.996))
     }
 }

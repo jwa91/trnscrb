@@ -4,7 +4,7 @@ import Speech
 /// Transcribes local audio files using Apple's on-device speech stack.
 public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
     public let providerMode: ProviderMode = .localApple
-    public let sourceKind: TranscriptionSourceKind = .localFile
+    public let supportedSourceKinds: Set<TranscriptionSourceKind> = [.localFile]
     public var supportedExtensions: Set<String> { FileType.audioExtensions }
 
     private let settingsGateway: (any SettingsGateway)?

@@ -13,9 +13,9 @@ enum SettingsWindowDesign {
 }
 
 private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
-    case storage
-    case connections
     case processing
+    case connections
+    case pipeline
     case output
     case general
     case about
@@ -24,12 +24,12 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
 
     var title: String {
         switch self {
-        case .storage:
-            return "Storage"
-        case .connections:
-            return "Connections"
         case .processing:
             return "Processing"
+        case .connections:
+            return "Connections"
+        case .pipeline:
+            return "Advanced Pipeline"
         case .output:
             return "Output"
         case .general:
@@ -41,12 +41,12 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .storage:
-            return "externaldrive.badge.wifi"
-        case .connections:
-            return "network"
         case .processing:
             return "slider.horizontal.3"
+        case .connections:
+            return "network"
+        case .pipeline:
+            return "arrow.triangle.branch"
         case .output:
             return "square.and.arrow.down"
         case .general:
@@ -58,12 +58,12 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
 
     var description: String {
         switch self {
-        case .storage:
-            return "Configure S3 uploads and retention for files staged in the bucket."
-        case .connections:
-            return "Manage credentials for external services and future integrations."
         case .processing:
-            return "Choose which engine handles each file type by default."
+            return "Choose how each file type is processed: locally or in the cloud."
+        case .connections:
+            return "API keys for cloud processing and external services."
+        case .pipeline:
+            return "Mirror originals to S3-compatible storage for staging, archival, or automation."
         case .output:
             return "Control where markdown files are saved and how they are named."
         case .general:
@@ -82,20 +82,24 @@ struct SettingsView: View {
     var onClose: () -> Void
     /// Terminates the menu bar app.
     var onQuitApp: () -> Void
-    @State private var selectedPane: SettingsPane = .storage
+    @State private var selectedPane: SettingsPane = .processing
 
     var body: some View {
         TabView(selection: $selectedPane) {
-            Tab("Storage", systemImage: SettingsPane.storage.systemImage, value: .storage) {
-                detailContent(for: .storage)
+            Tab("Processing", systemImage: SettingsPane.processing.systemImage, value: .processing) {
+                detailContent(for: .processing)
             }
 
             Tab("Connections", systemImage: SettingsPane.connections.systemImage, value: .connections) {
                 detailContent(for: .connections)
             }
 
-            Tab("Processing", systemImage: SettingsPane.processing.systemImage, value: .processing) {
-                detailContent(for: .processing)
+            Tab(
+                "Advanced Pipeline",
+                systemImage: SettingsPane.pipeline.systemImage,
+                value: .pipeline
+            ) {
+                detailContent(for: .pipeline)
             }
 
             Tab("Output", systemImage: SettingsPane.output.systemImage, value: .output) {
@@ -153,12 +157,12 @@ struct SettingsView: View {
     @ViewBuilder
     private func pageContent(for pane: SettingsPane) -> some View {
         switch pane {
-        case .storage:
-            storagePage
-        case .connections:
-            connectionsPage
         case .processing:
             processingPage
+        case .connections:
+            connectionsPage
+        case .pipeline:
+            pipelinePage
         case .output:
             outputPage
         case .general:
@@ -168,77 +172,94 @@ struct SettingsView: View {
         }
     }
 
-    private var storagePage: some View {
-        settingsSection("S3-Compatible Storage") {
-            settingsGrid {
-                settingsRow("Endpoint URL") {
-                    TextField("https://s3.example.com", text: $viewModel.settings.s3EndpointURL)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
-
-                settingsRow("Access Key") {
-                    TextField("Access Key", text: $viewModel.settings.s3AccessKey)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
-
-                settingsRow("Secret Key") {
-                    secretField(
-                        "Secret Key",
-                        text: $viewModel.s3SecretKey,
-                        isVisible: $viewModel.isS3SecretKeyVisible
+    private var pipelinePage: some View {
+        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
+            settingsSection("Bucket Mirroring") {
+                settingsToggleRow(
+                    help: "When enabled, original files are also uploaded to S3-compatible storage for archival or downstream automation. The S3 fields below only take effect when this is on."
+                ) {
+                    Toggle(
+                        "Mirror originals to S3",
+                        isOn: $viewModel.settings.bucketMirroringEnabled
                     )
                 }
+            }
 
-                settingsRow("Bucket Name") {
-                    TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
-
-                settingsRow("Region") {
-                    TextField("Region", text: $viewModel.settings.s3Region)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
-
-                settingsRow("Path Prefix") {
-                    TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                }
-
-                settingsRow(
-                    "File Retention",
-                    help: "Applies to files stored in S3 after upload. Set to 0 to disable automatic cleanup."
-                ) {
-                    HStack(spacing: 8) {
+            settingsSection("S3 Connection") {
+                settingsGrid {
+                    settingsRow("Endpoint URL") {
                         TextField(
-                            "Hours",
-                            value: $viewModel.settings.fileRetentionHours,
-                            format: .number
+                            "https://s3.example.com",
+                            text: $viewModel.settings.s3EndpointURL
                         )
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 96)
-
-                        Text("hours")
-                            .foregroundStyle(.secondary)
-
-                        Spacer(minLength: 0)
+                        .controlSize(.large)
                     }
-                    .controlSize(.large)
-                }
 
-                settingsRow("Connection Test") {
-                    HStack(spacing: 10) {
-                        testButton("Test", result: viewModel.s3TestResult) {
-                            Task { await viewModel.testS3() }
+                    settingsRow("Access Key") {
+                        TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Secret Key") {
+                        secretField(
+                            "Secret Key",
+                            text: $viewModel.s3SecretKey,
+                            isVisible: $viewModel.isS3SecretKeyVisible
+                        )
+                    }
+
+                    settingsRow("Bucket Name") {
+                        TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Region") {
+                        TextField("Region", text: $viewModel.settings.s3Region)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow("Path Prefix") {
+                        TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.large)
+                    }
+
+                    settingsRow(
+                        "Retention",
+                        help: "Retention period for mirrored files in S3. Set to 0 to disable automatic cleanup."
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField(
+                                "Hours",
+                                value: $viewModel.settings.fileRetentionHours,
+                                format: .number
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 96)
+
+                            Text("hours")
+                                .foregroundStyle(.secondary)
+
+                            Spacer(minLength: 0)
                         }
-                        testResultView(viewModel.s3TestResult)
-                        Spacer(minLength: 0)
+                        .controlSize(.large)
+                    }
+
+                    settingsRow("Connection Test") {
+                        HStack(spacing: 10) {
+                            testButton("Test", result: viewModel.s3TestResult) {
+                                Task { await viewModel.testS3() }
+                            }
+                            testResultView(viewModel.s3TestResult)
+                            Spacer(minLength: 0)
+                        }
                     }
                 }
+                .disabled(!viewModel.settings.requiresS3Credentials)
             }
         }
     }
@@ -289,7 +310,7 @@ struct SettingsView: View {
                 settingsGrid {
                     settingsRow(
                         "Language",
-                        help: "Used only when Audio is set to Local Apple. Match this to the recording language for better recognition quality."
+                        help: "Used only when Audio is set to Local. Match this to the recording language for better recognition quality."
                     ) {
                         appleAudioLocalePicker()
                             .disabled(viewModel.settings.audioProviderMode != .localApple)
@@ -605,8 +626,8 @@ struct SettingsView: View {
 
     private func providerModePicker(selection: Binding<ProviderMode>) -> some View {
         Picker("", selection: selection) {
-            Text("Mistral").tag(ProviderMode.mistral)
-            Text("Local Apple").tag(ProviderMode.localApple)
+            Text("Cloud").tag(ProviderMode.mistral)
+            Text("Local").tag(ProviderMode.localApple)
         }
         .labelsHidden()
         .pickerStyle(.menu)

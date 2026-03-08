@@ -5,8 +5,40 @@ import Testing
 
 @Suite(.serialized)
 struct MistralAudioProviderTests {
+    private final class FileAccessSpy: SecurityScopedFileAccessing, @unchecked Sendable {
+        private let lock: NSLock = NSLock()
+        private var startedURLs: [URL] = []
+        private var stoppedURLs: [URL] = []
+
+        func startAccessing(_ url: URL) -> Bool {
+            lock.lock()
+            startedURLs.append(url)
+            lock.unlock()
+            return true
+        }
+
+        func stopAccessing(_ url: URL) {
+            lock.lock()
+            stoppedURLs.append(url)
+            lock.unlock()
+        }
+
+        func recordedStartedURLs() -> [URL] {
+            lock.lock()
+            defer { lock.unlock() }
+            return startedURLs
+        }
+
+        func recordedStoppedURLs() -> [URL] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stoppedURLs
+        }
+    }
+
     private func makeProvider(
-        apiKey: String? = "test-api-key"
+        apiKey: String? = "test-api-key",
+        fileAccess: any SecurityScopedFileAccessing = SecurityScopedFileAccess()
     ) -> (MistralAudioProvider, MockRequestHandler) {
         let secrets: [SecretKey: String]
         if let apiKey {
@@ -16,7 +48,14 @@ struct MistralAudioProviderTests {
         }
         let gateway: MockSettingsGateway = MockSettingsGateway(secrets: secrets)
         let (_, session, mock) = makeMockURLSession()
-        return (MistralAudioProvider(settingsGateway: gateway, urlSession: session), mock)
+        return (
+            MistralAudioProvider(
+                settingsGateway: gateway,
+                urlSession: session,
+                fileAccess: fileAccess
+            ),
+            mock
+        )
     }
 
     // MARK: - Request format
@@ -52,6 +91,43 @@ struct MistralAudioProviderTests {
             sourceURL: URL(string: "https://s3.example.com/bucket/file.mp3")!
         )
         #expect(result == "Hello world")
+    }
+
+    @Test func processUploadsLocalAudioFileUsingMultipartFileField() async throws {
+        let tempDirectory: URL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mistral-audio-provider-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+        let fileURL: URL = tempDirectory.appendingPathComponent("sample.mp3", isDirectory: false)
+        try Data("local audio".utf8).write(to: fileURL)
+
+        let fileAccessSpy: FileAccessSpy = FileAccessSpy()
+        let (provider, mock) = makeProvider(fileAccess: fileAccessSpy)
+
+        mock.handler = { request in
+            let bodyData: Data = try #require(request.httpBody)
+            let body: String = String(data: bodyData, encoding: .utf8) ?? ""
+            #expect(body.contains("name=\"model\""))
+            #expect(body.contains("voxtral-mini-latest"))
+            #expect(body.contains("name=\"file\"; filename=\"sample.mp3\""))
+            #expect(body.contains("Content-Type: audio/mpeg"))
+            #expect(!body.contains("name=\"file_url\""))
+            #expect(request.value(forHTTPHeaderField: "Content-Length") == String(bodyData.count))
+
+            let responseJSON: String = """
+            {"text": "Uploaded local audio"}
+            """
+            let response: HTTPURLResponse = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data(responseJSON.utf8))
+        }
+
+        let result: String = try await provider.process(sourceURL: fileURL)
+
+        #expect(result == "Uploaded local audio")
+        #expect(fileAccessSpy.recordedStartedURLs() == [fileURL])
+        #expect(fileAccessSpy.recordedStoppedURLs() == [fileURL])
     }
 
     // MARK: - Error handling

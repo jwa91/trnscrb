@@ -227,7 +227,7 @@ struct SettingsViewModelTests {
         await vm.testS3()
 
         #expect(await connectivityGateway.recordedS3CallCount() == 0)
-        #expect(vm.s3TestResult == .failure("Fill in all S3 fields first"))
+        #expect(vm.s3TestResult == .failure("Fill in all S3 mirroring fields first"))
     }
 
     @Test func testMistralSurfacesConnectivityFailure() async {

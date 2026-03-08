@@ -4,16 +4,19 @@ import Foundation
 ///
 /// Endpoint: `POST https://api.mistral.ai/v1/ocr`
 /// Model: `mistral-ocr-latest`
-/// PDFs use `DocumentURLChunk` (`type: "document_url"`).
-/// Images use `ImageURLChunk` (`type: "image_url"`).
+/// Remote PDFs use `DocumentURLChunk` (`type: "document_url"`).
+/// Remote images use `ImageURLChunk` (`type: "image_url"`).
+/// Local files are uploaded to `/v1/files` with purpose `ocr`, then processed by `file_id`.
 /// Response pages' markdown is concatenated with double newlines.
 public struct MistralOCRProvider: TranscriptionGateway {
     // swiftlint:disable:next force_unwrapping
     private static let endpoint: URL = URL(string: "https://api.mistral.ai/v1/ocr")!
+    // swiftlint:disable:next force_unwrapping
+    private static let filesEndpoint: URL = URL(string: "https://api.mistral.ai/v1/files")!
     /// This provider is selected when mode is Mistral.
     public let providerMode: ProviderMode = .mistral
-    /// Mistral expects a remotely reachable URL.
-    public let sourceKind: TranscriptionSourceKind = .remoteURL
+    /// Mistral can process direct local files and remotely reachable URLs.
+    public let supportedSourceKinds: Set<TranscriptionSourceKind> = [.localFile, .remoteURL]
 
     /// PDF and image file extensions this provider handles.
     public var supportedExtensions: Set<String> {
@@ -24,24 +27,43 @@ public struct MistralOCRProvider: TranscriptionGateway {
     private let settingsGateway: any SettingsGateway
     /// URL session for HTTP requests.
     private let urlSession: URLSession
+    /// Opens security-scoped file URLs when needed.
+    private let fileAccess: any SecurityScopedFileAccessing
 
     /// Creates an OCR provider.
     /// - Parameters:
     ///   - settingsGateway: Provides the Mistral API key from Keychain.
     ///   - urlSession: URL session for HTTP requests (injectable for testing).
-    public init(settingsGateway: any SettingsGateway, urlSession: URLSession = .shared) {
+    ///   - fileAccess: Opens security-scoped file URLs for sandboxed reads.
+    public init(
+        settingsGateway: any SettingsGateway,
+        urlSession: URLSession = .shared,
+        fileAccess: any SecurityScopedFileAccessing = SecurityScopedFileAccess()
+    ) {
         self.settingsGateway = settingsGateway
         self.urlSession = urlSession
+        self.fileAccess = fileAccess
     }
 
-    /// Processes a PDF or image at the given presigned URL and returns markdown.
+    /// Processes a PDF or image from a local file URL or remote URL and returns markdown.
     public func process(sourceURL: URL) async throws -> String {
         let apiKey: String = try await loadAPIKey()
         let requestStartedAt: Date = Date()
 
+        let document: [String: Any]
+        if sourceURL.isFileURL {
+            let fileID: String = try await uploadFileForOCR(
+                apiKey: apiKey,
+                fileURL: sourceURL
+            )
+            document = ["file_id": fileID]
+        } else {
+            document = documentChunk(for: sourceURL)
+        }
+
         let body: [String: Any] = [
             "model": "mistral-ocr-latest",
-            "document": documentChunk(for: sourceURL)
+            "document": document
         ]
         AppLog.network.info("Starting OCR request for \(LogRedaction.sourceURLSummary(sourceURL), privacy: .public)")
 
@@ -94,6 +116,85 @@ public struct MistralOCRProvider: TranscriptionGateway {
                 "type": "image_url",
                 "image_url": url.absoluteString
             ]
+        }
+    }
+
+    private func uploadFileForOCR(apiKey: String, fileURL: URL) async throws -> String {
+        let preparedRequest: (request: URLRequest, bodyFile: FileBackedMultipartBody) = try makeFileUploadRequest(
+            apiKey: apiKey,
+            fileURL: fileURL
+        )
+        defer {
+            preparedRequest.bodyFile.cleanup()
+        }
+
+        let (data, response) = try await urlSession.data(for: preparedRequest.request)
+        guard let http = response as? HTTPURLResponse else {
+            throw MistralError.invalidResponse("Not an HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            let responseBody: String = String(data: data, encoding: .utf8) ?? ""
+            throw MistralError.requestFailed(statusCode: http.statusCode, body: responseBody)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let fileID: String = json["id"] as? String,
+              !fileID.isEmpty else {
+            throw MistralError.invalidResponse("Missing file id in files upload response")
+        }
+        return fileID
+    }
+
+    private func makeFileUploadRequest(
+        apiKey: String,
+        fileURL: URL
+    ) throws -> (request: URLRequest, bodyFile: FileBackedMultipartBody) {
+        let boundary: String = "Boundary-\(UUID().uuidString)"
+        var request: URLRequest = URLRequest(url: Self.filesEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+
+        let fileName: String = fileURL.lastPathComponent.isEmpty ? "document" : fileURL.lastPathComponent
+        let bodyFile: FileBackedMultipartBody = try FileBackedMultipartBodyBuilder.create(
+            boundary: boundary,
+            fields: [("purpose", "ocr")],
+            fileFieldName: "file",
+            fileURL: fileURL,
+            fileName: fileName,
+            mimeType: mimeType(for: fileURL.pathExtension),
+            fileAccess: fileAccess,
+            filePreparationErrorMessage: "Could not prepare local OCR file at \(fileName) for upload."
+        )
+        request.setValue(String(bodyFile.contentLength), forHTTPHeaderField: "Content-Length")
+        request.httpBodyStream = try bodyFile.makeInputStream()
+        request.timeoutInterval = 120
+        return (request, bodyFile)
+    }
+
+    private func mimeType(for fileExtension: String) -> String {
+        switch fileExtension.lowercased() {
+        case "pdf":
+            return "application/pdf"
+        case "png":
+            return "image/png"
+        case "jpg", "jpeg":
+            return "image/jpeg"
+        case "gif":
+            return "image/gif"
+        case "heic":
+            return "image/heic"
+        case "webp":
+            return "image/webp"
+        case "bmp":
+            return "image/bmp"
+        case "tif", "tiff":
+            return "image/tiff"
+        default:
+            return "application/octet-stream"
         }
     }
 

@@ -9,7 +9,7 @@ Dependencies always point inward — outer layers depend on inner layers, never 
 ```mermaid
 graph TB
     subgraph Domain["Domain — pure Swift, no framework imports"]
-        Entities["Entities<br/><i>Job, AppSettings, FileType,<br/>ProviderMode, TranscriptionResult, DeliveryReport</i>"]
+        Entities["Entities<br/><i>Job, JobStatus, AppSettings, FileType,<br/>ProviderMode, TranscriptionResult, DeliveryReport</i>"]
         UseCases["Use Cases<br/><i>ProcessFile, TranscriptionRouting,<br/>CleanupRetention, SaveSettings,<br/>NotifyUser, TestConnectivity, ApplyLaunchAtLogin</i>"]
         Gateways["Gateway Protocols<br/><i>StorageGateway, TranscriptionGateway,<br/>DeliveryGateway, SettingsGateway,<br/>NotificationGateway, ConnectivityGateway,<br/>OutputFolderGateway, LaunchAtLoginGateway</i>"]
     end
@@ -60,7 +60,7 @@ graph TB
 
 ## Data Flow
 
-The core pipeline for every file drop:
+The core pipeline for every file drop: **prepare source → transcribe → optional mirror → deliver**. Processing source is chosen per transcriber: when the provider supports local files (all current providers do when applicable), the file is sent directly (Mistral gets multipart or file upload; Apple uses the file URL). S3 is only used when the transcriber requires a remote URL or when bucket mirroring is enabled after processing.
 
 ```mermaid
 sequenceDiagram
@@ -68,22 +68,29 @@ sequenceDiagram
     participant A as AppDelegate
     participant VM as JobListViewModel
     participant R as TranscriptionRouting
+    participant P as ProcessFileUseCase
     participant S as S3Client
     participant T as Transcription Provider
     participant D as CompositeDelivery
 
     U->>A: Drop file on menu bar icon
     A->>VM: processFiles(urls)
-    VM->>R: Resolve provider for file type
-    alt Mistral mode
-        R->>S: Upload file to S3 bucket
-        S-->>R: Presigned URL
-        R->>T: MistralAudioProvider / MistralOCRProvider
-    else Local Apple mode
-        R->>T: AppleSpeechAnalyzerProvider / AppleDocumentOCRProvider
+    VM->>P: execute(fileURL)
+    P->>R: Resolve provider for file type + mode
+    alt Cloud (Mistral) — local file supported
+        P->>T: process(local file URL)
+    else Cloud (Mistral) — remote URL path
+        P->>S: Upload to S3
+        S-->>P: Remote URL
+        P->>T: process(remote URL)
+    else Local (Apple)
+        P->>T: process(local file URL)
     end
-    T-->>VM: Markdown result
-    VM->>D: Deliver markdown
+    T-->>P: Markdown result
+    opt Bucket mirroring enabled
+        P->>S: Mirror original file to S3 (best-effort)
+    end
+    P->>D: Deliver markdown
     D-->>U: Configured outputs (.md file save, optional clipboard copy)
     D-->>U: macOS notification
 ```
@@ -102,15 +109,15 @@ trnscrb/
 │   └── StatusBarDropView.swift       # NSView drag-and-drop on menu bar icon
 ├── Domain/                           # Pure Swift — no framework imports
 │   ├── Entities/
-│   │   ├── AppSettings.swift         # User-configurable settings model
+│   │   ├── AppSettings.swift         # Settings model; bucketMirroringEnabled, requiresS3Credentials
 │   │   ├── DeliveryReport.swift      # Result of clipboard/file delivery
 │   │   ├── FileType.swift            # Audio/PDF/image routing + extension sets
-│   │   ├── Job.swift                 # State machine: uploading → processing → done/error
+│   │   ├── Job.swift                 # State machine: pending → processing → mirroring? → delivering → completed
 │   │   ├── OutputFileNameFormatter.swift # Resolves markdown output filenames
 │   │   ├── ProviderMode.swift        # Mistral vs Local Apple per media type
-│   │   └── TranscriptionResult.swift # Markdown output from processing
+│   │   └── TranscriptionResult.swift # Markdown output; mirrorWarnings, deliveryWarnings, remoteSourceURL
 │   ├── UseCases/
-│   │   ├── ProcessFileUseCase.swift  # Orchestrates upload → process → deliver
+│   │   ├── ProcessFileUseCase.swift  # Orchestrates prepare source → transcribe → optional mirror → deliver
 │   │   ├── TranscriptionRouting.swift # Resolves provider by file type + mode
 │   │   ├── CleanupRetentionUseCase.swift # Deletes expired S3 objects
 │   │   ├── SaveSettingsUseCase.swift # Persists settings + secrets
@@ -131,8 +138,9 @@ trnscrb/
 │   │   ├── S3Client.swift            # S3-compatible upload/delete/presign
 │   │   └── S3Signer.swift            # AWS Signature V4 signing
 │   ├── Transcription/
-│   │   ├── MistralAudioProvider.swift # Voxtral transcription endpoint
-│   │   ├── MistralOCRProvider.swift   # OCR 3 for PDFs and images
+│   │   ├── MistralAudioProvider.swift # Voxtral; direct file or remote URL (supportedSourceKinds)
+│   │   ├── MistralOCRProvider.swift   # OCR 3; direct file or remote URL
+│   │   ├── FileBackedMultipartBody.swift # File-backed multipart body for large uploads
 │   │   ├── AppleSpeechAnalyzerProvider.swift # On-device audio (macOS 26+)
 │   │   ├── AppleDocumentOCRProvider.swift    # On-device OCR (macOS 26+)
 │   │   ├── MistralError.swift
@@ -146,6 +154,7 @@ trnscrb/
 │   │   └── SecretStore.swift         # High-level secret access
 │   ├── Config/
 │   │   ├── TOMLConfigManager.swift   # Reads/writes ~/.config/trnscrb/config.toml
+│   │   ├── TOMLConfigDocument.swift  # Parses and serializes TOML (bucket mirroring, provider modes, etc.)
 │   │   └── SettingsNormalization.swift # Validates and normalizes config values
 │   ├── System/
 │   │   ├── OutputFolderClient.swift  # File system output folder access
@@ -186,7 +195,7 @@ trnscrb/
 
 **Gateway protocols are owned by the domain.** All 8 gateway protocols are defined in `Domain/Gateways/`. Infrastructure code imports and conforms to them. This is the dependency inversion that makes the architecture work — the domain never knows about S3, Mistral, or the file system.
 
-**Per-media provider routing.** `TranscriptionRouting` resolves the correct provider based on `(FileType, ProviderMode)`. Each media type (audio, PDF, image) has an independent provider mode. Adding a new provider is additive: implement `TranscriptionGateway`, register it in routing.
+**Per-media provider routing.** `TranscriptionRouting` resolves the correct provider based on `(FileType, ProviderMode)`. Each media type (audio, PDF, image) has an independent provider mode (Local vs Cloud). Providers declare `supportedSourceKinds` (e.g. `.localFile`, `.remoteURL`); the pipeline prefers local file when supported, so Cloud (Mistral) can run without S3. Adding a new provider is additive: implement `TranscriptionGateway`, register it in routing.
 
 **CompositeDelivery combines output channels.** Clipboard and file delivery are independent implementations of `DeliveryGateway`. `CompositeDelivery` wraps both so the use case layer doesn't need to know which outputs are enabled.
 
@@ -195,3 +204,7 @@ trnscrb/
 **AppDelegate is the only component that knows everything.** It creates concrete infrastructure instances, injects them into use cases, and wires ViewModels to views. No other layer has this cross-cutting knowledge.
 
 **Single Mistral API key covers all cloud processing.** The settings layer stores one key in Keychain. Both Mistral providers receive it through dependency injection — no key management logic in the domain.
+
+**Bucket mirroring is independent and best-effort.** Processing source selection (Local vs Cloud) is separate from “Mirror originals to S3” in Advanced Pipeline. When mirroring is enabled, the original file is uploaded to S3 after processing; failures produce warnings rather than failing the job. S3 credentials are only required when mirroring is on (`AppSettings.requiresS3Credentials`).
+
+**Job stages are split for clear feedback.** The job state machine is `pending → processing → mirroring? → delivering → completed`. The UI shows processing, mirroring, and delivery as distinct statuses so users can see which stage failed or produced warnings (`mirrorWarnings`, `deliveryWarnings`).

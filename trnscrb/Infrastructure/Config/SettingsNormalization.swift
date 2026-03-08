@@ -20,6 +20,7 @@ extension SettingsValidationError: LocalizedError {
 extension AppSettings {
     var normalizedForUse: AppSettings {
         AppSettings(
+            bucketMirroringEnabled: bucketMirroringEnabled,
             s3EndpointURL: s3EndpointURL.normalizedEndpointURLString,
             s3AccessKey: s3AccessKey.trimmedCredentialValue,
             s3BucketName: s3BucketName.trimmedCredentialValue,
@@ -74,10 +75,16 @@ extension String {
     var normalizedEndpointURLString: String {
         let trimmed: String = trimmedCredentialValue
         guard !trimmed.isEmpty else { return "" }
-        if trimmed.contains("://") {
-            return trimmed
+        let components: [String] = trimmed
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+        guard let candidate: String = components.first else {
+            return ""
         }
-        return "https://\(trimmed)"
+        if candidate.contains("://") {
+            return candidate
+        }
+        return "https://\(candidate)"
     }
 
     var trimmedPathPrefix: String {
