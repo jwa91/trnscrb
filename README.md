@@ -6,24 +6,25 @@ A macOS menu bar app that converts audio recordings, PDFs, and images (including
 
 Drop a file onto the menu bar icon (or into the menu panel drop zone), and trnscrb handles the rest:
 
-1. **Resolves** provider mode for that media type (`Mistral` or `Local Apple`)
-2. **Mistral mode:** uploads to your S3-compatible bucket and sends a presigned URL to Mistral
-3. **Local Apple mode (macOS 26+):** processes directly on-device without S3/API calls
-4. **Delivers** markdown to your configured outputs: it always saves a `.md` file and can also copy to the clipboard
-5. **Cleans up** S3 objects automatically after 24 hours (for Mistral jobs)
+1. **Resolves** provider mode for that media type: **Cloud** (Mistral) or **Local** (Apple on-device, macOS 26+)
+2. **Cloud mode:** sends the file to Mistral for transcription or OCR
+3. **Local mode (macOS 26+):** processes on-device
+4. If “Mirror originals to S3” is enabled in Advanced Pipeline, the original file is copied to your S3-compatible bucket after processing (best-effort; failures surface as warnings)
+5. **Delivers** markdown to your configured outputs: it always saves a `.md` file and can also copy to the clipboard
+6. **Cleans up** S3 objects automatically after 24 hours when mirroring was used
 
 ## Supported File Types
 
 | Category   | Formats                             | Provider options                                               |
 | ---------- | ----------------------------------- | -------------------------------------------------------------- |
-| **Audio**  | mp3, wav, m4a, ogg, flac, webm, mp4 | Mistral Voxtral Mini Transcribe V2, or Local Apple (macOS 26+) |
-| **PDF**    | pdf (scanned & digital)             | Mistral OCR 3, or Local Apple OCR (macOS 26+)                  |
-| **Images** | png, jpg, jpeg, heic, tiff, webp    | Mistral OCR 3, or Local Apple OCR (macOS 26+)                  |
+| **Audio**  | mp3, wav, m4a, ogg, flac, webm, mp4 | Mistral Voxtral Mini (Cloud), or Local Apple (macOS 26+) |
+| **PDF**    | pdf (scanned & digital)             | Mistral OCR 3 (Cloud), or Local Apple OCR (macOS 26+)      |
+| **Images** | png, jpg, jpeg, heic, tiff, webp    | Mistral OCR 3 (Cloud), or Local Apple OCR (macOS 26+)      |
 
 ## Key Design Principles
 
-- **Per-media provider selection** — audio, PDF, and image each have independent mode selection; modeled as extensible options (not a hardcoded toggle).
-- **BYOK (Bring Your Own Key)** — no subscription; when using Mistral mode, you pay Mistral and your S3 provider directly for what you use.
+- **Per-media provider selection** — audio, PDF, and image each have independent mode selection (Local vs Cloud); modeled as extensible options (not a hardcoded toggle).
+- **BYOK (Bring Your Own Key)** — no subscription; Cloud mode uses your Mistral API key; S3 is used only when “Mirror originals to S3” is enabled.
 - **Parallel batch processing** — drop multiple files at once; they all process concurrently with per-file progress tracking.
 - **Privacy-first** — API keys stored in macOS Keychain, config follows XDG conventions, no telemetry, no analytics.
 
