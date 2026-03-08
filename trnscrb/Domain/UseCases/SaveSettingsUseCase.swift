@@ -59,6 +59,37 @@ public struct SaveSettingsUseCase: Sendable {
         }
     }
 
+    public func saveSettingsOnly(_ settings: AppSettings) async throws {
+        let normalizedSettings: AppSettings = try settings.validatedForPersistence()
+
+        _ = try outputFolderGateway.prepareOutputFolder(path: normalizedSettings.saveFolderPath)
+
+        let snapshot: SettingsSnapshot = try await loadSnapshot()
+        var didPersistSettings: Bool = false
+        var didAttemptLaunchAtLoginApply: Bool = false
+
+        do {
+            try await gateway.saveSettings(normalizedSettings)
+            didPersistSettings = true
+            didAttemptLaunchAtLoginApply =
+                launchAtLoginUseCase != nil
+                && snapshot.settings.launchAtLogin != normalizedSettings.launchAtLogin
+            if didAttemptLaunchAtLoginApply {
+                try await launchAtLoginUseCase?.apply(enabled: normalizedSettings.launchAtLogin)
+            }
+        } catch {
+            await rollback(
+                to: snapshot,
+                originalError: error,
+                didPersistSettings: didPersistSettings,
+                didPersistMistralAPIKey: false,
+                didPersistS3SecretKey: false,
+                didAttemptLaunchAtLoginApply: didAttemptLaunchAtLoginApply
+            )
+            throw error
+        }
+    }
+
     private func loadSnapshot() async throws -> SettingsSnapshot {
         let settings: AppSettings = try await gateway.loadSettings()
         let mistralAPIKey: String = try await gateway.getSecret(for: .mistralAPIKey) ?? ""

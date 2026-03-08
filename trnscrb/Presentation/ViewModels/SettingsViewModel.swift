@@ -38,8 +38,6 @@ public final class SettingsViewModel: ObservableObject {
     private let gateway: any SettingsGateway
     /// Domain use case for connectivity testing.
     private let connectivityUseCase: TestConnectivityUseCase
-    /// Validates and resolves the output folder before settings are saved.
-    private let outputFolderGateway: any OutputFolderGateway
     /// Persists settings, secrets, and launch-at-login atomically.
     private let saveSettingsUseCase: SaveSettingsUseCase
     /// Creates a view model backed by the given settings gateway.
@@ -50,12 +48,10 @@ public final class SettingsViewModel: ObservableObject {
     public init(
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
-        outputFolderGateway: any OutputFolderGateway,
         saveSettingsUseCase: SaveSettingsUseCase
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
-        self.outputFolderGateway = outputFolderGateway
         self.saveSettingsUseCase = saveSettingsUseCase
     }
 
@@ -92,8 +88,7 @@ public final class SettingsViewModel: ObservableObject {
     public func saveSettings() async {
         do {
             settings = try settings.validatedForPersistence()
-            _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
-            try await gateway.saveSettings(settings)
+            try await saveSettingsUseCase.saveSettingsOnly(settings)
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -101,7 +96,8 @@ public final class SettingsViewModel: ObservableObject {
     }
 
     /// Saves a single credential to the Keychain and shows brief checkmark feedback.
-    public func saveCredential(_ value: String, for key: SecretKey) async {
+    @discardableResult
+    public func saveCredential(_ value: String, for key: SecretKey) async -> String? {
         do {
             let trimmed: String = value.trimmedCredentialValue
             if trimmed.isEmpty {
@@ -109,12 +105,15 @@ public final class SettingsViewModel: ObservableObject {
             } else {
                 try await gateway.setSecret(trimmed, for: key)
             }
+            setCredentialValue(trimmed, for: key)
             error = nil
             withAnimation { credentialSaved[key] = true }
             try? await Task.sleep(for: .seconds(2))
             withAnimation { credentialSaved[key] = false }
+            return trimmed
         } catch {
             self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -169,6 +168,15 @@ public final class SettingsViewModel: ObservableObject {
             mistralTestResult = .success
         } catch {
             mistralTestResult = .failure(error.localizedDescription)
+        }
+    }
+
+    private func setCredentialValue(_ value: String, for key: SecretKey) {
+        switch key {
+        case .mistralAPIKey:
+            mistralAPIKey = value
+        case .s3SecretKey:
+            s3SecretKey = value
         }
     }
 }

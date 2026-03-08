@@ -69,11 +69,21 @@ private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
     }
 }
 
+private enum SettingsField: Hashable {
+    case saveFolderPath
+    case mistralAPIKey
+    case s3SecretKey
+}
+
 /// Settings content displayed inside the dedicated settings window.
 struct SettingsView: View {
     /// View model providing settings data and persistence.
     @ObservedObject var viewModel: SettingsViewModel
     @State private var selectedPane: SettingsPane = .general
+    @State private var lastObservedSettings: AppSettings?
+    @State private var lastSavedCredentials: [SecretKey: String] = [:]
+    @State private var saveFolderPathDraft: String = AppSettings().saveFolderPath
+    @FocusState private var focusedField: SettingsField?
 
     var body: some View {
         TabView(selection: $selectedPane) {
@@ -110,11 +120,44 @@ struct SettingsView: View {
             minWidth: SettingsWindowDesign.minSize.width,
             minHeight: SettingsWindowDesign.minSize.height
         )
-        .task { await viewModel.load() }
-        .onChange(of: viewModel.settings) {
+        .task {
+            await viewModel.load()
+            saveFolderPathDraft = viewModel.settings.saveFolderPath
+            lastSavedCredentials = [
+                .mistralAPIKey: viewModel.mistralAPIKey,
+                .s3SecretKey: viewModel.s3SecretKey
+            ]
+            if viewModel.error == nil {
+                lastObservedSettings = viewModel.settings
+            }
+        }
+        .onChange(of: viewModel.settings) { _, newValue in
+            guard shouldAutosave(for: newValue) else { return }
             viewModel.debouncedSaveSettings()
         }
+        .onChange(of: viewModel.settings.saveFolderPath) { _, newValue in
+            guard focusedField != .saveFolderPath else { return }
+            if saveFolderPathDraft != newValue {
+                saveFolderPathDraft = newValue
+            }
+        }
+        .onChange(of: focusedField) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            if oldValue == .saveFolderPath, newValue != .saveFolderPath {
+                commitSaveFolderPathDraft()
+            }
+            if oldValue == .mistralAPIKey, newValue != .mistralAPIKey {
+                commitCredentialIfNeeded(.mistralAPIKey)
+            }
+            if oldValue == .s3SecretKey, newValue != .s3SecretKey {
+                commitCredentialIfNeeded(.s3SecretKey)
+            }
+        }
         .onDisappear {
+            guard lastObservedSettings != nil else { return }
+            commitSaveFolderPathDraft()
+            commitCredentialIfNeeded(.mistralAPIKey)
+            commitCredentialIfNeeded(.s3SecretKey)
             Task { await viewModel.saveSettings() }
         }
         .alert("Settings Error", isPresented: .init(
@@ -331,9 +374,13 @@ struct SettingsView: View {
             Section {
                 LabeledContent("Save Folder") {
                     HStack(spacing: 8) {
-                        TextField("Folder path", text: $viewModel.settings.saveFolderPath)
+                        TextField("Folder path", text: $saveFolderPathDraft)
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)
+                            .focused($focusedField, equals: .saveFolderPath)
+                            .onSubmit {
+                                commitSaveFolderPathDraft()
+                            }
 
                         Button("Browse…") {
                             browseForSaveFolder()
@@ -520,8 +567,9 @@ struct SettingsView: View {
             .font(.system(.body, design: .monospaced))
             .lineLimit(1)
             .truncationMode(.middle)
+            .focused($focusedField, equals: field(for: secretKey))
             .onSubmit {
-                Task { await viewModel.saveCredential(text.wrappedValue, for: secretKey) }
+                commitCredentialIfNeeded(secretKey)
             }
 
             Button {
@@ -538,12 +586,6 @@ struct SettingsView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .transition(.opacity)
-            } else {
-                Button("Save") {
-                    Task { await viewModel.saveCredential(text.wrappedValue, for: secretKey) }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
     }
@@ -567,8 +609,54 @@ struct SettingsView: View {
         }
 
         if panel.runModal() == .OK, let selectedURL: URL = panel.url {
-            viewModel.settings.saveFolderPath = selectedURL.standardizedFileURL.path()
+            saveFolderPathDraft = selectedURL.standardizedFileURL.path()
+            commitSaveFolderPathDraft()
         }
+    }
+
+    private func commitSaveFolderPathDraft() {
+        guard viewModel.settings.saveFolderPath != saveFolderPathDraft else { return }
+        viewModel.settings.saveFolderPath = saveFolderPathDraft
+    }
+
+    private func commitCredentialIfNeeded(_ key: SecretKey) {
+        let valueToSave: String = currentCredentialValue(for: key)
+        let trimmedValue: String = valueToSave.trimmedCredentialValue
+        guard lastSavedCredentials[key] != trimmedValue else { return }
+        Task {
+            guard let savedValue: String = await viewModel.saveCredential(valueToSave, for: key) else {
+                return
+            }
+            lastSavedCredentials[key] = savedValue
+        }
+    }
+
+    private func currentCredentialValue(for key: SecretKey) -> String {
+        switch key {
+        case .mistralAPIKey:
+            return viewModel.mistralAPIKey
+        case .s3SecretKey:
+            return viewModel.s3SecretKey
+        }
+    }
+
+    private func field(for key: SecretKey) -> SettingsField {
+        switch key {
+        case .mistralAPIKey:
+            return .mistralAPIKey
+        case .s3SecretKey:
+            return .s3SecretKey
+        }
+    }
+
+    private func shouldAutosave(for settings: AppSettings) -> Bool {
+        guard let lastObservedSettings else {
+            self.lastObservedSettings = settings
+            return false
+        }
+        guard lastObservedSettings != settings else { return false }
+        self.lastObservedSettings = settings
+        return true
     }
 
     private func revealConfigFile() {

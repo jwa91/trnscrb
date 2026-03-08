@@ -39,7 +39,6 @@ struct SettingsViewModelTests {
         let vm: SettingsViewModel = SettingsViewModel(
             gateway: gateway,
             connectivityUseCase: connectivityUseCase,
-            outputFolderGateway: outputFolderGateway,
             saveSettingsUseCase: saveSettingsUseCase
         )
         return (vm, gateway, connectivityGateway, launchAtLoginGateway, outputFolderGateway)
@@ -131,6 +130,30 @@ struct SettingsViewModelTests {
         #expect(savedSettings.imageProviderMode == .localApple)
     }
 
+    @Test func saveSettingsAppliesLaunchAtLoginImmediately() async {
+        let originalSettings: AppSettings = AppSettings(launchAtLogin: false)
+        let (vm, gateway, _, launchAtLoginGateway, _) = makeViewModel(settings: originalSettings)
+        await vm.load()
+
+        vm.settings.launchAtLogin = true
+        await vm.saveSettings()
+
+        #expect(vm.error == nil)
+        #expect((await gateway.snapshotSettings()).launchAtLogin == true)
+        #expect(await launchAtLoginGateway.recordedCallCount() == 1)
+        #expect(await launchAtLoginGateway.recordedAppliedValues() == [true])
+    }
+
+    @Test func saveSettingsDoesNotPersistUnsavedCredentials() async {
+        let (vm, gateway, _, _, _) = makeViewModel(secrets: [.mistralAPIKey: "stored-key"])
+        await vm.load()
+
+        vm.mistralAPIKey = "edited-but-unsaved"
+        await vm.saveSettings()
+
+        #expect((await gateway.snapshotSecrets())[.mistralAPIKey] == "stored-key")
+    }
+
     @Test func saveCredentialPersistsToKeychain() async {
         let (vm, gateway, _, _, _) = makeViewModel()
         await vm.saveCredential("new-mk", for: .mistralAPIKey)
@@ -138,6 +161,16 @@ struct SettingsViewModelTests {
         let secrets: [SecretKey: String] = await gateway.snapshotSecrets()
         #expect(secrets[.mistralAPIKey] == "new-mk")
         #expect(secrets[.s3SecretKey] == "new-sk")
+    }
+
+    @Test func saveCredentialTrimsPublishedValue() async {
+        let (vm, _, _, _, _) = makeViewModel()
+
+        await vm.saveCredential("  new-mk  ", for: .mistralAPIKey)
+        await vm.saveCredential("  new-sk  ", for: .s3SecretKey)
+
+        #expect(vm.mistralAPIKey == "new-mk")
+        #expect(vm.s3SecretKey == "new-sk")
     }
 
     @Test func saveCredentialRemovesEmptySecrets() async {

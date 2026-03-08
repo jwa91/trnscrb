@@ -72,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settingsViewModel: SettingsViewModel = SettingsViewModel(
         gateway: settingsGateway,
         connectivityUseCase: connectivityUseCase,
-        outputFolderGateway: outputFolderClient,
         saveSettingsUseCase: saveSettingsUseCase
     )
     private lazy var jobListViewModel: JobListViewModel = JobListViewModel(
