@@ -238,12 +238,11 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("Connection Test") {
-                    HStack(spacing: 10) {
-                        testButton("Test", result: viewModel.s3TestResult) {
-                            Task { await viewModel.testS3() }
-                        }
-                        testResultView(viewModel.s3TestResult)
+                HStack(spacing: 10) {
+                    Spacer()
+                    testResultView(viewModel.s3TestResult)
+                    testButton("Test Connection", result: viewModel.s3TestResult) {
+                        Task { await viewModel.testS3() }
                     }
                 }
             }
@@ -270,12 +269,11 @@ struct SettingsView: View {
                     )
                 }
 
-                LabeledContent("Connection Test") {
-                    HStack(spacing: 10) {
-                        testButton("Test", result: viewModel.mistralTestResult) {
-                            Task { await viewModel.testMistral() }
-                        }
-                        testResultView(viewModel.mistralTestResult)
+                HStack(spacing: 10) {
+                    Spacer()
+                    testResultView(viewModel.mistralTestResult)
+                    testButton("Test Connection", result: viewModel.mistralTestResult) {
+                        Task { await viewModel.testMistral() }
                     }
                 }
             }
@@ -479,7 +477,7 @@ struct SettingsView: View {
     ) -> some View {
         Button(title, action: action)
             .buttonStyle(.bordered)
-            .controlSize(.regular)
+            .controlSize(.small)
             .disabled(result == .testing)
             .pointingHandCursor()
     }
