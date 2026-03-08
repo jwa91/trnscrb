@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1
+
+### Changed
+- Settings window now follows macOS HIG with Form-based layout and grouped sections
+- General tab is the default on open; page headers reduced to standard `.title2` size
+- S3 mirroring toggle uses switch style to indicate its role as a major feature gate
+- Hybrid instant-apply: toggles and pickers auto-save; credentials save on Return or focus loss
+- All text fields use consistent `LabeledContent` + bordered style for visual clarity
+- Connection test buttons restyled as compact right-aligned actions
+- Settings sidebar extends full window height with native glass material via NSToolbar
+- Quit button moved from settings footer to menu bar panel header chrome
+
+### Removed
+- Global Save button and settings footer (replaced by instant-apply)
+- Custom Grid layout helpers (`settingsGrid`, `settingsRow`, `settingsSection`)
+
 ## 0.4.0
 
 ### Added
