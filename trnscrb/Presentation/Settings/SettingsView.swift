@@ -13,11 +13,11 @@ enum SettingsWindowDesign {
 }
 
 private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
+    case general
     case processing
     case connections
     case pipeline
     case output
-    case general
     case about
 
     var id: Self { self }
@@ -82,10 +82,14 @@ struct SettingsView: View {
     var onClose: () -> Void
     /// Terminates the menu bar app.
     var onQuitApp: () -> Void
-    @State private var selectedPane: SettingsPane = .processing
+    @State private var selectedPane: SettingsPane = .general
 
     var body: some View {
         TabView(selection: $selectedPane) {
+            Tab("General", systemImage: SettingsPane.general.systemImage, value: .general) {
+                detailContent(for: .general)
+            }
+
             Tab("Processing", systemImage: SettingsPane.processing.systemImage, value: .processing) {
                 detailContent(for: .processing)
             }
@@ -106,10 +110,6 @@ struct SettingsView: View {
                 detailContent(for: .output)
             }
 
-            Tab("General", systemImage: SettingsPane.general.systemImage, value: .general) {
-                detailContent(for: .general)
-            }
-
             Tab("About", systemImage: SettingsPane.about.systemImage, value: .about) {
                 detailContent(for: .about)
             }
@@ -121,7 +121,6 @@ struct SettingsView: View {
             minWidth: SettingsWindowDesign.minSize.width,
             minHeight: SettingsWindowDesign.minSize.height
         )
-        .background(Color(nsColor: .windowBackgroundColor))
         .task { await viewModel.load() }
     }
 
@@ -146,7 +145,7 @@ struct SettingsView: View {
     private func pageHeader(for pane: SettingsPane) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(pane.title)
-                .font(.system(size: 27, weight: .bold, design: .rounded))
+                .font(.title2).fontWeight(.bold)
 
             Text(pane.description)
                 .font(.subheadline)
