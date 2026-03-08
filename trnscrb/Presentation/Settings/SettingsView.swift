@@ -5,11 +5,6 @@ import SwiftUI
 enum SettingsWindowDesign {
     static let defaultSize: CGSize = CGSize(width: 900, height: 640)
     static let minSize: CGSize = CGSize(width: 780, height: 580)
-    static let detailMaxWidth: CGFloat = 660
-    static let detailPadding: CGFloat = 30
-    static let detailSpacing: CGFloat = 24
-    static let sectionSpacing: CGFloat = 18
-    static let formLabelWidth: CGFloat = 144
 }
 
 private enum SettingsPane: String, CaseIterable, Hashable, Identifiable {
@@ -124,31 +119,12 @@ struct SettingsView: View {
 
     private func detailContent(for pane: SettingsPane) -> some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: SettingsWindowDesign.detailSpacing) {
-                    pageHeader(for: pane)
-                    pageContent(for: pane)
-                }
-                .frame(maxWidth: SettingsWindowDesign.detailMaxWidth, alignment: .leading)
-                .padding(SettingsWindowDesign.detailPadding)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
+            pageContent(for: pane)
 
             Divider()
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func pageHeader(for pane: SettingsPane) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(pane.title)
-                .font(.title2).fontWeight(.bold)
-
-            Text(pane.description)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
     }
 
     @ViewBuilder
@@ -169,103 +145,100 @@ struct SettingsView: View {
         }
     }
 
-    private var pipelinePage: some View {
-        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("Bucket Mirroring") {
-                settingsToggleRow(
-                    help: "When enabled, original files are also uploaded to S3-compatible storage for archival or downstream automation. The S3 fields below only take effect when this is on."
-                ) {
-                    Toggle(
-                        "Mirror originals to S3",
-                        isOn: $viewModel.settings.bucketMirroringEnabled
-                    )
-                    .toggleStyle(.switch)
-                }
-            }
-
-            settingsSection("S3 Connection") {
-                settingsGrid {
-                    settingsRow("Endpoint URL") {
-                        TextField(
-                            "https://s3.example.com",
-                            text: $viewModel.settings.s3EndpointURL
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                    }
-
-                    settingsRow("Access Key") {
-                        TextField("Access Key", text: $viewModel.settings.s3AccessKey)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Secret Key") {
-                        secretField(
-                            "Secret Key",
-                            text: $viewModel.s3SecretKey,
-                            isVisible: $viewModel.isS3SecretKeyVisible
-                        )
-                    }
-
-                    settingsRow("Bucket Name") {
-                        TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Region") {
-                        TextField("Region", text: $viewModel.settings.s3Region)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow("Path Prefix") {
-                        TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
-                            .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
-
-                    settingsRow(
-                        "Retention",
-                        help: "Retention period for mirrored files in S3. Set to 0 to disable automatic cleanup."
-                    ) {
-                        HStack(spacing: 8) {
-                            TextField(
-                                "Hours",
-                                value: $viewModel.settings.fileRetentionHours,
-                                format: .number
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 96)
-
-                            Text("hours")
-                                .foregroundStyle(.secondary)
-
-                            Spacer(minLength: 0)
-                        }
-                        .controlSize(.large)
-                    }
-
-                    settingsRow("Connection Test") {
-                        HStack(spacing: 10) {
-                            testButton("Test", result: viewModel.s3TestResult) {
-                                Task { await viewModel.testS3() }
-                            }
-                            testResultView(viewModel.s3TestResult)
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-                .disabled(!viewModel.settings.requiresS3Credentials)
-            }
+    private func pageHeader(for pane: SettingsPane) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(pane.title)
+                .font(.title2).fontWeight(.bold)
+            Text(pane.description)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
+        .textCase(nil)
+    }
+
+    private var pipelinePage: some View {
+        Form {
+            Section {
+                EmptyView()
+            } header: {
+                pageHeader(for: .pipeline)
+            }
+
+            Section {
+                Toggle(
+                    "Mirror originals to S3",
+                    isOn: $viewModel.settings.bucketMirroringEnabled
+                )
+                .toggleStyle(.switch)
+            } header: {
+                Text("Bucket Mirroring")
+            } footer: {
+                Text("When enabled, original files are also uploaded to S3-compatible storage for archival or downstream automation. The S3 fields below only take effect when this is on.")
+            }
+
+            Section("S3 Connection") {
+                TextField(
+                    "Endpoint URL",
+                    text: $viewModel.settings.s3EndpointURL,
+                    prompt: Text("https://s3.example.com")
+                )
+
+                TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+
+                LabeledContent("Secret Key") {
+                    secretField(
+                        "Secret Key",
+                        text: $viewModel.s3SecretKey,
+                        isVisible: $viewModel.isS3SecretKeyVisible
+                    )
+                }
+
+                TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+
+                TextField("Region", text: $viewModel.settings.s3Region)
+
+                TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+
+                LabeledContent("Retention") {
+                    HStack(spacing: 8) {
+                        TextField(
+                            "Hours",
+                            value: $viewModel.settings.fileRetentionHours,
+                            format: .number
+                        )
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 96)
+
+                        Text("hours")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                LabeledContent("Connection Test") {
+                    HStack(spacing: 10) {
+                        testButton("Test", result: viewModel.s3TestResult) {
+                            Task { await viewModel.testS3() }
+                        }
+                        testResultView(viewModel.s3TestResult)
+                    }
+                }
+            }
+            .disabled(!viewModel.settings.requiresS3Credentials)
+        }
+        .formStyle(.grouped)
     }
 
     private var connectionsPage: some View {
-        settingsSection("Mistral API") {
-            settingsGrid {
-                settingsRow("API Key") {
+        Form {
+            Section {
+                EmptyView()
+            } header: {
+                pageHeader(for: .connections)
+            }
+
+            Section("Mistral API") {
+                LabeledContent("API Key") {
                     secretField(
                         "API Key",
                         text: $viewModel.mistralAPIKey,
@@ -273,172 +246,192 @@ struct SettingsView: View {
                     )
                 }
 
-                settingsRow("Connection Test") {
+                LabeledContent("Connection Test") {
                     HStack(spacing: 10) {
                         testButton("Test", result: viewModel.mistralTestResult) {
                             Task { await viewModel.testMistral() }
                         }
                         testResultView(viewModel.mistralTestResult)
-                        Spacer(minLength: 0)
                     }
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
     private var processingPage: some View {
-        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("Default Providers") {
-                settingsGrid {
-                    settingsRow("Audio") {
-                        providerModePicker(selection: $viewModel.settings.audioProviderMode)
-                    }
+        Form {
+            Section {
+                EmptyView()
+            } header: {
+                pageHeader(for: .processing)
+            }
 
-                    settingsRow("PDF") {
-                        providerModePicker(selection: $viewModel.settings.pdfProviderMode)
-                    }
+            Section("Default Providers") {
+                Picker("Audio", selection: $viewModel.settings.audioProviderMode) {
+                    Text("Cloud").tag(ProviderMode.mistral)
+                    Text("Local").tag(ProviderMode.localApple)
+                }
 
-                    settingsRow("Image") {
-                        providerModePicker(selection: $viewModel.settings.imageProviderMode)
-                    }
+                Picker("PDF", selection: $viewModel.settings.pdfProviderMode) {
+                    Text("Cloud").tag(ProviderMode.mistral)
+                    Text("Local").tag(ProviderMode.localApple)
+                }
+
+                Picker("Image", selection: $viewModel.settings.imageProviderMode) {
+                    Text("Cloud").tag(ProviderMode.mistral)
+                    Text("Local").tag(ProviderMode.localApple)
                 }
             }
 
-            settingsSection("Apple On-Device Audio") {
-                settingsGrid {
-                    settingsRow(
-                        "Language",
-                        help: "Used only when Audio is set to Local. Match this to the recording language for better recognition quality."
-                    ) {
-                        appleAudioLocalePicker()
-                            .disabled(viewModel.settings.audioProviderMode != .localApple)
+            Section {
+                Picker("Language", selection: $viewModel.settings.appleAudioLocaleIdentifier) {
+                    ForEach(appleAudioLocaleOptions) { option in
+                        Text(option.label).tag(option.identifier)
                     }
                 }
+                .disabled(viewModel.settings.audioProviderMode != .localApple)
+            } header: {
+                Text("Apple On-Device Audio")
+            } footer: {
+                Text("Used only when Audio is set to Local. Match this to the recording language for better recognition quality.")
             }
         }
+        .formStyle(.grouped)
     }
 
     private var outputPage: some View {
-        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("Saving") {
-                settingsGrid {
-                    settingsRow(
-                        "Save Folder",
-                        help: "Markdown files are always saved to this folder."
-                    ) {
-                        HStack(spacing: 8) {
-                            TextField("Folder path", text: $viewModel.settings.saveFolderPath)
-                                .textFieldStyle(.roundedBorder)
-
-                            Button("Browse…") {
-                                browseForSaveFolder()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .controlSize(.large)
-                    }
-                }
-
+        Form {
+            Section {
+                EmptyView()
+            } header: {
+                pageHeader(for: .output)
             }
 
-            settingsSection("File Naming") {
-                settingsGrid {
-                    settingsRow(
-                        "Filename Prefix",
-                        help: "Optional text exposed through the {prefix} variable, for example notes- or capture-."
-                    ) {
-                        TextField("notes-", text: $viewModel.settings.outputFileNamePrefix)
+            Section {
+                LabeledContent("Save Folder") {
+                    HStack(spacing: 8) {
+                        TextField("Folder path", text: $viewModel.settings.saveFolderPath)
+                            .labelsHidden()
                             .textFieldStyle(.roundedBorder)
-                            .controlSize(.large)
-                    }
 
-                    settingsRow(
-                        "Filename Template",
-                        help: "Available variables: {originalFilename}, {fileType}, {timestamp}, {date}, {time}, {prefix}. The .md extension is added automatically."
-                    ) {
-                        TextField(
-                            AppSettings.defaultFileNameTemplate,
-                            text: $viewModel.settings.outputFileNameTemplate
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                        .font(.system(.body, design: .monospaced))
-                    }
-
-                    settingsRow("Preview") {
-                        Text(viewModel.outputFileNamePreview)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        Button("Browse…") {
+                            browseForSaveFolder()
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
+            } header: {
+                Text("Saving")
+            } footer: {
+                Text("Markdown files are always saved to this folder.")
+            }
+
+            Section {
+                TextField(
+                    "Filename Prefix",
+                    text: $viewModel.settings.outputFileNamePrefix,
+                    prompt: Text("notes-")
+                )
+
+                LabeledContent("Filename Template") {
+                    TextField(
+                        AppSettings.defaultFileNameTemplate,
+                        text: $viewModel.settings.outputFileNameTemplate
+                    )
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                }
+
+                LabeledContent("Preview") {
+                    Text(viewModel.outputFileNamePreview)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } header: {
+                Text("File Naming")
+            } footer: {
+                Text("Available variables: {originalFilename}, {fileType}, {timestamp}, {date}, {time}, {prefix}. The .md extension is added automatically.")
             }
         }
+        .formStyle(.grouped)
     }
 
     private var generalPage: some View {
-        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("Behavior") {
-                settingsToggleRow(
-                    help: "Also places the generated markdown on the clipboard after each run."
-                ) {
-                    Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
-                }
+        Form {
+            Section {
+                EmptyView()
+            } header: {
+                pageHeader(for: .general)
             }
 
-            settingsSection("Startup") {
-                settingsToggleRow(
-                    help: "Starts the menu bar app automatically when you sign in to macOS."
-                ) {
-                    Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
-                }
+            Section {
+                Toggle("Copy markdown to clipboard", isOn: $viewModel.settings.copyToClipboard)
+            } header: {
+                Text("Behavior")
+            } footer: {
+                Text("Also places the generated markdown on the clipboard after each run.")
+            }
+
+            Section {
+                Toggle("Launch at Login", isOn: $viewModel.settings.launchAtLogin)
+            } header: {
+                Text("Startup")
+            } footer: {
+                Text("Starts the menu bar app automatically when you sign in to macOS.")
             }
         }
+        .formStyle(.grouped)
     }
 
     private var aboutPage: some View {
-        VStack(alignment: .leading, spacing: SettingsWindowDesign.sectionSpacing) {
-            settingsSection("Application") {
-                settingsGrid {
-                    settingsRow("Version") {
-                        Text(appVersionSummary)
-                            .textSelection(.enabled)
-                    }
+        Form {
+            Section {
+                EmptyView()
+            } header: {
+                pageHeader(for: .about)
+            }
 
-                    settingsRow("Bundle ID") {
-                        Text(Bundle.main.bundleIdentifier ?? AppIdentity.bundleIdentifier)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
+            Section("Application") {
+                LabeledContent("Version") {
+                    Text(appVersionSummary)
+                        .textSelection(.enabled)
+                }
+
+                LabeledContent("Bundle ID") {
+                    Text(Bundle.main.bundleIdentifier ?? AppIdentity.bundleIdentifier)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
             }
 
-            settingsSection("Configuration") {
-                settingsGrid {
-                    settingsRow("Config File") {
-                        Text(configFileURL.path())
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
+            Section("Configuration") {
+                LabeledContent("Config File") {
+                    Text(configFileURL.path())
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
 
-                    settingsRow("Actions") {
-                        HStack(spacing: 8) {
-                            Button("Reveal Config File") {
-                                revealConfigFile()
-                            }
-                            .buttonStyle(.bordered)
-
-                            Button("Open Config Folder") {
-                                openConfigFolder()
-                            }
-                            .buttonStyle(.bordered)
+                LabeledContent("Actions") {
+                    HStack(spacing: 8) {
+                        Button("Reveal Config File") {
+                            revealConfigFile()
                         }
+                        .buttonStyle(.bordered)
+
+                        Button("Open Config Folder") {
+                            openConfigFolder()
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
     private var footer: some View {
@@ -458,7 +451,7 @@ struct SettingsView: View {
 
             saveButton
         }
-        .padding(.horizontal, SettingsWindowDesign.detailPadding)
+        .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(.regularMaterial)
     }
@@ -479,74 +472,12 @@ struct SettingsView: View {
         .pointingHandCursor()
     }
 
-    private func settingsSection<Content: View>(
-        _ title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        GroupBox {
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } label: {
-            Text(title)
-                .font(.headline)
-        }
-        .groupBoxStyle(.automatic)
-    }
-
     private var appVersionSummary: String {
         AppVersionInfo.summary()
     }
 
     private var configFileURL: URL {
         TOMLConfigManager.defaultConfigFileURL
-    }
-
-    private func settingsGrid<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 16) {
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func settingsRow<Content: View>(
-        _ title: String,
-        help: String? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        GridRow(alignment: .top) {
-            Text(title)
-                .foregroundStyle(.secondary)
-                .frame(width: SettingsWindowDesign.formLabelWidth, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 6) {
-                content()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let help {
-                    Text(help)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func settingsToggleRow<Content: View>(
-        help: String? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            content()
-
-            if let help {
-                Text(help)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 
     // MARK: - Test button helpers
@@ -597,11 +528,11 @@ struct SettingsView: View {
                     SecureField(title, text: text)
                 }
             }
+            .labelsHidden()
             .textFieldStyle(.roundedBorder)
             .font(.system(.body, design: .monospaced))
             .lineLimit(1)
             .truncationMode(.middle)
-            .controlSize(.large)
 
             Button {
                 isVisible.wrappedValue.toggle()
@@ -613,27 +544,6 @@ struct SettingsView: View {
             .pointingHandCursor()
             .help(isVisible.wrappedValue ? "Hide value" : "Show value")
         }
-    }
-
-    private func providerModePicker(selection: Binding<ProviderMode>) -> some View {
-        Picker("", selection: selection) {
-            Text("Cloud").tag(ProviderMode.mistral)
-            Text("Local").tag(ProviderMode.localApple)
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .controlSize(.large)
-    }
-
-    private func appleAudioLocalePicker() -> some View {
-        Picker("", selection: $viewModel.settings.appleAudioLocaleIdentifier) {
-            ForEach(appleAudioLocaleOptions) { option in
-                Text(option.label).tag(option.identifier)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .controlSize(.large)
     }
 
     private var appleAudioLocaleOptions: [AppleSpeechLocaleOption] {
