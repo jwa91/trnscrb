@@ -30,8 +30,8 @@ Note on subdomains:
 
 - Bundle ID is set in `Support/Info.plist`.
 - The app bundle is assembled manually via `Makefile`, not by an Xcode project.
-- Distribution signing uses `Developer ID Application: REDACTED_DEVELOPER_IDENTITY`.
-- Notarization uses `notarytool` with team `REDACTED_TEAM_ID`.
+- Distribution signing uses a Developer ID Application identity (stored in 1Password as `AppleDev`).
+- Notarization uses `notarytool` with the team ID from the same 1Password item.
 - Entitlements file is currently empty.
 - Config is stored in `~/.config/trnscrb/config.toml`, not in a bundle-ID-derived location.
 - Keychain secrets use a new service name with no backward-compatibility path.

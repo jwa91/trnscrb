@@ -35,7 +35,7 @@ The version is read from the `VERSION` file at the project root. The build numbe
 3. Build the DMG (signed with Developer ID). Tests run automatically before packaging:
 
    ```bash
-   make clean && make dmg IDENTITY="Developer ID Application: REDACTED_DEVELOPER_IDENTITY"
+   make clean && make dmg IDENTITY="Developer ID Application: $(op read 'op://Personal/AppleDev/add more/apple-id') ($(op read 'op://Personal/AppleDev/add more/apple-team-id'))"
    ```
 
    Verify the app bundle identifier before notarizing:
@@ -56,9 +56,7 @@ The version is read from the `VERSION` file at the project root. The build numbe
    xcrun stapler staple "build/trnscrb-$VERSION.dmg"
    ```
 
-   > **Note:** Notarization is handled by Apple's servers and can take minutes to hours.
-   > First-time submissions with a new Developer ID may take significantly longer.
-   > Once Apple has processed an initial submission, subsequent ones are typically fast.
+   > **Note:** Notarization typically completes within ~10 minutes.
 
    If Apple is backlogged and `--wait` is impractical, submit without `--wait`,
    publish the signed DMG temporarily, and keep the Homebrew quarantine-removal
@@ -134,13 +132,13 @@ brew install --cask trnscrb
 By default the app is signed ad-hoc (local use). For distribution, sign with the Developer ID:
 
 ```bash
-make IDENTITY="Developer ID Application: REDACTED_DEVELOPER_IDENTITY"
+make IDENTITY="Developer ID Application: $(op read 'op://Personal/AppleDev/add more/apple-id') ($(op read 'op://Personal/AppleDev/add more/apple-team-id'))"
 ```
 
 Store notarytool credentials once (avoids passing Apple ID/password each time):
 
 ```bash
 xcrun notarytool store-credentials "notarytool" \
-  --apple-id "REDACTED_EMAIL" \
-  --team-id "REDACTED_TEAM_ID"
+  --apple-id "$(op read 'op://Personal/AppleDev/add more/apple-id')" \
+  --team-id "$(op read 'op://Personal/AppleDev/add more/apple-team-id')"
 ```
