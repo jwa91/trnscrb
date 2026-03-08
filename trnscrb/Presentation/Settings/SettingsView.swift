@@ -179,13 +179,21 @@ struct SettingsView: View {
             }
 
             Section("S3 Connection") {
-                TextField(
-                    "Endpoint URL",
-                    text: $viewModel.settings.s3EndpointURL,
-                    prompt: Text("https://s3.example.com")
-                )
+                LabeledContent("Endpoint URL") {
+                    TextField(
+                        "Endpoint URL",
+                        text: $viewModel.settings.s3EndpointURL,
+                        prompt: Text("https://s3.example.com")
+                    )
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                }
 
-                TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                LabeledContent("Access Key") {
+                    TextField("Access Key", text: $viewModel.settings.s3AccessKey)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                }
 
                 LabeledContent("Secret Key") {
                     secretField(
@@ -196,11 +204,23 @@ struct SettingsView: View {
                     )
                 }
 
-                TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                LabeledContent("Bucket Name") {
+                    TextField("Bucket Name", text: $viewModel.settings.s3BucketName)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                }
 
-                TextField("Region", text: $viewModel.settings.s3Region)
+                LabeledContent("Region") {
+                    TextField("Region", text: $viewModel.settings.s3Region)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                }
 
-                TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                LabeledContent("Path Prefix") {
+                    TextField("Path Prefix", text: $viewModel.settings.s3PathPrefix)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                }
 
                 LabeledContent("Retention") {
                     HStack(spacing: 8) {
@@ -332,11 +352,15 @@ struct SettingsView: View {
             }
 
             Section {
-                TextField(
-                    "Filename Prefix",
-                    text: $viewModel.settings.outputFileNamePrefix,
-                    prompt: Text("notes-")
-                )
+                LabeledContent("Filename Prefix") {
+                    TextField(
+                        "Filename Prefix",
+                        text: $viewModel.settings.outputFileNamePrefix,
+                        prompt: Text("notes-")
+                    )
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                }
 
                 LabeledContent("Filename Template") {
                     TextField(
