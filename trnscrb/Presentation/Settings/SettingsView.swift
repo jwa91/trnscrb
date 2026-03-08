@@ -80,8 +80,6 @@ struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     /// Called when the user closes the settings window.
     var onClose: () -> Void
-    /// Terminates the menu bar app.
-    var onQuitApp: () -> Void
     @State private var selectedPane: SettingsPane = .general
 
     var body: some View {
@@ -457,13 +455,6 @@ struct SettingsView: View {
             }
 
             Spacer()
-
-            Button("Quit trnscrb") {
-                onQuitApp()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .pointingHandCursor()
 
             saveButton
         }

@@ -227,18 +227,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.close()
     }
 
-    private func terminateApp() {
-        NSApp.terminate(nil)
-    }
-
     private func makeSettingsWindowController() -> NSWindowController {
         let rootView: SettingsView = SettingsView(
             viewModel: settingsViewModel,
             onClose: { [weak self] in
                 self?.closeSettingsWindow()
-            },
-            onQuitApp: { [weak self] in
-                self?.terminateApp()
             }
         )
 
