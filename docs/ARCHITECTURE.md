@@ -9,37 +9,47 @@ Dependencies always point inward — outer layers depend on inner layers, never 
 ```mermaid
 graph TB
     subgraph Domain["Domain — pure Swift, no framework imports"]
-        Entities["Entities<br/><i>Job, JobStatus, AppSettings, FileType,<br/>ProviderMode, TranscriptionResult, DeliveryReport</i>"]
-        UseCases["Use Cases<br/><i>ProcessFile, TranscriptionRouting,<br/>CleanupRetention, SaveSettings,<br/>NotifyUser, TestConnectivity, ApplyLaunchAtLogin</i>"]
-        Gateways["Gateway Protocols<br/><i>StorageGateway, TranscriptionGateway,<br/>DeliveryGateway, SettingsGateway,<br/>NotificationGateway, ConnectivityGateway,<br/>OutputFolderGateway, LaunchAtLoginGateway</i>"]
+        direction TB
+        Entities["Entities: Job, JobStatus, AppSettings, FileType, ProviderMode, TranscriptionResult, DeliveryReport"]
+        UseCases["Use Cases: ProcessFile, TranscriptionRouting, CleanupRetention, SaveSettings, NotifyUser, TestConnectivity, ApplyLaunchAtLogin"]
+        Gateways["Gateway Protocols: StorageGateway, TranscriptionGateway, DeliveryGateway, SettingsGateway, NotificationGateway, ConnectivityGateway, OutputFolderGateway, LaunchAtLoginGateway"]
+        Entities --- UseCases --- Gateways
     end
 
     subgraph Adapters["Interface Adapters — ViewModels"]
+        direction TB
         JobListVM["JobListViewModel"]
         SettingsVM["SettingsViewModel"]
+        JobListVM --- SettingsVM
     end
 
     subgraph Presentation["Presentation — SwiftUI"]
-        Panel["MenuPanelView, DropZoneView,<br/>JobListView, JobRowView"]
+        direction TB
+        Panel["MenuPanelView, DropZoneView, JobListView, JobRowView"]
         Settings["SettingsView"]
-        Common["AppLogo, PopoverChromeBar,<br/>ChromeIconButton, SupportedFilePicker,<br/>SupportedFileImport"]
+        Common["AppLogo, PopoverChromeBar, ChromeIconButton, SupportedFilePicker, SupportedFileImport"]
+        Panel --- Settings --- Common
     end
 
     subgraph Infrastructure["Infrastructure"]
-        Storage["Storage<br/><i>S3Client, S3Signer</i>"]
-        Transcription["Transcription<br/><i>MistralAudioProvider, MistralOCRProvider,<br/>AppleSpeechAnalyzerProvider, AppleDocumentOCRProvider</i>"]
-        Delivery["Delivery<br/><i>CompositeDelivery, ClipboardDelivery, FileDelivery</i>"]
-        KeychainInfra["Keychain<br/><i>KeychainStore, SecretStore</i>"]
-        Config["Config<br/><i>TOMLConfigManager, SettingsNormalization</i>"]
-        System["System<br/><i>OutputFolderClient, UserNotificationClient,<br/>LaunchAtLoginManager, SecurityScopedFileAccess</i>"]
-        Connectivity["Connectivity<br/><i>ConnectivityClient</i>"]
-        Logging["Logging<br/><i>AppLog</i>"]
+        direction TB
+        Storage["Storage: S3Client, S3Signer"]
+        Transcription["Transcription: MistralAudioProvider, MistralOCRProvider, AppleSpeechAnalyzerProvider, AppleDocumentOCRProvider"]
+        Delivery["Delivery: CompositeDelivery, ClipboardDelivery, FileDelivery"]
+        KeychainInfra["Keychain: KeychainStore, SecretStore"]
+        Config["Config: TOMLConfigManager, SettingsNormalization"]
+        System["System: OutputFolderClient, UserNotificationClient, LaunchAtLoginManager, SecurityScopedFileAccess"]
+        Connectivity["Connectivity: ConnectivityClient"]
+        Logging["Logging: AppLog"]
+        Storage --- Transcription --- Delivery --- KeychainInfra --- Config --- System --- Connectivity --- Logging
     end
 
     subgraph App["Composition Root"]
-        AppDelegate["AppDelegate<br/><i>NSStatusItem, menu panel host, DI wiring</i>"]
-        PanelHost["MenuBarPanelController<br/><i>NSPanel host + dismissal</i>"]
-        StatusBar["StatusBarDropView<br/><i>Drag-and-drop on menu bar icon</i>"]
+        direction TB
+        AppDelegate["AppDelegate: NSStatusItem, menu panel host, DI wiring"]
+        PanelHost["MenuBarPanelController: NSPanel host + dismissal"]
+        StatusBar["StatusBarDropView: Drag-and-drop on menu bar icon"]
+        AppDelegate --- PanelHost --- StatusBar
     end
 
     Adapters -->|depends on| Domain

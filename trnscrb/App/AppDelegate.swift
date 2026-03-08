@@ -72,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settingsViewModel: SettingsViewModel = SettingsViewModel(
         gateway: settingsGateway,
         connectivityUseCase: connectivityUseCase,
-        outputFolderGateway: outputFolderClient,
         saveSettingsUseCase: saveSettingsUseCase
     )
     private lazy var jobListViewModel: JobListViewModel = JobListViewModel(
@@ -227,19 +226,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.close()
     }
 
-    private func terminateApp() {
-        NSApp.terminate(nil)
-    }
-
     private func makeSettingsWindowController() -> NSWindowController {
         let rootView: SettingsView = SettingsView(
-            viewModel: settingsViewModel,
-            onClose: { [weak self] in
-                self?.closeSettingsWindow()
-            },
-            onQuitApp: { [weak self] in
-                self?.terminateApp()
-            }
+            viewModel: settingsViewModel
         )
 
         let window: NSWindow = NSWindow(
@@ -253,9 +242,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.title = "Settings"
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.toolbarStyle = .unifiedCompact
+        let toolbar: NSToolbar = NSToolbar(identifier: "SettingsToolbar")
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
         window.contentViewController = NSHostingController(rootView: rootView)
         window.minSize = SettingsWindowDesign.minSize
         window.setFrameAutosaveName("trnscrb-settings")

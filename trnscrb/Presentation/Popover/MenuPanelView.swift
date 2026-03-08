@@ -112,6 +112,12 @@ struct MenuPanelView: View {
                         action: onOpenSettings
                     )
                     ChromeIconButton(
+                        systemName: "power",
+                        title: "Quit trnscrb",
+                        action: { NSApp.terminate(nil) },
+                        keyboardShortcut: KeyboardShortcut("q", modifiers: .command)
+                    )
+                    ChromeIconButton(
                         systemName: "xmark",
                         title: "Close",
                         action: onClose,

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Result of a credential connectivity test.
 public enum TestResult: Equatable {
@@ -30,13 +31,13 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var isMistralAPIKeyVisible: Bool = false
     /// Controls whether the S3 secret key is visible in the UI.
     @Published public var isS3SecretKeyVisible: Bool = false
+    /// Tracks which credentials were just saved (for inline checkmark feedback).
+    @Published public var credentialSaved: [SecretKey: Bool] = [:]
 
     /// Settings gateway for persistence.
     private let gateway: any SettingsGateway
     /// Domain use case for connectivity testing.
     private let connectivityUseCase: TestConnectivityUseCase
-    /// Validates and resolves the output folder before settings are saved.
-    private let outputFolderGateway: any OutputFolderGateway
     /// Persists settings, secrets, and launch-at-login atomically.
     private let saveSettingsUseCase: SaveSettingsUseCase
     /// Creates a view model backed by the given settings gateway.
@@ -47,12 +48,10 @@ public final class SettingsViewModel: ObservableObject {
     public init(
         gateway: any SettingsGateway,
         connectivityUseCase: TestConnectivityUseCase,
-        outputFolderGateway: any OutputFolderGateway,
         saveSettingsUseCase: SaveSettingsUseCase
     ) {
         self.gateway = gateway
         self.connectivityUseCase = connectivityUseCase
-        self.outputFolderGateway = outputFolderGateway
         self.saveSettingsUseCase = saveSettingsUseCase
     }
 
@@ -69,26 +68,52 @@ public final class SettingsViewModel: ObservableObject {
         }
     }
 
-    /// Saves settings and secrets to persistent storage.
-    @discardableResult
-    public func save() async -> Bool {
+    /// Debounce task for auto-saving settings.
+    private var saveTask: Task<Void, Never>?
+
+    /// Saves config-file settings (not credentials) with debounce.
+    ///
+    /// Cancels any pending debounced save, waits 300ms, then persists.
+    /// Called automatically when any `settings` property changes.
+    public func debouncedSaveSettings() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await saveSettings()
+        }
+    }
+
+    /// Persists config-file settings immediately.
+    public func saveSettings() async {
         do {
             settings = try settings.validatedForPersistence()
-            mistralAPIKey = mistralAPIKey.trimmedCredentialValue
-            s3SecretKey = s3SecretKey.trimmedCredentialValue
-            _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
-
-            try await saveSettingsUseCase.save(
-                settings: settings,
-                mistralAPIKey: mistralAPIKey,
-                s3SecretKey: s3SecretKey
-            )
-
+            try await saveSettingsUseCase.saveSettingsOnly(settings)
             error = nil
-            return true
         } catch {
             self.error = error.localizedDescription
-            return false
+        }
+    }
+
+    /// Saves a single credential to the Keychain and shows brief checkmark feedback.
+    @discardableResult
+    public func saveCredential(_ value: String, for key: SecretKey) async -> String? {
+        do {
+            let trimmed: String = value.trimmedCredentialValue
+            if trimmed.isEmpty {
+                try await gateway.removeSecret(for: key)
+            } else {
+                try await gateway.setSecret(trimmed, for: key)
+            }
+            setCredentialValue(trimmed, for: key)
+            error = nil
+            withAnimation { credentialSaved[key] = true }
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation { credentialSaved[key] = false }
+            return trimmed
+        } catch {
+            self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -143,6 +168,15 @@ public final class SettingsViewModel: ObservableObject {
             mistralTestResult = .success
         } catch {
             mistralTestResult = .failure(error.localizedDescription)
+        }
+    }
+
+    private func setCredentialValue(_ value: String, for key: SecretKey) {
+        switch key {
+        case .mistralAPIKey:
+            mistralAPIKey = value
+        case .s3SecretKey:
+            s3SecretKey = value
         }
     }
 }
