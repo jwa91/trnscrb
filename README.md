@@ -26,7 +26,7 @@ Drop a file onto the menu bar icon (or into the menu panel drop zone), and trnsc
 - **Per-media provider selection** — audio, PDF, and image each have independent mode selection (Local vs Cloud); modeled as extensible options (not a hardcoded toggle).
 - **BYOK (Bring Your Own Key)** — no subscription; Cloud mode uses your Mistral API key; S3 is used only when “Mirror originals to S3” is enabled.
 - **Parallel batch processing** — drop multiple files at once; they all process concurrently with per-file progress tracking.
-- **Privacy-first** — API keys stored in macOS Keychain, config follows XDG conventions, no telemetry, no analytics.
+- **Privacy-first** — API keys stored in macOS Keychain, config lives in Application Support with one-time legacy XDG migration, no telemetry, no analytics.
 
 ## Tech Stack
 

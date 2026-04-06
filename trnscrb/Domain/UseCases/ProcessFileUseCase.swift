@@ -47,6 +47,8 @@ public final class ProcessFileUseCase: Sendable {
     private let delivery: any DeliveryGateway
     /// Settings for S3 path prefix and other config.
     private let settings: any SettingsGateway
+    /// Opens security-scoped file URLs when needed.
+    private let fileAccess: any SecurityScopedFileAccessing
     /// Injectable sleep used only for retry backoff scheduling.
     private let retrySleep: @Sendable (UInt64) async throws -> Void
 
@@ -56,6 +58,7 @@ public final class ProcessFileUseCase: Sendable {
         transcribers: [any TranscriptionGateway],
         delivery: any DeliveryGateway,
         settings: any SettingsGateway,
+        fileAccess: any SecurityScopedFileAccessing = NoOpSecurityScopedFileAccess(),
         retrySleep: @escaping @Sendable (UInt64) async throws -> Void = { nanoseconds in
             try await Task.sleep(nanoseconds: nanoseconds)
         }
@@ -64,6 +67,7 @@ public final class ProcessFileUseCase: Sendable {
         self.transcribers = transcribers
         self.delivery = delivery
         self.settings = settings
+        self.fileAccess = fileAccess
         self.retrySleep = retrySleep
     }
 
@@ -78,6 +82,13 @@ public final class ProcessFileUseCase: Sendable {
         onStageChange: (@Sendable (ProcessingStage) -> Void)? = nil,
         onMirroringProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> TranscriptionResult {
+        let startedAccessing: Bool = fileAccess.startAccessing(fileURL)
+        defer {
+            if startedAccessing {
+                fileAccess.stopAccessing(fileURL)
+            }
+        }
+
         try await waitForInputFileIfNeeded(fileURL)
 
         let ext: String = fileURL.pathExtension.lowercased()

@@ -216,7 +216,7 @@ struct SettingsView: View {
             } header: {
                 Text("Bucket Mirroring")
             } footer: {
-                Text("When enabled, original files are also uploaded to S3-compatible storage for archival or downstream automation. The S3 fields below only take effect when this is on.")
+                Text("When enabled, original files are also uploaded to S3-compatible storage you configure. The S3 fields below only take effect when this is on.")
             }
 
             Section("S3 Connection") {
@@ -300,7 +300,7 @@ struct SettingsView: View {
                 pageHeader(for: .connections)
             }
 
-            Section("Mistral API") {
+            Section {
                 LabeledContent("API Key") {
                     secretField(
                         "API Key",
@@ -317,6 +317,10 @@ struct SettingsView: View {
                         Task { await viewModel.testMistral() }
                     }
                 }
+            } header: {
+                Text("Mistral API")
+            } footer: {
+                Text("Cloud mode sends selected files to Mistral using your API key. Local mode processes on this Mac.")
             }
         }
         .formStyle(.grouped)
@@ -501,6 +505,16 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Section("Privacy") {
+                Text("Local mode processes files on this Mac. Cloud mode sends selected files to Mistral, and S3 mirroring uploads originals to storage you configure.")
+                    .foregroundStyle(.secondary)
+
+                Button("Open Privacy Policy") {
+                    openPrivacyPolicy()
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .formStyle(.grouped)
     }
@@ -511,6 +525,11 @@ struct SettingsView: View {
 
     private var configFileURL: URL {
         TOMLConfigManager.defaultConfigFileURL
+    }
+
+    private func openPrivacyPolicy() {
+        guard let url: URL = URL(string: AppIdentity.privacyPolicyURLString) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     // MARK: - Test button helpers
@@ -609,14 +628,14 @@ struct SettingsView: View {
         }
 
         if panel.runModal() == .OK, let selectedURL: URL = panel.url {
-            saveFolderPathDraft = selectedURL.standardizedFileURL.path()
-            commitSaveFolderPathDraft()
+            let standardizedURL: URL = selectedURL.standardizedFileURL
+            saveFolderPathDraft = standardizedURL.path()
+            viewModel.chooseSaveFolder(standardizedURL)
         }
     }
 
     private func commitSaveFolderPathDraft() {
-        guard viewModel.settings.saveFolderPath != saveFolderPathDraft else { return }
-        viewModel.settings.saveFolderPath = saveFolderPathDraft
+        viewModel.updateSaveFolderPathDraft(saveFolderPathDraft)
     }
 
     private func commitCredentialIfNeeded(_ key: SecretKey) {

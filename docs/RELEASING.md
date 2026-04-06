@@ -14,7 +14,9 @@ make dmg      # create distributable DMG
 
 The version is read from the `VERSION` file at the project root. The build number is derived automatically from the git commit count.
 
-## Release a new version
+This document covers the outside-the-store Developer ID DMG/Homebrew flow. The Mac App Store/TestFlight flow uses the checked-in Xcode app target and is documented in [APP_STORE.md](APP_STORE.md).
+
+## Release a new Developer ID/Homebrew version
 
 1. Update the version:
 

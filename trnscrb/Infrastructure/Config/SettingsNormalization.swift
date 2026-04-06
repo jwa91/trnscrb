@@ -27,6 +27,7 @@ extension AppSettings {
             s3Region: s3Region.trimmedCredentialValue,
             s3PathPrefix: s3PathPrefix.trimmedPathPrefix,
             saveFolderPath: saveFolderPath.trimmingCharacters(in: .whitespacesAndNewlines),
+            saveFolderBookmarkBase64: saveFolderBookmarkBase64.trimmedCredentialValue,
             outputFileNamePrefix: outputFileNamePrefix.trimmingCharacters(in: .whitespacesAndNewlines),
             outputFileNameTemplate: outputFileNameTemplate.trimmingCharacters(
                 in: .whitespacesAndNewlines

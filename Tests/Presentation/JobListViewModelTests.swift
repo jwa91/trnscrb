@@ -903,7 +903,7 @@ struct JobListViewModelTests {
 
         await vm.openConfiguredSaveFolder()
 
-        #expect(outputFolderGateway.recordedPreparedPaths() == ["~/Documents/trnscrb/"])
+        #expect(outputFolderGateway.recordedPreparedPaths() == [AppSettings.defaultSaveFolderPath])
         #expect(recorder.snapshot() == [preparedURL])
     }
 

@@ -72,6 +72,44 @@ struct TOMLConfigManagerTests {
         #expect(settings == expected)
     }
 
+    @Test func loadMigratesLegacyConfigAndClearsBookmark() async throws {
+        let newConfigDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-new-config-\(UUID().uuidString)")
+        let legacyConfigDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-legacy-config-\(UUID().uuidString)")
+        defer {
+            cleanupDir(newConfigDir)
+            cleanupDir(legacyConfigDir)
+        }
+        try FileManager.default.createDirectory(at: legacyConfigDir, withIntermediateDirectories: true)
+        let legacyFileURL: URL = legacyConfigDir.appending(path: "config.toml")
+        let legacyContent: String = """
+        output.saving.folder_path = "~/Documents/trnscrb/"
+        output.saving.folder_bookmark = "legacy-bookmark"
+        processing.apple_audio.locale_identifier = "\(supportedLocaleIdentifier())"
+        """
+        try legacyContent.write(to: legacyFileURL, atomically: true, encoding: .utf8)
+
+        let manager: TOMLConfigManager = TOMLConfigManager(
+            configDirectory: newConfigDir,
+            legacyConfigDirectory: legacyConfigDir,
+            keychainStore: KeychainStore(
+                service: "com.janwillemaltink.trnscrb.test.toml.\(UUID().uuidString)"
+            )
+        )
+
+        let settings: AppSettings = try await manager.loadSettings()
+        let migratedContent: String = try String(
+            contentsOf: newConfigDir.appending(path: "config.toml"),
+            encoding: .utf8
+        )
+
+        #expect(settings.saveFolderPath == "~/Documents/trnscrb/")
+        #expect(settings.saveFolderBookmarkBase64 == "")
+        #expect(migratedContent.contains("output.saving.folder_path = \"~/Documents/trnscrb/\""))
+        #expect(migratedContent.contains("output.saving.folder_bookmark = \"\""))
+    }
+
     @Test func saveCreatesConfigFile() async throws {
         let (manager, tempDir) = try makeManager()
         defer { cleanupDir(tempDir) }
@@ -95,6 +133,7 @@ struct TOMLConfigManagerTests {
             s3Region: "eu-central-1",
             s3PathPrefix: "uploads",
             saveFolderPath: " ~/Desktop/output/ ",
+            saveFolderBookmarkBase64: "bookmark-data",
             outputFileNamePrefix: " notes- ",
             outputFileNameTemplate: " {prefix}{fileType}-{timestamp} ",
             copyToClipboard: false,
@@ -124,6 +163,7 @@ struct TOMLConfigManagerTests {
             s3Region: "auto",
             s3PathPrefix: "uploads",
             saveFolderPath: "~/Documents/trnscrb/",
+            saveFolderBookmarkBase64: "bookmark-data",
             outputFileNamePrefix: "notes-",
             outputFileNameTemplate: "{prefix}{fileType}",
             copyToClipboard: false,
@@ -158,6 +198,7 @@ struct TOMLConfigManagerTests {
         processing.apple_audio.locale_identifier = "\(supportedLocaleIdentifier())"
 
         output.saving.folder_path = "~/Documents/trnscrb/"
+        output.saving.folder_bookmark = "bookmark-data"
         output.naming.filename_prefix = "notes-"
         output.naming.filename_template = "{prefix}{fileType}"
 
@@ -191,6 +232,7 @@ struct TOMLConfigManagerTests {
         output.naming.filename_prefix = "notes-"
         storage.s3.region = "auto"
         output.saving.folder_path = "~/Documents/trnscrb/"
+        output.saving.folder_bookmark = "bookmark-data"
         processing.providers.pdf = "local"
         general.behavior.copy_to_clipboard = true
         storage.s3.access_key = "AKID"
@@ -214,6 +256,7 @@ struct TOMLConfigManagerTests {
         #expect(loaded.s3BucketName == "test-bucket")
         #expect(loaded.s3PathPrefix == "archive/")
         #expect(loaded.fileRetentionHours == 72)
+        #expect(loaded.saveFolderBookmarkBase64 == "bookmark-data")
         #expect(loaded.audioProviderMode == .mistral)
         #expect(loaded.appleAudioLocaleIdentifier == supportedLocaleIdentifier())
         #expect(loaded.outputFileNameTemplate == "{prefix}{originalFilename}")

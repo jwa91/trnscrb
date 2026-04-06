@@ -39,8 +39,19 @@ public struct FileDelivery: DeliveryGateway {
 
     /// Saves the markdown content as a `.md` file in the configured folder.
     public func deliver(result: TranscriptionResult) async throws -> DeliveryReport {
-        let settings: AppSettings = try await settingsGateway.loadSettings()
-        let folderURL: URL = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
+        var settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+        let preparedFolder: PreparedOutputFolder = try outputFolderGateway.prepareOutputFolder(
+            settings: settings
+        )
+        defer {
+            preparedFolder.stopAccessing()
+        }
+        if let refreshedBookmarkBase64: String = preparedFolder.refreshedBookmarkBase64,
+           refreshedBookmarkBase64 != settings.saveFolderBookmarkBase64 {
+            settings.saveFolderBookmarkBase64 = refreshedBookmarkBase64
+            try await settingsGateway.saveSettings(settings)
+        }
+        let folderURL: URL = preparedFolder.url
         AppLog.delivery.info("Saving markdown for \(result.sourceFileName, privacy: .public) to \(folderURL.path(), privacy: .public)")
 
         let fileName: String = OutputFileNameFormatter.fileName(

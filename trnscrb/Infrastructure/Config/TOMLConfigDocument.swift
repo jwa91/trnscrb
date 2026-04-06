@@ -58,6 +58,11 @@ struct TOMLConfigDocument {
         ),
         FieldDefinition(fullKey: "output.saving.folder_path", valueType: .string, group: "output"),
         FieldDefinition(
+            fullKey: "output.saving.folder_bookmark",
+            valueType: .string,
+            group: "output"
+        ),
+        FieldDefinition(
             fullKey: "output.naming.filename_prefix",
             valueType: .string,
             group: "output"
@@ -102,6 +107,7 @@ struct TOMLConfigDocument {
             "processing.providers.image": .string(settings.imageProviderMode.rawValue),
             "processing.apple_audio.locale_identifier": .string(settings.appleAudioLocaleIdentifier),
             "output.saving.folder_path": .string(settings.saveFolderPath),
+            "output.saving.folder_bookmark": .string(settings.saveFolderBookmarkBase64),
             "output.naming.filename_prefix": .string(settings.outputFileNamePrefix),
             "output.naming.filename_template": .string(settings.outputFileNameTemplate),
             "general.behavior.copy_to_clipboard": .bool(settings.copyToClipboard),
@@ -159,6 +165,8 @@ struct TOMLConfigDocument {
             s3Region: stringValue("storage.s3.region") ?? defaults.s3Region,
             s3PathPrefix: stringValue("storage.s3.path_prefix") ?? defaults.s3PathPrefix,
             saveFolderPath: stringValue("output.saving.folder_path") ?? defaults.saveFolderPath,
+            saveFolderBookmarkBase64: stringValue("output.saving.folder_bookmark")
+                ?? defaults.saveFolderBookmarkBase64,
             outputFileNamePrefix: stringValue("output.naming.filename_prefix")
                 ?? defaults.outputFileNamePrefix,
             outputFileNameTemplate: stringValue("output.naming.filename_template")

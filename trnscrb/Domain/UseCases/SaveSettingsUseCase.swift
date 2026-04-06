@@ -21,11 +21,17 @@ public struct SaveSettingsUseCase: Sendable {
         mistralAPIKey: String,
         s3SecretKey: String
     ) async throws {
-        let normalizedSettings: AppSettings = try settings.validatedForPersistence()
+        var normalizedSettings: AppSettings = try settings.validatedForPersistence()
         let normalizedMistralAPIKey: String = mistralAPIKey.trimmedCredentialValue
         let normalizedS3SecretKey: String = s3SecretKey.trimmedCredentialValue
 
-        _ = try outputFolderGateway.prepareOutputFolder(path: normalizedSettings.saveFolderPath)
+        let preparedFolder: PreparedOutputFolder = try outputFolderGateway.prepareOutputFolder(
+            settings: normalizedSettings
+        )
+        preparedFolder.stopAccessing()
+        if let refreshedBookmarkBase64: String = preparedFolder.refreshedBookmarkBase64 {
+            normalizedSettings.saveFolderBookmarkBase64 = refreshedBookmarkBase64
+        }
 
         let snapshot: SettingsSnapshot = try await loadSnapshot()
         var didPersistSettings: Bool = false
@@ -60,9 +66,15 @@ public struct SaveSettingsUseCase: Sendable {
     }
 
     public func saveSettingsOnly(_ settings: AppSettings) async throws {
-        let normalizedSettings: AppSettings = try settings.validatedForPersistence()
+        var normalizedSettings: AppSettings = try settings.validatedForPersistence()
 
-        _ = try outputFolderGateway.prepareOutputFolder(path: normalizedSettings.saveFolderPath)
+        let preparedFolder: PreparedOutputFolder = try outputFolderGateway.prepareOutputFolder(
+            settings: normalizedSettings
+        )
+        preparedFolder.stopAccessing()
+        if let refreshedBookmarkBase64: String = preparedFolder.refreshedBookmarkBase64 {
+            normalizedSettings.saveFolderBookmarkBase64 = refreshedBookmarkBase64
+        }
 
         let snapshot: SettingsSnapshot = try await loadSnapshot()
         var didPersistSettings: Bool = false

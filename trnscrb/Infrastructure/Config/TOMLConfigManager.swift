@@ -17,11 +17,20 @@ extension ConfigError: LocalizedError {
 
 /// Reads and writes application settings to a TOML config file.
 ///
-/// Config path follows XDG: `$XDG_CONFIG_HOME/trnscrb/config.toml`,
-/// defaulting to `~/.config/trnscrb/config.toml`.
+/// Config path lives in Application Support so sandboxed builds write inside
+/// their container. A legacy XDG config is migrated once if present.
 /// Secrets are delegated to the injected `KeychainStore`.
 public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
     static var defaultConfigDirectoryURL: URL {
+        let applicationSupportURL: URL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support")
+        return applicationSupportURL.appending(path: "trnscrb")
+    }
+
+    static var legacyConfigDirectoryURL: URL {
         if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] {
             return URL(filePath: xdg).appending(path: "trnscrb")
         }
@@ -35,6 +44,8 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
 
     /// Directory containing `config.toml`.
     private let configDirectory: URL
+    /// Legacy XDG config directory used for one-time migration.
+    private let legacyConfigDirectory: URL?
     /// Secret store wrapper for secret storage.
     private let secretStore: any SecretStore
     /// In-memory cache to avoid repeated keychain prompts in the same session.
@@ -42,17 +53,23 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
 
     /// Creates a config manager.
     /// - Parameters:
-    ///   - configDirectory: Override for config directory (defaults to XDG path).
+    ///   - configDirectory: Override for config directory (defaults to Application Support).
     ///   - keychainStore: Keychain wrapper for secret storage.
     public convenience init(
         configDirectory: URL? = nil,
+        legacyConfigDirectory: URL? = nil,
         keychainStore: KeychainStore = KeychainStore()
     ) {
-        self.init(configDirectory: configDirectory, secretStore: keychainStore)
+        self.init(
+            configDirectory: configDirectory,
+            legacyConfigDirectory: legacyConfigDirectory,
+            secretStore: keychainStore
+        )
     }
 
     init(
         configDirectory: URL? = nil,
+        legacyConfigDirectory: URL? = nil,
         secretStore: any SecretStore
     ) {
         if let configDirectory {
@@ -60,6 +77,8 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
         } else {
             self.configDirectory = Self.defaultConfigDirectoryURL
         }
+        self.legacyConfigDirectory = legacyConfigDirectory
+            ?? (configDirectory == nil ? Self.legacyConfigDirectoryURL : nil)
         self.secretStore = secretStore
     }
 
@@ -68,12 +87,19 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
         configDirectory.appending(path: "config.toml")
     }
 
+    private var legacyConfigFileURL: URL? {
+        legacyConfigDirectory?.appending(path: "config.toml")
+    }
+
     // MARK: - SettingsGateway conformance
 
     /// Loads settings from the TOML config file. Returns defaults if file doesn't exist.
     public func loadSettings() async throws -> AppSettings {
         let path: String = configFileURL.path()
         guard FileManager.default.fileExists(atPath: path) else {
+            if let migratedSettings: AppSettings = try migrateLegacySettingsIfNeeded() {
+                return migratedSettings
+            }
             return try AppSettings().validatedForPersistence()
         }
         let content: String = try String(contentsOf: configFileURL, encoding: .utf8)
@@ -83,6 +109,10 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
 
     /// Saves settings to the TOML config file, creating the directory if needed.
     public func saveSettings(_ settings: AppSettings) async throws {
+        try writeSettings(settings)
+    }
+
+    private func writeSettings(_ settings: AppSettings) throws {
         try FileManager.default.createDirectory(
             at: configDirectory,
             withIntermediateDirectories: true
@@ -117,6 +147,21 @@ public final class TOMLConfigManager: SettingsGateway, @unchecked Sendable {
     public func removeSecret(for key: SecretKey) async throws {
         try secretStore.remove(for: key)
         secretCache.store(nil, for: key)
+    }
+
+    private func migrateLegacySettingsIfNeeded() throws -> AppSettings? {
+        guard let legacyConfigFileURL,
+              legacyConfigFileURL.standardizedFileURL != configFileURL.standardizedFileURL,
+              FileManager.default.fileExists(atPath: legacyConfigFileURL.path()) else {
+            return nil
+        }
+
+        let content: String = try String(contentsOf: legacyConfigFileURL, encoding: .utf8)
+        let document: TOMLConfigDocument = try TOMLConfigDocument(content: content)
+        var settings: AppSettings = try document.makeSettings()
+        settings.saveFolderBookmarkBase64 = ""
+        try writeSettings(settings)
+        return settings
     }
 
 }

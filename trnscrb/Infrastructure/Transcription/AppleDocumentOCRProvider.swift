@@ -12,11 +12,22 @@ public struct AppleDocumentOCRProvider: TranscriptionGateway {
         FileType.pdfExtensions.union(FileType.imageExtensions)
     }
 
-    public init() {}
+    private let fileAccess: any SecurityScopedFileAccessing
+
+    public init(fileAccess: any SecurityScopedFileAccessing = SecurityScopedFileAccess()) {
+        self.fileAccess = fileAccess
+    }
 
     public func process(sourceURL: URL) async throws -> String {
         guard sourceURL.isFileURL else {
             throw LocalProviderError.localFileRequired
+        }
+
+        let startedAccessing: Bool = fileAccess.startAccessing(sourceURL)
+        defer {
+            if startedAccessing {
+                fileAccess.stopAccessing(sourceURL)
+            }
         }
 
         let ext: String = sourceURL.pathExtension.lowercased()
