@@ -9,18 +9,28 @@ public struct AppleSpeechAnalyzerProvider: TranscriptionGateway {
 
     private let settingsGateway: (any SettingsGateway)?
     private let fallbackLocaleIdentifier: String
+    private let fileAccess: any SecurityScopedFileAccessing
 
     public init(
         settingsGateway: (any SettingsGateway)? = nil,
-        locale: Locale = Locale(identifier: AppSettings.defaultAppleAudioLocaleIdentifier)
+        locale: Locale = Locale(identifier: AppSettings.defaultAppleAudioLocaleIdentifier),
+        fileAccess: any SecurityScopedFileAccessing = SecurityScopedFileAccess()
     ) {
         self.settingsGateway = settingsGateway
         self.fallbackLocaleIdentifier = locale.identifier
+        self.fileAccess = fileAccess
     }
 
     public func process(sourceURL: URL) async throws -> String {
         guard sourceURL.isFileURL else {
             throw LocalProviderError.localFileRequired
+        }
+
+        let startedAccessing: Bool = fileAccess.startAccessing(sourceURL)
+        defer {
+            if startedAccessing {
+                fileAccess.stopAccessing(sourceURL)
+            }
         }
 
         try await ensureSpeechAuthorization()

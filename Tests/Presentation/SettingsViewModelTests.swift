@@ -233,6 +233,34 @@ struct SettingsViewModelTests {
         #expect((await gateway.snapshotSettings()).saveFolderPath == tempDir.path())
     }
 
+    @Test func updateSaveFolderPathDraftClearsExistingBookmark() {
+        let (vm, _, _, _, _) = makeViewModel(
+            settings: AppSettings(
+                saveFolderPath: "/old/path",
+                saveFolderBookmarkBase64: "old-bookmark"
+            )
+        )
+
+        vm.updateSaveFolderPathDraft("/new/path")
+
+        #expect(vm.settings.saveFolderPath == "/new/path")
+        #expect(vm.settings.saveFolderBookmarkBase64 == "")
+    }
+
+    @Test func chooseSaveFolderStoresSecurityScopedBookmark() throws {
+        let tempDir: URL = FileManager.default.temporaryDirectory
+            .appending(path: "trnscrb-settings-vm-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let (vm, _, _, _, _) = makeViewModel()
+
+        vm.chooseSaveFolder(tempDir)
+
+        #expect(vm.error == nil)
+        #expect(vm.settings.saveFolderPath == tempDir.standardizedFileURL.path())
+        #expect(!vm.settings.saveFolderBookmarkBase64.isEmpty)
+    }
+
     // MARK: - Connectivity testing
 
     @Test func testS3CallsConnectivityUseCaseOnSuccess() async {

@@ -140,6 +140,28 @@ struct SaveSettingsUseCaseTests {
         #expect(outputFolderGateway.recordedPreparedPaths() == ["/tmp/trnscrb-output"])
     }
 
+    @Test func saveSettingsOnlyPersistsRefreshedOutputFolderBookmark() async throws {
+        let gateway: RecordingSettingsGateway = RecordingSettingsGateway()
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(
+            preparedURL: URL(filePath: "/tmp/trnscrb-output")
+        )
+        outputFolderGateway.setRefreshedBookmarkBase64("new-bookmark")
+        let useCase: SaveSettingsUseCase = SaveSettingsUseCase(
+            gateway: gateway,
+            outputFolderGateway: outputFolderGateway
+        )
+
+        try await useCase.saveSettingsOnly(
+            AppSettings(
+                saveFolderPath: "/tmp/trnscrb-output",
+                saveFolderBookmarkBase64: "old-bookmark"
+            )
+        )
+
+        #expect((await gateway.snapshotSettings()).saveFolderBookmarkBase64 == "new-bookmark")
+        #expect(outputFolderGateway.recordedStopAccessCount() == 1)
+    }
+
     @Test func saveDoesNotApplyLaunchAtLoginWhenValueIsUnchanged() async throws {
         let originalSettings: AppSettings = AppSettings(
             s3EndpointURL: "https://old.example.com",

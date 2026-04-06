@@ -131,6 +131,25 @@ public final class SettingsViewModel: ObservableObject {
         )
     }
 
+    public func chooseSaveFolder(_ url: URL) {
+        do {
+            let standardizedURL: URL = url.standardizedFileURL
+            settings.saveFolderPath = standardizedURL.path()
+            settings.saveFolderBookmarkBase64 = try OutputFolderClient.bookmarkBase64(
+                for: standardizedURL
+            )
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    public func updateSaveFolderPathDraft(_ path: String) {
+        guard settings.saveFolderPath != path else { return }
+        settings.saveFolderPath = path
+        settings.saveFolderBookmarkBase64 = ""
+    }
+
     /// Tests S3 connectivity by sending a HEAD request to the bucket.
     public func testS3() async {
         s3TestResult = .testing

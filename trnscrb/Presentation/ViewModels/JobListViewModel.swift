@@ -376,9 +376,19 @@ public final class JobListViewModel: ObservableObject {
     /// Opens the configured markdown output folder in Finder.
     public func openConfiguredSaveFolder() async {
         do {
-            let settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
-            let folderURL: URL = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
-            openFolder(folderURL)
+            var settings: AppSettings = try await settingsGateway.loadSettings().normalizedForUse
+            let preparedFolder: PreparedOutputFolder = try outputFolderGateway.prepareOutputFolder(
+                settings: settings
+            )
+            defer {
+                preparedFolder.stopAccessing()
+            }
+            if let refreshedBookmarkBase64: String = preparedFolder.refreshedBookmarkBase64,
+               refreshedBookmarkBase64 != settings.saveFolderBookmarkBase64 {
+                settings.saveFolderBookmarkBase64 = refreshedBookmarkBase64
+                try await settingsGateway.saveSettings(settings)
+            }
+            openFolder(preparedFolder.url)
         } catch {
             configurationError = error.localizedDescription
             shouldOpenSettings = true
@@ -416,7 +426,10 @@ public final class JobListViewModel: ObservableObject {
             }
 
             do {
-                _ = try outputFolderGateway.prepareOutputFolder(path: settings.saveFolderPath)
+                let preparedFolder: PreparedOutputFolder = try outputFolderGateway.prepareOutputFolder(
+                    settings: settings
+                )
+                preparedFolder.stopAccessing()
             } catch {
                 configurationError = error.localizedDescription
                 shouldOpenSettings = true

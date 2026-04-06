@@ -25,18 +25,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settingsGateway: any SettingsGateway = {
         TOMLConfigManager(keychainStore: KeychainStore())
     }()
-    private lazy var outputFolderClient: OutputFolderClient = OutputFolderClient()
-    private lazy var s3Client: S3Client = S3Client(settingsGateway: settingsGateway)
+    private lazy var fileAccess: SecurityScopedFileAccess = SecurityScopedFileAccess()
+    private lazy var outputFolderClient: OutputFolderClient = OutputFolderClient(
+        fileAccess: fileAccess
+    )
+    private lazy var s3Client: S3Client = S3Client(
+        settingsGateway: settingsGateway,
+        fileAccess: fileAccess
+    )
     private lazy var audioProvider: MistralAudioProvider = MistralAudioProvider(
-        settingsGateway: settingsGateway
+        settingsGateway: settingsGateway,
+        fileAccess: fileAccess
     )
     private lazy var ocrProvider: MistralOCRProvider = MistralOCRProvider(
-        settingsGateway: settingsGateway
+        settingsGateway: settingsGateway,
+        fileAccess: fileAccess
     )
     private lazy var localAudioProvider: AppleSpeechAnalyzerProvider = AppleSpeechAnalyzerProvider(
-        settingsGateway: settingsGateway
+        settingsGateway: settingsGateway,
+        fileAccess: fileAccess
     )
-    private lazy var localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider()
+    private lazy var localDocumentProvider: AppleDocumentOCRProvider = AppleDocumentOCRProvider(
+        fileAccess: fileAccess
+    )
     private lazy var compositeDelivery: CompositeDelivery = CompositeDelivery(
         clipboard: ClipboardDelivery(),
         file: FileDelivery(
@@ -63,7 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         storage: s3Client,
         transcribers: [audioProvider, ocrProvider, localAudioProvider, localDocumentProvider],
         delivery: compositeDelivery,
-        settings: settingsGateway
+        settings: settingsGateway,
+        fileAccess: fileAccess
     )
     private lazy var cleanupUseCase: CleanupRetentionUseCase = CleanupRetentionUseCase(
         storage: s3Client,

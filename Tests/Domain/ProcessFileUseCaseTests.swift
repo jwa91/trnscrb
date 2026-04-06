@@ -73,13 +73,15 @@ private func makeMistralUseCase(
         supportedExtensions: FileType.pdfExtensions.union(FileType.imageExtensions)
     ),
     delivery: MockDeliveryGateway = MockDeliveryGateway(),
-    settings: MockSettingsGateway = MockSettingsGateway(settings: mistralSettings())
+    settings: MockSettingsGateway = MockSettingsGateway(settings: mistralSettings()),
+    fileAccess: any SecurityScopedFileAccessing = NoOpSecurityScopedFileAccess()
 ) -> (ProcessFileUseCase, MockStorageGateway, MockTranscriptionGateway, MockTranscriptionGateway, MockDeliveryGateway, MockSettingsGateway) {
     let useCase: ProcessFileUseCase = ProcessFileUseCase(
         storage: storage,
         transcribers: [audioTranscriber, ocrTranscriber],
         delivery: delivery,
-        settings: settings
+        settings: settings,
+        fileAccess: fileAccess
     )
     return (useCase, storage, audioTranscriber, ocrTranscriber, delivery, settings)
 }
@@ -127,6 +129,17 @@ struct ProcessFileUseCaseTests {
         #expect(result.remoteSourceURL == presignedURL)
         #expect(result.savedFileURL == savedFileURL)
         #expect(result.mirrorWarnings.isEmpty)
+    }
+
+    @Test func processFileKeepsSecurityScopedAccessOpenForProcessing() async throws {
+        let fileAccess: SecurityScopedFileAccessSpy = SecurityScopedFileAccessSpy()
+        let fileURL: URL = URL(filePath: "/tmp/scoped-meeting.mp3")
+        let (useCase, _, _, _, _, _) = makeMistralUseCase(fileAccess: fileAccess)
+
+        _ = try await useCase.execute(fileURL: fileURL)
+
+        #expect(fileAccess.recordedStartedURLs() == [fileURL])
+        #expect(fileAccess.recordedStoppedURLs() == [fileURL])
     }
 
     @Test func processPDFFile() async throws {

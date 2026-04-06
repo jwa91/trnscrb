@@ -163,7 +163,7 @@ trnscrb/
 │   │   ├── KeychainStore.swift       # macOS Keychain CRUD
 │   │   └── SecretStore.swift         # High-level secret access
 │   ├── Config/
-│   │   ├── TOMLConfigManager.swift   # Reads/writes ~/.config/trnscrb/config.toml
+│   │   ├── TOMLConfigManager.swift   # Reads/writes Application Support config; migrates legacy XDG config once
 │   │   ├── TOMLConfigDocument.swift  # Parses and serializes TOML (bucket mirroring, provider modes, etc.)
 │   │   └── SettingsNormalization.swift # Validates and normalizes config values
 │   ├── System/

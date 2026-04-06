@@ -153,4 +153,29 @@ struct FileDeliveryTests {
         let fileURL: URL = tempDir.appending(path: "notes-audio-meeting.md")
         #expect(FileManager.default.fileExists(atPath: fileURL.path()))
     }
+
+    @Test func deliverPersistsRefreshedOutputFolderBookmark() async throws {
+        let tempDir: URL = makeTempDir()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let gateway: MockSettingsGateway = MockSettingsGateway(
+            settings: AppSettings(
+                saveFolderPath: tempDir.path(),
+                saveFolderBookmarkBase64: "old-bookmark"
+            )
+        )
+        let outputFolderGateway: MockOutputFolderGateway = MockOutputFolderGateway(
+            preparedURL: tempDir
+        )
+        outputFolderGateway.setRefreshedBookmarkBase64("new-bookmark")
+        let delivery: FileDelivery = FileDelivery(
+            settingsGateway: gateway,
+            outputFolderGateway: outputFolderGateway
+        )
+
+        _ = try await delivery.deliver(result: makeResult(fileName: "meeting.mp3"))
+
+        #expect((await gateway.snapshotSettings()).saveFolderBookmarkBase64 == "new-bookmark")
+        #expect(outputFolderGateway.recordedStopAccessCount() == 1)
+    }
 }

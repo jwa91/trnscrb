@@ -17,6 +17,8 @@ public struct AppSettings: Sendable, Equatable {
     public static let defaultFileNameTemplate: String = "{originalFilename}"
     /// Default speech locale used by Apple's on-device audio transcription.
     public static let defaultAppleAudioLocaleIdentifier: String = "en-US"
+    /// Default sandbox-friendly output folder.
+    public static let defaultSaveFolderPath: String = "~/Library/Application Support/trnscrb/Output"
 
     /// Whether bucket mirroring to S3-compatible storage is enabled.
     public var bucketMirroringEnabled: Bool
@@ -32,6 +34,8 @@ public struct AppSettings: Sendable, Equatable {
     public var s3PathPrefix: String
     /// Folder path where markdown files are saved.
     public var saveFolderPath: String
+    /// Security-scoped bookmark for `saveFolderPath`, encoded as base64.
+    public var saveFolderBookmarkBase64: String
     /// Optional prefix injected by the output filename template.
     public var outputFileNamePrefix: String
     /// Template used to generate saved markdown filenames.
@@ -59,7 +63,8 @@ public struct AppSettings: Sendable, Equatable {
         s3BucketName: String = "",
         s3Region: String = "auto",
         s3PathPrefix: String = "trnscrb/",
-        saveFolderPath: String = "~/Documents/trnscrb/",
+        saveFolderPath: String = AppSettings.defaultSaveFolderPath,
+        saveFolderBookmarkBase64: String = "",
         outputFileNamePrefix: String = "",
         outputFileNameTemplate: String = AppSettings.defaultFileNameTemplate,
         copyToClipboard: Bool = true,
@@ -77,6 +82,7 @@ public struct AppSettings: Sendable, Equatable {
         self.s3Region = s3Region
         self.s3PathPrefix = s3PathPrefix
         self.saveFolderPath = saveFolderPath
+        self.saveFolderBookmarkBase64 = saveFolderBookmarkBase64
         self.outputFileNamePrefix = outputFileNamePrefix
         self.outputFileNameTemplate = outputFileNameTemplate
         self.copyToClipboard = copyToClipboard

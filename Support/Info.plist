@@ -41,5 +41,20 @@
 
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
+
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>trnscrb saves markdown to folders you choose.</string>
+
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>trnscrb saves markdown to folders you choose.</string>
+
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>trnscrb saves markdown to folders you choose.</string>
+
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>trnscrb can connect to S3-compatible storage endpoints you configure.</string>
+
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>trnscrb uses Apple speech recognition to transcribe audio locally when Local mode is selected.</string>
 </dict>
 </plist>
