@@ -20,3 +20,6 @@ rule_docs/
 
 # Secrets
 Support/check-notarization.sh
+
+# Local planning notes
+docs/WEBSITE_BRIEF.md
